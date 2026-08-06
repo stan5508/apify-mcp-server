@@ -207,20 +207,22 @@
   const $app = document.getElementById('app');
 
   // ---------- data ----------
-  const emptyDb = () => ({ clients: [], schemas: [], workouts: [] });
+  const emptyDb = () => ({ clients: [], schemas: [], workouts: [], duos: [] });
   let db = loadDb();
   function loadDb() {
     try {
       const raw = localStorage.getItem(KEY);
       if (!raw) return emptyDb();
       const d = JSON.parse(raw);
-      return { clients: d.clients || [], schemas: d.schemas || [], workouts: d.workouts || [] };
+      return { clients: d.clients || [], schemas: d.schemas || [], workouts: d.workouts || [], duos: d.duos || [] };
     } catch { return emptyDb(); }
   }
   function save() { localStorage.setItem(KEY, JSON.stringify(db)); }
   function uid() { return Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4); }
 
   const clientById = (id) => db.clients.find((c) => c.id === id);
+  const duoById = (id) => db.duos.find((d) => d.id === id);
+  const duoName = (d) => d.name || d.clientIds.map((id) => (clientById(id) || { name: '?' }).name).join(' & ');
   const schemaById = (id) => db.schemas.find((s) => s.id === id);
   const schemasOf = (clientId) => db.schemas.filter((s) => s.clientId === clientId);
   const workoutsOf = (clientId) => db.workouts.filter((w) => w.clientId === clientId).sort((a, b) => a.date.localeCompare(b.date));
@@ -447,6 +449,9 @@
     if (parts[0] === 'klant' && parts[2] === 'oefening') return viewExercise(parts[1], parts[3]);
     if (parts[0] === 'klant' && parts[2] === 'vrij') return viewPickExercises(parts[1]);
     if (parts[0] === 'klant') return viewClient(parts[1]);
+    if (parts[0] === 'duo' && parts[2] === 'vrij') return viewDuoPick(parts[1]);
+    if (parts[0] === 'duo' && parts[2] === 'training') return viewDuoWorkout(parts[1]);
+    if (parts[0] === 'duo') return viewDuo(parts[1]);
     return viewHome();
   }
 
@@ -482,7 +487,23 @@
         <label class="field"><span>Doel (optioneel)</span><input name="goal" placeholder="bijv. kracht opbouwen, 5 kg afvallen"></label>
         <button class="primary wide" type="submit">Klant toevoegen</button>
       </form>
-      <hr class="divider">
+      <div class="eyebrow">Duo's</div>` +
+      db.duos.filter((d) => d.clientIds.every(clientById)).map((d) => {
+        const sessions = new Set(db.workouts.filter((w) => w.duoId === d.id).map((w) => w.date)).size;
+        return `<div class="card tappable" data-nav="/duo/${d.id}" role="link" tabindex="0">
+          <div class="row"><div class="grow">
+            <div class="title">${esc(duoName(d))}</div>
+            <div class="sub">${d.clientIds.map((id) => esc(clientById(id).name)).join(' + ')} · ${sessions} duo-training${sessions === 1 ? '' : 'en'}</div>
+          </div><span class="mut">›</span></div>
+        </div>`;
+      }).join('') +
+      (db.clients.length >= 2 ? `<form class="card" id="add-duo">
+        <label class="field"><span>Klant 1</span><select name="a">${db.clients.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select></label>
+        <label class="field"><span>Klant 2</span><select name="b">${db.clients.map((c, i) => `<option value="${c.id}" ${i === 1 ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>
+        <label class="field"><span>Naam duo (optioneel)</span><input name="name" placeholder="bijv. Sanne & Piet"></label>
+        <button class="primary wide" type="submit">Duo toevoegen</button>
+      </form>` : `<p class="mut">Voeg minstens twee klanten toe om een duo te maken.</p>`) +
+      `<hr class="divider">
       <div class="eyebrow">Gegevens</div>
       <div class="actions">
         <button id="export-btn">Exporteer back-up</button>
@@ -503,6 +524,16 @@
     });
     const demo = document.getElementById('demo-btn');
     if (demo) demo.addEventListener('click', () => { loadDemo(); save(); render(); });
+    const duoForm = document.getElementById('add-duo');
+    if (duoForm) duoForm.addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      const f = new FormData(ev.target);
+      const a = String(f.get('a')), b = String(f.get('b'));
+      if (a === b) { alert('Kies twee verschillende klanten.'); return; }
+      const d = { id: uid(), clientIds: [a, b], name: String(f.get('name')).trim() };
+      db.duos.push(d); save();
+      location.hash = `/duo/${d.id}`;
+    });
     document.getElementById('export-btn').addEventListener('click', exportJson);
     const fileInput = document.getElementById('import-file');
     document.getElementById('import-btn').addEventListener('click', () => fileInput.click());
@@ -512,6 +543,7 @@
   // --- client detail ---
   const uiState = { metric: 'top' };
   let pendingFree = []; // exercises picked for a free session, set by viewPickExercises
+  let pendingDuo = null; // { duoId, picks: { [clientId]: [names] } }, set by viewDuoPick
   function viewClient(id) {
     const c = clientById(id);
     if (!c) { location.hash = '/'; return; }
@@ -569,7 +601,7 @@
         return `<div class="card">
           <div class="row">
             <div class="grow">
-              <div class="title">${esc(fmtDateFull(w.date))} <span class="badge">${schema ? esc(schema.name) : 'Vrije training'}</span></div>
+              <div class="title">${esc(fmtDateFull(w.date))} <span class="badge">${schema ? esc(schema.name) : w.duoId ? 'Duo-training' : 'Vrije training'}</span></div>
               <div class="sub">${summary}</div>
               ${w.notes ? `<div class="mut">${esc(w.notes)}</div>` : ''}
             </div>
@@ -593,6 +625,7 @@
       db.clients = db.clients.filter((x) => x.id !== id);
       db.schemas = db.schemas.filter((s) => s.clientId !== id);
       db.workouts = db.workouts.filter((w) => w.clientId !== id);
+      db.duos = db.duos.filter((d) => !d.clientIds.includes(id));
       save(); location.hash = '/';
     });
   }
@@ -694,6 +727,208 @@
       document.getElementById('start-free').addEventListener('click', () => {
         pendingFree = known.filter((n) => selected.has(n));
         location.hash = `/klant/${clientId}/training/vrij`;
+      });
+    };
+    paint();
+  }
+
+  // --- duo page: members + duo session history ---
+  function viewDuo(duoId) {
+    const duo = duoById(duoId);
+    const members = duo ? duo.clientIds.map(clientById) : [];
+    if (!duo || members.some((m) => !m)) { location.hash = '/'; return; }
+
+    const duoWorkouts = db.workouts.filter((w) => w.duoId === duoId);
+    const dates = [...new Set(duoWorkouts.map((w) => w.date))].sort().reverse();
+
+    $app.innerHTML = topbar(duoName(duo), '/') +
+      `<div class="actions"><button class="primary" data-nav="/duo/${duoId}/vrij">Start duo-training</button></div>` +
+
+      `<div class="eyebrow">Leden</div>` +
+      members.map((m) => {
+        const ws = workoutsOf(m.id);
+        const lastW = ws[ws.length - 1];
+        return `<div class="card tappable" data-nav="/klant/${m.id}" role="link" tabindex="0">
+          <div class="row"><div class="grow">
+            <div class="title">${esc(m.name)}</div>
+            <div class="sub">${ws.length} training${ws.length === 1 ? '' : 'en'}${lastW ? ' · laatste: ' + esc(fmtDate(lastW.date)) : ''} · schema's en progressie ›</div>
+          </div><span class="mut">›</span></div>
+        </div>`;
+      }).join('') +
+
+      `<div class="eyebrow">Duo-trainingen</div>` +
+      (dates.length ? dates.slice(0, 20).map((date) => {
+        const lines = duoWorkouts.filter((w) => w.date === date).map((w) => {
+          const m = clientById(w.clientId);
+          return `<div class="sub">${esc(m ? m.name : '?')}: ${w.entries.map((e) => esc(e.name)).join(', ')}</div>`;
+        }).join('');
+        return `<div class="card"><div class="title">${esc(fmtDateFull(date))}</div>${lines}</div>`;
+      }).join('') : `<p class="mut">Nog geen duo-trainingen gelogd.</p>`) +
+
+      `<hr class="divider">
+      <button class="danger ghost" id="del-duo">Duo verwijderen</button>`;
+
+    bindNav();
+    document.getElementById('del-duo').addEventListener('click', () => {
+      if (!confirm('Dit duo verwijderen? De klanten en hun trainingen blijven bewaard.')) return;
+      db.duos = db.duos.filter((d) => d.id !== duoId);
+      save(); location.hash = '/';
+    });
+  }
+
+  // --- duo free workout: pick exercises per member ---
+  function viewDuoPick(duoId) {
+    const duo = duoById(duoId);
+    const members = duo ? duo.clientIds.map(clientById) : [];
+    if (!duo || members.some((m) => !m)) { location.hash = '/'; return; }
+    const known = members.map((m) => knownExercises(m.id));
+    const selected = members.map(() => new Set());
+
+    const paint = () => {
+      $app.innerHTML = topbar(`Duo-training — ${duoName(duo)}`, `/duo/${duoId}`) +
+        `<p class="sub" style="margin:0 0 12px">Kies per persoon de oefeningen voor deze sessie.</p>` +
+        members.map((m, mi) =>
+          `<div class="eyebrow">${esc(m.name)}</div>` +
+          (known[mi].length ? `<div class="chips">${known[mi].map((n) =>
+            `<button type="button" class="chip" data-pick="${mi}" data-ex-name="${esc(n)}" aria-pressed="${selected[mi].has(n)}">${esc(n)}</button>`
+          ).join('')}</div>` : '') +
+          `<form class="card" data-new-ex="${mi}" style="margin-top:10px">
+            <label class="field"><span>Nieuwe oefening voor ${esc(m.name)}</span><input name="name" placeholder="bijv. Lat pulldown"></label>
+            <button type="submit">+ Toevoegen en selecteren</button>
+          </form>`
+        ).join('') +
+        `<button class="primary wide" id="start-duo" ${selected.every((s) => s.size) ? '' : 'disabled'} style="margin-top:8px">Start duo-training</button>` +
+        (selected.every((s) => s.size) ? '' : `<p class="mut">Kies voor beide personen minstens één oefening.</p>`);
+
+      bindNav();
+      document.querySelectorAll('[data-pick]').forEach((b) => b.addEventListener('click', () => {
+        const mi = +b.dataset.pick, n = b.dataset.exName;
+        if (selected[mi].has(n)) selected[mi].delete(n); else selected[mi].add(n);
+        paint();
+      }));
+      document.querySelectorAll('[data-new-ex]').forEach((form) => form.addEventListener('submit', (ev) => {
+        ev.preventDefault();
+        const mi = +form.dataset.newEx;
+        const n = String(new FormData(form).get('name')).trim();
+        if (!n) return;
+        const existing = known[mi].find((k) => k.toLowerCase() === n.toLowerCase());
+        if (!existing) known[mi].push(n);
+        selected[mi].add(existing || n);
+        paint();
+      }));
+      document.getElementById('start-duo').addEventListener('click', () => {
+        pendingDuo = { duoId, picks: {} };
+        members.forEach((m, mi) => { pendingDuo.picks[m.id] = known[mi].filter((n) => selected[mi].has(n)); });
+        location.hash = `/duo/${duoId}/training`;
+      });
+    };
+    paint();
+  }
+
+  // --- duo workout logging: both members on one screen ---
+  function viewDuoWorkout(duoId) {
+    const duo = duoById(duoId);
+    const members = duo ? duo.clientIds.map(clientById) : [];
+    if (!duo || members.some((m) => !m)) { location.hash = '/'; return; }
+    if (!pendingDuo || pendingDuo.duoId !== duoId) { location.hash = `/duo/${duoId}/vrij`; return; }
+
+    const prefill = (clientId, name) => {
+      const prev = lastEntryFor(clientId, name);
+      return prev
+        ? prev.entry.sets.map((s) => ({ reps: s.reps, weight: s.weight }))
+        : Array.from({ length: 3 }, () => ({ reps: 10, weight: 0 }));
+    };
+    const draft = members.map((m) => ({
+      client: m,
+      exercises: (pendingDuo.picks[m.id] || []).map((n) => ({ name: n, sets: prefill(m.id, n) })),
+    }));
+
+    const paint = () => {
+      $app.innerHTML = topbar(`Duo-training — ${duoName(duo)}`, `/duo/${duoId}`) +
+        `<form id="duo-form">
+          <label class="field"><span>Datum</span><input type="date" name="date" value="${todayIso()}" required></label>
+          ${draft.map((mem, mi) =>
+            `<div class="eyebrow">${esc(mem.client.name)}</div>` +
+            mem.exercises.map((ex, xi) => `<div class="card">
+              <div class="title" style="margin-bottom:8px">${esc(ex.name)}</div>
+              <div class="set-row"><span></span><span class="col-head">Gewicht (kg)</span><span class="col-head">Herhalingen</span><span></span></div>
+              ${ex.sets.map((s, si) => `<div class="set-row">
+                <span class="n">${si + 1}</span>
+                <input data-dset="${mi}.${xi}.${si}" data-f="weight" type="text" inputmode="decimal" value="${s.weight || ''}" placeholder="kg">
+                <input data-dset="${mi}.${xi}.${si}" data-f="reps" type="number" min="0" inputmode="numeric" value="${s.reps || ''}" placeholder="herh.">
+                <button type="button" class="small danger ghost" data-drm-set="${mi}.${xi}.${si}" aria-label="Verwijder set">✕</button>
+              </div>`).join('')}
+              <button type="button" class="small" data-dadd-set="${mi}.${xi}">+ Set</button>
+            </div>`).join('') +
+            `<div class="card">
+              <label class="field"><span>Oefening toevoegen voor ${esc(mem.client.name)}</span>
+                <input data-extra-input="${mi}" list="dex-list-${mi}" placeholder="bijv. Lat pulldown"></label>
+              <datalist id="dex-list-${mi}">${knownExercises(mem.client.id)
+                .filter((n) => !mem.exercises.some((e) => e.name.toLowerCase() === n.toLowerCase()))
+                .map((n) => `<option value="${esc(n)}">`).join('')}</datalist>
+              <button type="button" class="small" data-extra-add="${mi}">+ Oefening</button>
+            </div>`
+          ).join('')}
+          <label class="field"><span>Notities (optioneel)</span><textarea name="notes" rows="2" placeholder="bijv. samen circuit gedaan"></textarea></label>
+          <button class="primary wide" type="submit">Duo-training opslaan</button>
+        </form>`;
+
+      bindNav();
+      const syncDraft = () => {
+        document.querySelectorAll('[data-dset]').forEach((inp) => {
+          const [mi, xi, si] = inp.dataset.dset.split('.').map(Number);
+          draft[mi].exercises[xi].sets[si][inp.dataset.f] = num(inp.value);
+        });
+      };
+      const repaintKeeping = () => {
+        const dateVal = document.querySelector('[name="date"]').value;
+        const notesVal = document.querySelector('[name="notes"]').value;
+        paint();
+        document.querySelector('[name="date"]').value = dateVal;
+        document.querySelector('[name="notes"]').value = notesVal;
+      };
+      document.querySelectorAll('[data-dadd-set]').forEach((b) => b.addEventListener('click', () => {
+        syncDraft();
+        const [mi, xi] = b.dataset.daddSet.split('.').map(Number);
+        const sets = draft[mi].exercises[xi].sets;
+        const lastSet = sets[sets.length - 1];
+        sets.push(lastSet ? { ...lastSet } : { reps: 10, weight: 0 });
+        repaintKeeping();
+      }));
+      document.querySelectorAll('[data-drm-set]').forEach((b) => b.addEventListener('click', () => {
+        syncDraft();
+        const [mi, xi, si] = b.dataset.drmSet.split('.').map(Number);
+        draft[mi].exercises[xi].sets.splice(si, 1);
+        repaintKeeping();
+      }));
+      document.querySelectorAll('[data-extra-add]').forEach((b) => b.addEventListener('click', () => {
+        const mi = +b.dataset.extraAdd;
+        const inp = document.querySelector(`[data-extra-input="${mi}"]`);
+        const name = inp.value.trim();
+        if (!name || draft[mi].exercises.some((e) => e.name.toLowerCase() === name.toLowerCase())) return;
+        syncDraft();
+        draft[mi].exercises.push({ name, sets: prefill(draft[mi].client.id, name) });
+        repaintKeeping();
+      }));
+      document.getElementById('duo-form').addEventListener('submit', (ev) => {
+        ev.preventDefault();
+        syncDraft();
+        const f = new FormData(ev.target);
+        const date = String(f.get('date'));
+        const notes = String(f.get('notes')).trim();
+        let saved = 0;
+        for (const mem of draft) {
+          const entries = mem.exercises
+            .map((ex) => ({ name: ex.name, sets: ex.sets.filter((s) => s.weight > 0 || s.reps > 0) }))
+            .filter((ex) => ex.sets.length);
+          if (!entries.length) continue;
+          db.workouts.push({ id: uid(), clientId: mem.client.id, schemaId: null, duoId, date, notes, entries });
+          saved++;
+        }
+        if (!saved) { alert('Vul minstens één set in.'); return; }
+        save();
+        pendingDuo = null;
+        location.hash = `/duo/${duoId}`;
       });
     };
     paint();
@@ -894,7 +1129,7 @@
         const d = JSON.parse(reader.result);
         if (!Array.isArray(d.clients)) throw new Error('ongeldig bestand');
         if (!confirm('Huidige gegevens vervangen door deze back-up?')) return;
-        db = { clients: d.clients, schemas: d.schemas || [], workouts: d.workouts || [] };
+        db = { clients: d.clients, schemas: d.schemas || [], workouts: d.workouts || [], duos: d.duos || [] };
         save(); render();
       } catch {
         alert('Dit bestand is geen geldige Coachlog-back-up.');
