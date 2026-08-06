@@ -223,7 +223,8 @@
     .pr-live { animation: pr-pop 300ms cubic-bezier(0.2, 1.4, 0.4, 1); }
     @keyframes pr-pop { from { transform: scale(0.7); opacity: 0; } }
   }
-  .ex-row { display: grid; grid-template-columns: 1fr 62px 62px 76px 34px; gap: 6px; align-items: center; margin-bottom: 8px; }
+  .tgt-row { display: grid; grid-template-columns: 24px 1fr 1fr 34px; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .tgt-row .n { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
   .col-head { font-size: 12px; color: var(--muted); }
 
   .empty { text-align: center; color: var(--ink-2); padding: 28px 12px; }
@@ -266,10 +267,19 @@
     } catch { return emptyDb(); }
   }
   function normalizeDb(d) {
-    return {
+    const out = {
       clients: d.clients || [], schemas: d.schemas || [], workouts: d.workouts || [], duos: d.duos || [],
       measurements: d.measurements || [], settings: d.settings || { unit: 'kg' }, updatedAt: d.updatedAt || 0,
     };
+    // migrate uniform sets/reps/weight to per-set targets
+    for (const s of out.schemas) {
+      for (const e of s.exercises || []) {
+        if (!e.targets || !e.targets.length) {
+          e.targets = Array.from({ length: e.sets || 3 }, () => ({ reps: e.reps || 10, weight: e.weight || 0 }));
+        }
+      }
+    }
+    return out;
   }
   function save() {
     db.updatedAt = Date.now();
@@ -409,6 +419,16 @@
     for (let i = ws.length - 1; i >= 0; i--) {
       const entry = ws[i].entries.find((e) => e.name.trim().toLowerCase() === key);
       if (entry) return { entry, date: ws[i].date };
+    }
+    return null;
+  }
+
+  // per-set schema targets for an exercise name, null if not in any schema
+  function targetsFor(clientId, name) {
+    const key = name.trim().toLowerCase();
+    for (const s of schemasOf(clientId)) {
+      const e = s.exercises.find((x) => x.name.trim().toLowerCase() === key);
+      if (e && e.targets && e.targets.length) return e.targets;
     }
     return null;
   }
@@ -1113,6 +1133,9 @@
         `<p class="sub" style="margin:0 0 12px">Kies per persoon de oefeningen voor deze sessie.</p>` +
         members.map((m, mi) =>
           `<div class="eyebrow">${esc(m.name)}</div>` +
+          (schemasOf(m.id).length ? `<div class="actions" style="margin-bottom:10px">${schemasOf(m.id).map((s) =>
+            `<button type="button" class="small" data-schema-pick="${mi}.${s.id}">Schema: ${esc(s.name)}</button>`
+          ).join('')}</div>` : '') +
           (known[mi].length ? `<div class="chips">${known[mi].map((n) =>
             `<button type="button" class="chip" data-pick="${mi}" data-ex-name="${esc(n)}" aria-pressed="${selected[mi].has(n)}">${esc(n)}</button>`
           ).join('')}</div>` : '') +
@@ -1128,6 +1151,18 @@
       document.querySelectorAll('[data-pick]').forEach((b) => b.addEventListener('click', () => {
         const mi = +b.dataset.pick, n = b.dataset.exName;
         if (selected[mi].has(n)) selected[mi].delete(n); else selected[mi].add(n);
+        paint();
+      }));
+      document.querySelectorAll('[data-schema-pick]').forEach((b) => b.addEventListener('click', () => {
+        const dot = b.dataset.schemaPick.indexOf('.');
+        const mi = +b.dataset.schemaPick.slice(0, dot);
+        const schema = schemaById(b.dataset.schemaPick.slice(dot + 1));
+        if (!schema) return;
+        for (const ex of schema.exercises) {
+          const existing = known[mi].find((k) => k.toLowerCase() === ex.name.toLowerCase());
+          if (!existing) known[mi].push(ex.name);
+          selected[mi].add(existing || ex.name);
+        }
         paint();
       }));
       document.querySelectorAll('[data-new-ex]').forEach((form) => form.addEventListener('submit', (ev) => {
@@ -1158,8 +1193,10 @@
 
     const prefill = (clientId, name) => {
       const prev = lastEntryFor(clientId, name);
-      return prev
-        ? prev.entry.sets.map((s) => ({ reps: s.reps, weight: s.weight }))
+      if (prev) return prev.entry.sets.map((s) => ({ reps: s.reps, weight: s.weight }));
+      const targets = targetsFor(clientId, name);
+      return targets
+        ? targets.map((t) => ({ reps: t.reps, weight: t.weight }))
         : Array.from({ length: 3 }, () => ({ reps: 10, weight: 0 }));
     };
     const draft = members.map((m) => ({
@@ -1294,23 +1331,30 @@
       ? { id: uid(), clientId, name: '', exercises: [] }
       : schemaById(schemaId);
     if (!schema) { location.hash = `/klant/${clientId}`; return; }
+    const newTarget = () => ({ reps: 10, weight: 0 });
+    const newExercise = () => ({ id: uid(), name: '', targets: [newTarget(), newTarget(), newTarget()] });
     const draft = JSON.parse(JSON.stringify(schema));
-    if (!draft.exercises.length) draft.exercises.push({ id: uid(), name: '', sets: 3, reps: 10, weight: 0 });
+    draft.exercises.forEach((e) => { if (!e.targets || !e.targets.length) e.targets = [newTarget(), newTarget(), newTarget()]; });
+    if (!draft.exercises.length) draft.exercises.push(newExercise());
 
     const paint = () => {
       $app.innerHTML = topbar(isNew ? 'Nieuw schema' : 'Schema bewerken', `/klant/${clientId}`) +
         `<form id="schema-form">
           <label class="field"><span>Naam schema</span><input name="name" required placeholder="bijv. Full body A" value="${esc(draft.name)}"></label>
-          <div class="eyebrow">Oefeningen</div>
-          <div class="ex-row">
-            <span class="col-head">Oefening</span><span class="col-head">Sets</span><span class="col-head">Herh.</span><span class="col-head">Gewicht</span><span></span>
-          </div>
-          ${draft.exercises.map((e, i) => `<div class="ex-row">
-            <input data-ex="${i}" data-f="name" required placeholder="bijv. Squat" value="${esc(e.name)}">
-            <input data-ex="${i}" data-f="sets" type="number" min="1" inputmode="numeric" value="${e.sets}">
-            <input data-ex="${i}" data-f="reps" type="number" min="1" inputmode="numeric" value="${e.reps}">
-            <input data-ex="${i}" data-f="weight" type="text" inputmode="decimal" value="${e.weight || ''}" placeholder="kg">
-            <button type="button" class="small danger ghost" data-rm="${i}" aria-label="Verwijder oefening">✕</button>
+          <div class="eyebrow">Oefeningen — elke set apart</div>
+          ${draft.exercises.map((e, i) => `<div class="card">
+            <div class="row" style="margin-bottom:8px">
+              <input data-exname="${i}" class="grow" required placeholder="bijv. Squat" value="${esc(e.name)}">
+              <button type="button" class="small danger ghost" data-rm-ex="${i}" aria-label="Verwijder oefening">✕</button>
+            </div>
+            <div class="tgt-row"><span></span><span class="col-head">Gewicht (${unitLbl()})</span><span class="col-head">Herh.</span><span></span></div>
+            ${e.targets.map((t, si) => `<div class="tgt-row">
+              <span class="n">${si + 1}</span>
+              <input data-tgt="${i}.${si}" data-f="weight" type="text" inputmode="decimal" value="${t.weight || ''}" placeholder="${unitLbl()}">
+              <input data-tgt="${i}.${si}" data-f="reps" type="number" min="0" inputmode="numeric" value="${t.reps || ''}" placeholder="herh.">
+              <button type="button" class="small danger ghost" data-rm-tgt="${i}.${si}" aria-label="Verwijder set">✕</button>
+            </div>`).join('')}
+            <button type="button" class="small" data-add-tgt="${i}">+ Set</button>
           </div>`).join('')}
           <button type="button" id="add-ex" class="small" style="margin:4px 0 16px">+ Oefening</button>
           <button class="primary wide" type="submit">Schema opslaan</button>
@@ -1319,29 +1363,46 @@
 
       bindNav();
       const syncDraft = () => {
-        document.querySelectorAll('[data-ex]').forEach((inp) => {
-          const e = draft.exercises[+inp.dataset.ex];
-          const f = inp.dataset.f;
-          e[f] = f === 'name' ? inp.value : num(inp.value);
-        });
         draft.name = document.querySelector('[name="name"]').value;
+        document.querySelectorAll('[data-exname]').forEach((inp) => {
+          draft.exercises[+inp.dataset.exname].name = inp.value;
+        });
+        document.querySelectorAll('[data-tgt]').forEach((inp) => {
+          const [i, si] = inp.dataset.tgt.split('.').map(Number);
+          draft.exercises[i].targets[si][inp.dataset.f] = num(inp.value);
+        });
       };
       document.getElementById('add-ex').addEventListener('click', () => {
         syncDraft();
-        draft.exercises.push({ id: uid(), name: '', sets: 3, reps: 10, weight: 0 });
+        draft.exercises.push(newExercise());
         paint();
       });
-      document.querySelectorAll('[data-rm]').forEach((b) => b.addEventListener('click', () => {
+      document.querySelectorAll('[data-rm-ex]').forEach((b) => b.addEventListener('click', () => {
         syncDraft();
-        draft.exercises.splice(+b.dataset.rm, 1);
-        if (!draft.exercises.length) draft.exercises.push({ id: uid(), name: '', sets: 3, reps: 10, weight: 0 });
+        draft.exercises.splice(+b.dataset.rmEx, 1);
+        if (!draft.exercises.length) draft.exercises.push(newExercise());
+        paint();
+      }));
+      document.querySelectorAll('[data-add-tgt]').forEach((b) => b.addEventListener('click', () => {
+        syncDraft();
+        const targets = draft.exercises[+b.dataset.addTgt].targets;
+        targets.push(targets.length ? { ...targets[targets.length - 1] } : newTarget());
+        paint();
+      }));
+      document.querySelectorAll('[data-rm-tgt]').forEach((b) => b.addEventListener('click', () => {
+        syncDraft();
+        const [i, si] = b.dataset.rmTgt.split('.').map(Number);
+        draft.exercises[i].targets.splice(si, 1);
+        if (!draft.exercises[i].targets.length) draft.exercises[i].targets.push(newTarget());
         paint();
       }));
       document.getElementById('schema-form').addEventListener('submit', (ev) => {
         ev.preventDefault();
         syncDraft();
         draft.name = draft.name.trim();
-        draft.exercises = draft.exercises.filter((e) => e.name.trim());
+        draft.exercises = draft.exercises
+          .filter((e) => e.name.trim())
+          .map((e) => ({ id: e.id, name: e.name.trim(), targets: e.targets }));
         if (!draft.name || !draft.exercises.length) return;
         if (isNew) db.schemas.push(draft);
         else db.schemas[db.schemas.findIndex((s) => s.id === schemaId)] = draft;
@@ -1367,12 +1428,14 @@
     if (!c || (!editing && !isFree && !schema)) { location.hash = c ? `/klant/${clientId}` : '/'; return; }
     if (isFree && !pendingFree.length) { location.hash = `/klant/${clientId}/vrij`; return; }
 
-    // prefill: most recent logged sets of this exercise (any session), else schema targets
+    // prefill: most recent logged sets of this exercise (any session), else per-set schema targets
     const prefill = (ex) => {
       const prev = lastEntryFor(clientId, ex.name, editing && editing.id);
-      return prev
-        ? prev.entry.sets.map((s) => ({ reps: s.reps, weight: s.weight }))
-        : Array.from({ length: ex.sets || 3 }, () => ({ reps: ex.reps || 10, weight: ex.weight || 0 }));
+      if (prev) return prev.entry.sets.map((s) => ({ reps: s.reps, weight: s.weight }));
+      const targets = (ex.targets && ex.targets.length ? ex.targets : null) || targetsFor(clientId, ex.name);
+      return targets
+        ? targets.map((t) => ({ reps: t.reps, weight: t.weight }))
+        : Array.from({ length: 3 }, () => ({ reps: 10, weight: 0 }));
     };
     const draft = editing
       ? editing.entries.map((e) => ({ name: e.name, sets: e.sets.map((s) => ({ ...s })) }))
@@ -1537,9 +1600,9 @@
     db.schemas.push({
       id: sid, clientId: cid, name: 'Full body A',
       exercises: [
-        { id: uid(), name: 'Squat', sets: 4, reps: 8, weight: 60 },
-        { id: uid(), name: 'Bankdrukken', sets: 4, reps: 8, weight: 40 },
-        { id: uid(), name: 'Deadlift', sets: 3, reps: 5, weight: 80 },
+        { id: uid(), name: 'Squat', targets: Array.from({ length: 4 }, () => ({ reps: 8, weight: 60 })) },
+        { id: uid(), name: 'Bankdrukken', targets: Array.from({ length: 4 }, () => ({ reps: 8, weight: 40 })) },
+        { id: uid(), name: 'Deadlift', targets: Array.from({ length: 3 }, () => ({ reps: 5, weight: 80 })) },
       ],
     });
     const day = 24 * 3600 * 1000;
@@ -1565,6 +1628,12 @@
       if (el.tagName !== 'BUTTON') el.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') go(); });
     });
   }
+
+  // tap a prefilled set/target field -> select its content so typing overwrites it
+  document.addEventListener('focusin', (ev) => {
+    const t = ev.target;
+    if (t instanceof HTMLInputElement && (t.dataset.set !== undefined || t.dataset.dset !== undefined || t.dataset.tgt !== undefined)) t.select();
+  });
 
   window.addEventListener('hashchange', render);
   render();
