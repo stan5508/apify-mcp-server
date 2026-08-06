@@ -1,0 +1,1935 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#2a78d6">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-180.png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Coachlog">
+<title>Coachlog — schema's & progressie</title>
+</head>
+<body>
+<!-- APP START -->
+<style>
+  :root {
+    --page: #f9f9f7;
+    --surface: #fcfcfb;
+    --ink: #0b0b0b;
+    --ink-2: #52514e;
+    --muted: #898781;
+    --grid: #e1e0d9;
+    --baseline: #c3c2b7;
+    --border: rgba(11, 11, 11, 0.10);
+    --accent: #2a78d6;
+    --accent-strong: #1c5cab;
+    --wash: rgba(42, 120, 214, 0.10);
+    --good: #006300;
+    --danger: #d03b3b;
+    --shadow: 0 1px 2px rgba(11, 11, 11, 0.06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --page: #0d0d0d;
+      --surface: #1a1a19;
+      --ink: #ffffff;
+      --ink-2: #c3c2b7;
+      --muted: #898781;
+      --grid: #2c2c2a;
+      --baseline: #383835;
+      --border: rgba(255, 255, 255, 0.10);
+      --accent: #3987e5;
+      --accent-strong: #6da7ec;
+      --wash: rgba(57, 135, 229, 0.12);
+      --good: #0ca30c;
+      --shadow: none;
+    }
+  }
+  :root[data-theme="light"] {
+    --page: #f9f9f7;
+    --surface: #fcfcfb;
+    --ink: #0b0b0b;
+    --ink-2: #52514e;
+    --muted: #898781;
+    --grid: #e1e0d9;
+    --baseline: #c3c2b7;
+    --border: rgba(11, 11, 11, 0.10);
+    --accent: #2a78d6;
+    --accent-strong: #1c5cab;
+    --wash: rgba(42, 120, 214, 0.10);
+    --good: #006300;
+    --danger: #d03b3b;
+    --shadow: 0 1px 2px rgba(11, 11, 11, 0.06);
+  }
+  :root[data-theme="dark"] {
+    --page: #0d0d0d;
+    --surface: #1a1a19;
+    --ink: #ffffff;
+    --ink-2: #c3c2b7;
+    --muted: #898781;
+    --grid: #2c2c2a;
+    --baseline: #383835;
+    --border: rgba(255, 255, 255, 0.10);
+    --accent: #3987e5;
+    --accent-strong: #6da7ec;
+    --wash: rgba(57, 135, 229, 0.12);
+    --good: #0ca30c;
+    --danger: #d03b3b;
+    --shadow: none;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--page);
+    color: var(--ink);
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .layout {
+    max-width: 980px; margin: 0 auto; padding: 0 16px;
+    display: grid; grid-template-columns: 230px minmax(0, 1fr);
+    gap: 28px; align-items: start;
+  }
+  #side { position: sticky; top: 0; max-height: 100vh; overflow-y: auto; padding-bottom: 24px; }
+  #app { max-width: 640px; padding-bottom: 96px; min-width: 0; }
+  @media (max-width: 759px) {
+    .layout { display: block; }
+    #side { position: static; max-height: none; border-bottom: 1px solid var(--grid); padding-bottom: 4px; margin-bottom: 4px; }
+  }
+
+  .brand-row { padding: 14px 0 10px; border-bottom: 1px solid var(--grid); margin-bottom: 10px; }
+  .brand-row a { text-decoration: none; }
+  .navgrp { margin-bottom: 6px; }
+  .navgrp summary {
+    cursor: pointer; list-style: none; user-select: none;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 8px; border-radius: 8px;
+    font-size: 12px; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--muted);
+  }
+  .navgrp summary::-webkit-details-marker { display: none; }
+  .navgrp summary:hover { background: var(--wash); }
+  .navgrp summary .count { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .navgrp summary .chev { transition: transform 120ms ease; }
+  .navgrp[open] summary .chev { transform: rotate(180deg); }
+  .navlink {
+    display: block; padding: 8px 10px; border-radius: 8px;
+    color: var(--ink); text-decoration: none; font-size: 15px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .navlink:hover { background: var(--wash); }
+  .navlink.active { background: var(--wash); color: var(--accent-strong); font-weight: 600; }
+  .navlink.add { color: var(--accent-strong); font-size: 14px; }
+
+  .topbar {
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px 0 10px;
+    position: sticky; top: 0; z-index: 5;
+    background: var(--page);
+    border-bottom: 1px solid var(--grid);
+    margin-bottom: 16px;
+  }
+  .topbar h1 { font-size: 18px; font-weight: 650; margin: 0; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .brand { font-size: 13px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+
+  .eyebrow {
+    font-size: 12px; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--muted); margin: 24px 0 8px;
+  }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: var(--shadow);
+    padding: 14px;
+    margin-bottom: 10px;
+  }
+  .card.tappable { cursor: pointer; }
+  .card.tappable:hover { border-color: var(--accent); }
+
+  .row { display: flex; align-items: center; gap: 10px; }
+  .row .grow { flex: 1; min-width: 0; }
+  .title { font-weight: 650; }
+  .sub { color: var(--ink-2); font-size: 14px; }
+  .mut { color: var(--muted); font-size: 13px; }
+
+  button {
+    font: inherit; cursor: pointer;
+    border: 1px solid var(--border);
+    background: var(--surface); color: var(--ink);
+    border-radius: 8px; padding: 9px 14px;
+  }
+  button:focus-visible, input:focus-visible, select:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 1px;
+  }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  button.primary:hover { background: var(--accent-strong); border-color: var(--accent-strong); }
+  button.ghost { background: transparent; }
+  button.danger { color: var(--danger); }
+  button.small { padding: 5px 10px; font-size: 14px; border-radius: 7px; }
+  button.wide { width: 100%; padding: 12px; font-size: 16px; }
+  button.back { padding: 6px 10px; font-size: 15px; }
+
+  input, select, textarea {
+    font: inherit; color: var(--ink);
+    background: var(--surface);
+    border: 1px solid var(--baseline);
+    border-radius: 8px; padding: 9px 10px;
+    width: 100%;
+  }
+  input[type="number"] { font-variant-numeric: tabular-nums; }
+  label.field { display: block; margin-bottom: 10px; }
+  label.field span { display: block; font-size: 13px; color: var(--ink-2); margin-bottom: 4px; }
+
+  .seg { display: flex; gap: 4px; background: var(--surface); border: 1px solid var(--border); border-radius: 9px; padding: 3px; }
+  .seg button { flex: 1; border: none; background: transparent; padding: 7px 4px; font-size: 13px; border-radius: 6px; color: var(--ink-2); }
+  .seg button[aria-pressed="true"] { background: var(--wash); color: var(--accent-strong); font-weight: 650; }
+
+  .stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .stat { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+  .stat .lbl { font-size: 12px; color: var(--muted); }
+  .stat .val { font-size: 20px; font-weight: 650; margin-top: 2px; }
+  .stat .delta { font-size: 13px; margin-top: 2px; }
+  .delta.up { color: var(--good); }
+  .delta.down { color: var(--danger); }
+
+  .chart-wrap { position: relative; }
+  .chart-wrap svg { display: block; width: 100%; height: auto; }
+  .tooltip {
+    position: absolute; pointer-events: none; display: none;
+    background: var(--ink); color: var(--page);
+    font-size: 13px; line-height: 1.35;
+    padding: 6px 9px; border-radius: 7px;
+    transform: translate(-50%, -110%);
+    white-space: nowrap; z-index: 3;
+  }
+  .tooltip .tv { font-weight: 650; font-variant-numeric: tabular-nums; }
+
+  .set-row { display: grid; grid-template-columns: 24px 1fr 1fr 58px 34px; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .set-row .n { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .prev-hint { margin: -4px 0 8px 32px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .pr-live {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 13px; font-weight: 650; color: var(--good);
+    border: 1px solid var(--good); background: rgba(12, 163, 12, 0.10);
+    border-radius: 99px; padding: 3px 12px; margin-bottom: 10px;
+  }
+  .pr-live[hidden] { display: none; }
+  @media (prefers-reduced-motion: no-preference) {
+    .pr-live { animation: pr-pop 300ms cubic-bezier(0.2, 1.4, 0.4, 1); }
+    @keyframes pr-pop { from { transform: scale(0.7); opacity: 0; } }
+  }
+  .tgt-row { display: grid; grid-template-columns: 24px 1fr 1fr 34px; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .tgt-row .n { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .col-head { font-size: 12px; color: var(--muted); }
+
+  .empty { text-align: center; color: var(--ink-2); padding: 28px 12px; }
+  .empty p { margin: 0 0 14px; }
+
+  .divider { border: none; border-top: 1px solid var(--grid); margin: 24px 0; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .badge { display: inline-block; font-size: 12px; color: var(--accent-strong); background: var(--wash); border-radius: 99px; padding: 2px 9px; font-weight: 600; }
+  .badge.pr { color: var(--good); background: rgba(12, 163, 12, 0.10); border: 1px solid var(--good); }
+
+  #app.wide { max-width: none; }
+  .duo-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 0 20px; align-items: start; }
+  /* on narrower screens (e.g. tablet portrait) hide the sidebar during duo screens so both columns fit */
+  @media (max-width: 999px) {
+    body.wide-page .layout { display: block; }
+    body.wide-page #side { display: none; }
+  }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { border-radius: 99px; padding: 8px 14px; font-size: 14px; }
+  .chip[aria-pressed="true"] { background: var(--wash); border-color: var(--accent); color: var(--accent-strong); font-weight: 600; }
+  .cols2 { grid-template-columns: repeat(2, 1fr); }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .card.tappable { transition: border-color 120ms ease; }
+  }
+</style>
+
+<div class="layout">
+  <aside id="side"></aside>
+  <main id="app"></main>
+</div>
+
+<script>
+(() => {
+  'use strict';
+  const KEY = 'coachlog-v1';
+  const $app = document.getElementById('app');
+
+  // ---------- data ----------
+  const emptyDb = () => ({ clients: [], schemas: [], workouts: [], duos: [], duoSchemas: [], templates: [], measurements: [], settings: { unit: 'kg' }, updatedAt: 0 });
+  let db = loadDb();
+  function loadDb() {
+    try {
+      const raw = localStorage.getItem(KEY);
+      if (!raw) return emptyDb();
+      return normalizeDb(JSON.parse(raw));
+    } catch { return emptyDb(); }
+  }
+  function normalizeDb(d) {
+    const out = {
+      clients: d.clients || [], schemas: d.schemas || [], workouts: d.workouts || [], duos: d.duos || [],
+      duoSchemas: d.duoSchemas || [], templates: d.templates || [], measurements: d.measurements || [], settings: d.settings || { unit: 'kg' }, updatedAt: d.updatedAt || 0,
+    };
+    // migrate uniform sets/reps/weight to per-set targets
+    for (const s of out.schemas) {
+      for (const e of s.exercises || []) {
+        if (!e.targets || !e.targets.length) {
+          e.targets = Array.from({ length: e.sets || 3 }, () => ({ reps: e.reps || 10, weight: e.weight || 0 }));
+        }
+      }
+    }
+    return out;
+  }
+  function save() {
+    db.updatedAt = Date.now();
+    localStorage.setItem(KEY, JSON.stringify(db));
+    scheduleSync();
+  }
+
+  // ---------- sync via private GitHub Gist ----------
+  const SYNC_KEY = 'coachlog-sync';
+  let syncCfg = null;
+  try { syncCfg = JSON.parse(localStorage.getItem(SYNC_KEY) || 'null'); } catch { syncCfg = null; }
+  let syncStatus = syncCfg ? 'nog niet gesynchroniseerd deze sessie' : '';
+  let syncTimer = null;
+  const syncTime = () => new Date().toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
+  function scheduleSync() {
+    if (!syncCfg || !syncCfg.gistId) return;
+    clearTimeout(syncTimer);
+    syncTimer = setTimeout(() => { syncNow(); }, 2000);
+  }
+  async function gh(path, opts = {}) {
+    const res = await fetch('https://api.github.com' + path, {
+      ...opts,
+      signal: AbortSignal.timeout(15000),
+      headers: { Authorization: 'Bearer ' + syncCfg.token, Accept: 'application/vnd.github+json', ...(opts.headers || {}) },
+    });
+    if (!res.ok) throw new Error('GitHub antwoordde ' + res.status);
+    return res.json();
+  }
+  async function connectSync(token) {
+    syncCfg = { token, gistId: null };
+    const gists = await gh('/gists?per_page=100');
+    const found = gists.find((g) => g.description === 'Coachlog sync' && g.files['coachlog.json']);
+    if (found) {
+      syncCfg.gistId = found.id;
+      localStorage.setItem(SYNC_KEY, JSON.stringify(syncCfg));
+      await syncNow();
+    } else {
+      const g = await gh('/gists', { method: 'POST', body: JSON.stringify({ description: 'Coachlog sync', public: false, files: { 'coachlog.json': { content: JSON.stringify(db) } } }) });
+      syncCfg.gistId = g.id;
+      localStorage.setItem(SYNC_KEY, JSON.stringify(syncCfg));
+      syncStatus = 'gekoppeld en eerste back-up gemaakt · ' + syncTime();
+    }
+  }
+  async function syncNow() {
+    if (!syncCfg || !syncCfg.gistId) return;
+    try {
+      const g = await gh('/gists/' + syncCfg.gistId);
+      let remote = null;
+      try {
+        const file = g.files['coachlog.json'];
+        const content = file.truncated ? await (await fetch(file.raw_url)).text() : file.content;
+        remote = normalizeDb(JSON.parse(content));
+      } catch { remote = null; }
+      const remoteAt = (remote && remote.updatedAt) || 0;
+      const localAt = db.updatedAt || 0;
+      if (remoteAt > localAt) {
+        db = remote;
+        localStorage.setItem(KEY, JSON.stringify(db));
+        syncStatus = 'opgehaald van ander apparaat · ' + syncTime();
+        render();
+        return;
+      }
+      if (localAt > remoteAt) {
+        await gh('/gists/' + syncCfg.gistId, { method: 'PATCH', body: JSON.stringify({ files: { 'coachlog.json': { content: JSON.stringify(db) } } }) });
+        syncStatus = 'opgeslagen naar cloud · ' + syncTime();
+      } else {
+        syncStatus = 'up-to-date · ' + syncTime();
+      }
+    } catch (e) {
+      syncStatus = 'sync mislukt (' + e.message + ')';
+    }
+    const el = document.getElementById('sync-status');
+    if (el) el.textContent = syncStatus;
+  }
+  function uid() { return Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4); }
+
+  const clientById = (id) => db.clients.find((c) => c.id === id);
+  const duoById = (id) => db.duos.find((d) => d.id === id);
+  const duoSchemaById = (id) => db.duoSchemas.find((s) => s.id === id);
+  const duoSchemasOf = (duoId) => db.duoSchemas.filter((s) => s.duoId === duoId);
+  const templateById = (id) => db.templates.find((t) => t.id === id);
+  const copyExercises = (list) => list.map((e) => ({ id: uid(), name: e.name, targets: (e.targets || []).map((t) => ({ ...t })) }));
+  const duoName = (d) => d.name || d.clientIds.map((id) => (clientById(id) || { name: '?' }).name).join(' & ');
+  const byName = (a, b) => a.localeCompare(b, 'nl', { sensitivity: 'base' });
+  const sortedClients = () => [...db.clients].sort((a, b) => byName(a.name, b.name));
+  const sortedDuos = () => db.duos.filter((d) => d.clientIds.every(clientById)).sort((a, b) => byName(duoName(a), duoName(b)));
+  const schemaById = (id) => db.schemas.find((s) => s.id === id);
+  const schemasOf = (clientId) => db.schemas.filter((s) => s.clientId === clientId);
+  const workoutsOf = (clientId) => db.workouts.filter((w) => w.clientId === clientId).sort((a, b) => a.date.localeCompare(b.date));
+
+  // ---------- helpers ----------
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const num = (v) => { const n = parseFloat(String(v).replace(',', '.')); return Number.isFinite(n) ? n : 0; };
+  const todayIso = () => new Date().toISOString().slice(0, 10);
+  const fmtDate = (iso) => new Date(iso + 'T12:00:00').toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' });
+  const fmtDateFull = (iso) => new Date(iso + 'T12:00:00').toLocaleDateString('nl-NL', { weekday: 'short', day: 'numeric', month: 'long' });
+  const unitLbl = () => (db.settings && db.settings.unit) || 'kg';
+  const fmtKg = (n) => (Math.round(n * 10) / 10).toLocaleString('nl-NL') + ' ' + unitLbl();
+
+  // metrics per workout for one exercise name
+  function exerciseMetrics(entry) {
+    const sets = entry.sets.filter((s) => s.weight > 0 || s.reps > 0);
+    if (!sets.length) return null;
+    const top = Math.max(...sets.map((s) => s.weight));
+    const volume = sets.reduce((t, s) => t + s.weight * s.reps, 0);
+    const e1rm = Math.max(...sets.map((s) => s.reps > 0 ? s.weight * (1 + s.reps / 30) : s.weight));
+    return { top, volume, e1rm };
+  }
+
+  function loggedExercises(clientId) {
+    const seen = new Map();
+    for (const w of workoutsOf(clientId)) {
+      for (const e of w.entries) {
+        const key = e.name.trim().toLowerCase();
+        if (key && !seen.has(key)) seen.set(key, e.name.trim());
+      }
+    }
+    return [...seen.values()];
+  }
+
+  // all exercise names known for this client: from schemas + logged workouts
+  function knownExercises(clientId) {
+    const seen = new Map();
+    for (const s of schemasOf(clientId)) {
+      for (const e of s.exercises) {
+        const key = e.name.trim().toLowerCase();
+        if (key && !seen.has(key)) seen.set(key, e.name.trim());
+      }
+    }
+    for (const n of loggedExercises(clientId)) {
+      const key = n.toLowerCase();
+      if (!seen.has(key)) seen.set(key, n);
+    }
+    return [...seen.values()];
+  }
+
+  // most recent logged entry of an exercise, any workout (excludeId: skip the workout being edited)
+  function lastEntryFor(clientId, name, excludeId) {
+    const key = name.trim().toLowerCase();
+    const ws = workoutsOf(clientId).filter((w) => w.id !== excludeId);
+    for (let i = ws.length - 1; i >= 0; i--) {
+      const entry = ws[i].entries.find((e) => e.name.trim().toLowerCase() === key);
+      if (entry) return { entry, date: ws[i].date };
+    }
+    return null;
+  }
+
+  // per-set schema targets for an exercise name, null if not in any schema
+  function targetsFor(clientId, name) {
+    const key = name.trim().toLowerCase();
+    for (const s of schemasOf(clientId)) {
+      const e = s.exercises.find((x) => x.name.trim().toLowerCase() === key);
+      if (e && e.targets && e.targets.length) return e.targets;
+    }
+    return null;
+  }
+
+  // best logged top weight for an exercise, null if never done
+  function bestTopFor(clientId, name, excludeId) {
+    const sessions = exerciseSessions(clientId, name, excludeId);
+    return sessions.length ? Math.max(...sessions.map((s) => s.top)) : null;
+  }
+
+  // set input rows for workout logging, incl. RIR column and previous-session hints
+  function setRowsHtml(attr, idx, sets, prevSets) {
+    const header = `<div class="set-row"><span></span><span class="col-head">Gewicht (${unitLbl()})</span><span class="col-head">Herh.</span><span class="col-head">RIR</span><span></span></div>`;
+    return header + sets.map((s, si) => {
+      const p = prevSets && prevSets[si];
+      return `<div class="set-row">
+        <span class="n">${si + 1}</span>
+        <input data-${attr}="${idx}.${si}" data-f="weight" type="text" inputmode="decimal" value="${s.weight || ''}" placeholder="kg">
+        <input data-${attr}="${idx}.${si}" data-f="reps" type="number" min="0" inputmode="numeric" value="${s.reps || ''}" placeholder="herh.">
+        <input data-${attr}="${idx}.${si}" data-f="rir" type="number" min="0" max="10" inputmode="numeric" value="${s.rir ?? ''}" placeholder="–" aria-label="Reps in reserve">
+        <button type="button" class="small danger ghost" data-rm-${attr}="${idx}.${si}" aria-label="Verwijder set">✕</button>
+      </div>` +
+      (p ? `<div class="prev-hint">vorige keer: ${esc(fmtKg(p.weight))} × ${p.reps}${p.rir != null ? ' · RIR ' + p.rir : ''}</div>` : '');
+    }).join('');
+  }
+
+  // live PR badge: show while typed weight beats the client's best for that exercise
+  function bindPrLive(attr, key, clientId, exName, excludeId) {
+    const badge = document.querySelector(`[data-pr-live="${key}"]`);
+    if (!badge) return;
+    const best = bestTopFor(clientId, exName, excludeId);
+    if (best == null) return;
+    const inputs = [...document.querySelectorAll(`[data-${attr}^="${key}."][data-f="weight"]`)];
+    const update = () => {
+      const cur = Math.max(0, ...inputs.map((i) => num(i.value)));
+      if (cur > best) {
+        badge.hidden = false;
+        badge.innerHTML = `🏆 Nieuw PR! ${esc(fmtKg(cur))} <span style="font-weight:400">(was ${esc(fmtKg(best))})</span>`;
+      } else {
+        badge.hidden = true;
+      }
+    };
+    inputs.forEach((i) => i.addEventListener('input', update));
+    update();
+  }
+
+  // all sessions of one exercise, chronological, with metrics and PR markers
+  function exerciseSessions(clientId, name, excludeId) {
+    const key = name.trim().toLowerCase();
+    const sessions = [];
+    for (const w of workoutsOf(clientId).filter((x) => x.id !== excludeId)) {
+      for (const e of w.entries) {
+        if (e.name.trim().toLowerCase() !== key) continue;
+        const m = exerciseMetrics(e);
+        if (m) sessions.push({ date: w.date, sets: e.sets, ...m });
+      }
+    }
+    let best = -Infinity;
+    for (let i = 0; i < sessions.length; i++) {
+      sessions[i].isPr = i > 0 && sessions[i].top > best;
+      if (sessions[i].top > best) best = sessions[i].top;
+    }
+    return sessions;
+  }
+
+  // ---------- chart ----------
+  function niceTicks(min, max, count) {
+    if (min === max) { min = Math.max(0, min - 1); max = max + 1; }
+    const span = max - min;
+    const step0 = span / count;
+    const mag = Math.pow(10, Math.floor(Math.log10(step0)));
+    const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= step0) || 10 * mag;
+    const lo = Math.floor(min / step) * step;
+    const hi = Math.ceil(max / step) * step;
+    const ticks = [];
+    for (let v = lo; v <= hi + step / 2; v += step) ticks.push(Math.round(v * 100) / 100);
+    return ticks;
+  }
+
+  function renderChart(container, points, unit) {
+    const W = 600, H = 260, padL = 44, padR = 16, padT = 14, padB = 30;
+    const iw = W - padL - padR, ih = H - padT - padB;
+    const vals = points.map((p) => p.value);
+    const ticks = niceTicks(Math.min(...vals), Math.max(...vals), 4);
+    const yMin = ticks[0], yMax = ticks[ticks.length - 1];
+    const x = (i) => points.length === 1 ? padL + iw / 2 : padL + (i / (points.length - 1)) * iw;
+    const y = (v) => padT + ih - ((v - yMin) / (yMax - yMin || 1)) * ih;
+    const fmtVal = (v) => unit === 'kg' ? fmtKg(v)
+      : unit === 'vol' ? Math.round(v).toLocaleString('nl-NL') + ' ' + unitLbl()
+      : (Math.round(v * 10) / 10).toLocaleString('nl-NL') + ' ' + unit;
+
+    const grid = ticks.map((t) =>
+      `<line x1="${padL}" y1="${y(t)}" x2="${W - padR}" y2="${y(t)}" stroke="var(--grid)" stroke-width="1"/>` +
+      `<text x="${padL - 8}" y="${y(t) + 4}" text-anchor="end" font-size="11" fill="var(--muted)" style="font-variant-numeric:tabular-nums">${t.toLocaleString('nl-NL')}</text>`
+    ).join('');
+
+    const lineD = points.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(p.value).toFixed(1)}`).join(' ');
+    const areaD = points.length > 1
+      ? `${lineD} L${x(points.length - 1).toFixed(1)},${(padT + ih).toFixed(1)} L${x(0).toFixed(1)},${(padT + ih).toFixed(1)} Z`
+      : '';
+
+    // x labels: first, last, and up to 2 in between
+    const labelIdx = new Set([0, points.length - 1]);
+    if (points.length > 4) { labelIdx.add(Math.round((points.length - 1) / 3)); labelIdx.add(Math.round(2 * (points.length - 1) / 3)); }
+    const xLabels = [...labelIdx].map((i) =>
+      `<text x="${x(i)}" y="${H - 8}" text-anchor="${i === 0 ? 'start' : i === points.length - 1 ? 'end' : 'middle'}" font-size="11" fill="var(--muted)">${esc(fmtDate(points[i].date))}</text>`
+    ).join('');
+
+    const dots = points.map((p, i) =>
+      `<circle cx="${x(i)}" cy="${y(p.value)}" r="4" fill="var(--accent)" stroke="var(--surface)" stroke-width="2"/>`
+    ).join('');
+
+    const last = points[points.length - 1];
+    const endLabel = `<text x="${x(points.length - 1) - 8}" y="${y(last.value) - 10}" text-anchor="end" font-size="12" font-weight="650" fill="var(--ink)" style="font-variant-numeric:tabular-nums">${esc(fmtVal(last.value))}</text>`;
+
+    container.innerHTML =
+      `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Progressiegrafiek">` +
+      grid +
+      `<line x1="${padL}" y1="${padT + ih}" x2="${W - padR}" y2="${padT + ih}" stroke="var(--baseline)" stroke-width="1"/>` +
+      (areaD ? `<path d="${areaD}" fill="var(--wash)"/>` : '') +
+      (points.length > 1 ? `<path d="${lineD}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>` : '') +
+      `<line class="xh" x1="0" y1="${padT}" x2="0" y2="${padT + ih}" stroke="var(--baseline)" stroke-width="1" visibility="hidden"/>` +
+      dots + endLabel + xLabels +
+      `</svg><div class="tooltip"></div>`;
+
+    // hover: nearest point -> crosshair + tooltip
+    const svg = container.querySelector('svg');
+    const tip = container.querySelector('.tooltip');
+    const xh = svg.querySelector('.xh');
+    const onMove = (ev) => {
+      const rect = svg.getBoundingClientRect();
+      const cx = ev.touches ? ev.touches[0].clientX : ev.clientX;
+      const px = ((cx - rect.left) / rect.width) * W;
+      let best = 0, bd = Infinity;
+      points.forEach((_, i) => { const d = Math.abs(x(i) - px); if (d < bd) { bd = d; best = i; } });
+      const p = points[best];
+      xh.setAttribute('x1', x(best)); xh.setAttribute('x2', x(best));
+      xh.setAttribute('visibility', 'visible');
+      tip.style.display = 'block';
+      tip.style.left = (x(best) / W * rect.width) + 'px';
+      tip.style.top = (y(p.value) / H * rect.height) + 'px';
+      tip.innerHTML = `${esc(fmtDate(p.date))}<br><span class="tv">${esc(fmtVal(p.value))}</span>`;
+    };
+    const onLeave = () => { tip.style.display = 'none'; xh.setAttribute('visibility', 'hidden'); };
+    svg.addEventListener('mousemove', onMove);
+    svg.addEventListener('touchstart', onMove, { passive: true });
+    svg.addEventListener('touchmove', onMove, { passive: true });
+    svg.addEventListener('mouseleave', onLeave);
+  }
+
+  function renderBarChart(container, points) {
+    const W = 600, H = 240, padL = 48, padR = 16, padT = 14, padB = 30;
+    const iw = W - padL - padR, ih = H - padT - padB;
+    const ticks = niceTicks(0, Math.max(...points.map((p) => p.value)), 4);
+    const yMax = ticks[ticks.length - 1];
+    const y = (v) => padT + ih - (v / (yMax || 1)) * ih;
+    const band = iw / points.length;
+    const bw = Math.max(2, Math.min(24, band - 2));
+    const bx = (i) => padL + i * band + (band - bw) / 2;
+    const fmtVal = (v) => Math.round(v).toLocaleString('nl-NL') + ' ' + unitLbl();
+
+    const grid = ticks.map((t) =>
+      `<line x1="${padL}" y1="${y(t)}" x2="${W - padR}" y2="${y(t)}" stroke="var(--grid)" stroke-width="1"/>` +
+      `<text x="${padL - 8}" y="${y(t) + 4}" text-anchor="end" font-size="11" fill="var(--muted)" style="font-variant-numeric:tabular-nums">${t.toLocaleString('nl-NL')}</text>`
+    ).join('');
+
+    // rounded top corners, square baseline
+    const bars = points.map((p, i) => {
+      const x0 = bx(i), yv = y(p.value), h = padT + ih - yv;
+      const r = Math.min(4, bw / 2, h);
+      return `<path d="M${x0.toFixed(1)},${padT + ih} L${x0.toFixed(1)},${(yv + r).toFixed(1)} Q${x0.toFixed(1)},${yv.toFixed(1)} ${(x0 + r).toFixed(1)},${yv.toFixed(1)} L${(x0 + bw - r).toFixed(1)},${yv.toFixed(1)} Q${(x0 + bw).toFixed(1)},${yv.toFixed(1)} ${(x0 + bw).toFixed(1)},${(yv + r).toFixed(1)} L${(x0 + bw).toFixed(1)},${padT + ih} Z" fill="var(--accent)"/>`;
+    }).join('');
+
+    const xLabels =
+      `<text x="${bx(0)}" y="${H - 8}" text-anchor="start" font-size="11" fill="var(--muted)">${esc(fmtDate(points[0].date))}</text>` +
+      (points.length > 1 ? `<text x="${bx(points.length - 1) + bw}" y="${H - 8}" text-anchor="end" font-size="11" fill="var(--muted)">${esc(fmtDate(points[points.length - 1].date))}</text>` : '');
+
+    container.innerHTML =
+      `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Volume per training">` +
+      grid + bars +
+      `<line x1="${padL}" y1="${padT + ih}" x2="${W - padR}" y2="${padT + ih}" stroke="var(--baseline)" stroke-width="1"/>` +
+      xLabels +
+      `</svg><div class="tooltip"></div>`;
+
+    const svg = container.querySelector('svg');
+    const tip = container.querySelector('.tooltip');
+    const onMove = (ev) => {
+      const rect = svg.getBoundingClientRect();
+      const cx = ev.touches ? ev.touches[0].clientX : ev.clientX;
+      const px = ((cx - rect.left) / rect.width) * W;
+      let best = 0, bd = Infinity;
+      points.forEach((_, i) => { const d = Math.abs(bx(i) + bw / 2 - px); if (d < bd) { bd = d; best = i; } });
+      const p = points[best];
+      tip.style.display = 'block';
+      tip.style.left = ((bx(best) + bw / 2) / W * rect.width) + 'px';
+      tip.style.top = (y(p.value) / H * rect.height) + 'px';
+      tip.innerHTML = `${esc(fmtDate(p.date))}<br><span class="tv">${esc(fmtVal(p.value))}</span>`;
+    };
+    svg.addEventListener('mousemove', onMove);
+    svg.addEventListener('touchstart', onMove, { passive: true });
+    svg.addEventListener('touchmove', onMove, { passive: true });
+    svg.addEventListener('mouseleave', () => { tip.style.display = 'none'; });
+  }
+
+  // ---------- views ----------
+  const $side = document.getElementById('side');
+  function renderSidebar() {
+    const hash = location.hash.slice(1) || '/';
+    const activeClient = (hash.match(/^\/klant\/([^/]+)/) || [])[1];
+    const activeDuo = (hash.match(/^\/duo\/([^/]+)/) || [])[1];
+    const activeTemplate = (hash.match(/^\/sjabloon\/([^/]+)/) || [])[1];
+    const clients = sortedClients();
+    const duos = sortedDuos();
+    $side.innerHTML = `
+      <div class="brand-row"><a class="brand" href="#/">Coachlog</a></div>
+      <details class="navgrp" data-key="Clients" ${uiState.navClients ? 'open' : ''}>
+        <summary>Klanten <span class="chev">▾</span></summary>
+        ${clients.map((c) => `<a class="navlink${c.id === activeClient ? ' active' : ''}" href="#/klant/${c.id}">${esc(c.name)}</a>`).join('')}
+        <a class="navlink add" href="#/">+ Nieuwe klant</a>
+      </details>
+      <details class="navgrp" data-key="Duos" ${uiState.navDuos ? 'open' : ''}>
+        <summary>Duo klanten <span class="chev">▾</span></summary>
+        ${duos.map((d) => `<a class="navlink${d.id === activeDuo ? ' active' : ''}" href="#/duo/${d.id}">${esc(duoName(d))}</a>`).join('')}
+        <a class="navlink add" href="#/">+ Nieuw duo</a>
+      </details>
+      <details class="navgrp" data-key="Templates" ${uiState.navTemplates ? 'open' : ''}>
+        <summary>Sjablonen <span class="chev">▾</span></summary>
+        ${[...db.templates].sort((a, b) => byName(a.name, b.name)).map((t) => `<a class="navlink${t.id === activeTemplate ? ' active' : ''}" href="#/sjabloon/${t.id}">${esc(t.name)}</a>`).join('')}
+        <a class="navlink add" href="#/sjabloon/nieuw">+ Nieuw sjabloon</a>
+      </details>`;
+    $side.querySelectorAll('details').forEach((d) => d.addEventListener('toggle', () => {
+      uiState['nav' + d.dataset.key] = d.open;
+    }));
+  }
+
+  function render() {
+    const hash = location.hash.slice(1) || '/';
+    const parts = hash.split('/').filter(Boolean);
+    window.scrollTo(0, 0);
+    const widePage = parts[0] === 'duo' && (parts[2] === 'training' || parts[2] === 'schema' || parts[2] === 'vrij');
+    $app.classList.toggle('wide', widePage);
+    document.body.classList.toggle('wide-page', widePage);
+    renderSidebar();
+    if (parts[0] === 'klant' && parts[2] === 'schema') return viewSchema(parts[1], parts[3]);
+    if (parts[0] === 'klant' && parts[2] === 'training') return viewWorkout(parts[1], parts[3]);
+    if (parts[0] === 'klant' && parts[2] === 'bewerk') return viewWorkout(parts[1], null, parts[3]);
+    if (parts[0] === 'klant' && parts[2] === 'metingen') return viewMeasurements(parts[1]);
+    if (parts[0] === 'klant' && parts[2] === 'oefening') return viewExercise(parts[1], parts[3]);
+    if (parts[0] === 'klant' && parts[2] === 'vrij') return viewPickExercises(parts[1]);
+    if (parts[0] === 'klant' && parts[2] === 'sjabloon') return viewTemplatePick('klant', parts[1]);
+    if (parts[0] === 'klant') return viewClient(parts[1]);
+    if (parts[0] === 'sjabloon') return viewTemplate(parts[1]);
+    if (parts[0] === 'duo' && parts[2] === 'vrij') return viewDuoPick(parts[1]);
+    if (parts[0] === 'duo' && parts[2] === 'sjabloon') return viewTemplatePick('duo', parts[1]);
+    if (parts[0] === 'duo' && parts[2] === 'schema') return viewDuoSchema(parts[1], parts[3]);
+    if (parts[0] === 'duo' && parts[2] === 'training') return viewDuoWorkout(parts[1], parts[3]);
+    if (parts[0] === 'duo') return viewDuo(parts[1]);
+    return viewHome();
+  }
+
+  function topbar(title, backHash) {
+    return `<div class="topbar">` +
+      (backHash != null ? `<button class="back" data-nav="${esc(backHash)}" aria-label="Terug">←</button>` : '') +
+      `<h1>${esc(title)}</h1>` +
+      `</div>`;
+  }
+
+  // --- home: client list ---
+  function viewHome() {
+    const clients = sortedClients();
+    $app.innerHTML = topbar('Overzicht') +
+      `<div class="stat-grid">
+        <div class="stat"><div class="lbl">Klanten</div><div class="val">${clients.length}</div></div>
+        <div class="stat"><div class="lbl">Duo's</div><div class="val">${sortedDuos().length}</div></div>
+        <div class="stat"><div class="lbl">Trainingen</div><div class="val">${db.workouts.length}</div></div>
+      </div>` +
+      (clients.length ? '' : `<div class="empty"><p>Nog geen klanten. Voeg je eerste klant toe, of bekijk de app met voorbeelddata.</p><button class="primary" id="demo-btn">Voorbeelddata laden</button></div>`) +
+      `<div class="eyebrow">Nieuwe klant</div>
+      <form class="card" id="add-client">
+        <label class="field"><span>Naam nieuwe klant</span><input name="name" required placeholder="bijv. Sanne de Vries"></label>
+        <label class="field"><span>Doel (optioneel)</span><input name="goal" placeholder="bijv. kracht opbouwen, 5 kg afvallen"></label>
+        <button class="primary wide" type="submit">Klant toevoegen</button>
+      </form>
+      <div class="eyebrow">Nieuw duo</div>` +
+      (clients.length >= 2 ? `<form class="card" id="add-duo">
+        <label class="field"><span>Klant 1</span><select name="a">${clients.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select></label>
+        <label class="field"><span>Klant 2</span><select name="b">${clients.map((c, i) => `<option value="${c.id}" ${i === 1 ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>
+        <label class="field"><span>Naam duo (optioneel)</span><input name="name" placeholder="bijv. Sanne & Piet"></label>
+        <button class="primary wide" type="submit">Duo toevoegen</button>
+      </form>` : `<p class="mut">Voeg minstens twee klanten toe om een duo te maken.</p>`) +
+      `<hr class="divider">
+      <div class="eyebrow">Instellingen</div>
+      <div class="card">
+        <label class="field"><span>Gewichtseenheid</span></label>
+        <div class="seg" role="group" aria-label="Gewichtseenheid" style="max-width:200px">
+          ${['kg', 'lbs'].map((u) => `<button id="unit-${u}" aria-pressed="${unitLbl() === u}">${u}</button>`).join('')}
+        </div>
+        <p class="mut" style="margin:8px 0 0">Alleen het label wijzigt; bestaande getallen worden niet omgerekend.</p>
+      </div>
+      <div class="eyebrow">Synchronisatie</div>
+      <div class="card">` +
+      (syncCfg && syncCfg.gistId
+        ? `<p class="sub" style="margin:0 0 6px">Gekoppeld aan je privé-cloudopslag (GitHub Gist).</p>
+           <p class="mut" id="sync-status" style="margin:0 0 10px">${esc(syncStatus)}</p>
+           <div class="actions"><button id="sync-now">Nu synchroniseren</button><button class="danger ghost" id="sync-off">Ontkoppelen</button></div>`
+        : `<p class="sub" style="margin:0 0 10px">Synchroniseer automatisch tussen tablet en telefoon via een privé GitHub Gist (gratis).</p>
+           <label class="field"><span>GitHub-token met gist-rechten</span><input type="password" id="sync-token" placeholder="github_pat_… of ghp_…"></label>
+           <button class="primary" id="sync-connect">Verbinden</button>
+           <p class="mut" id="sync-status" style="margin:8px 0 0">${esc(syncStatus)}</p>
+           <p class="mut" style="margin:8px 0 0">Eenmalig: maak op github.com → Settings → Developer settings een token met alleen <strong>Gists: read &amp; write</strong>. Plak hetzelfde token op je andere apparaat en de gegevens lopen automatisch gelijk (nieuwste versie wint). Het token blijft op dit apparaat en zit niet in je back-upbestand.</p>`) +
+      `</div>
+      <div class="eyebrow">Gegevens</div>
+      <div class="actions">
+        <button id="export-btn">Exporteer back-up</button>
+        <button id="import-btn">Importeer back-up</button>
+        <input type="file" id="import-file" accept="application/json" hidden>
+      </div>
+      <p class="mut">Alles wordt lokaal op dit apparaat bewaard. Maak regelmatig een back-up.</p>`;
+
+    bindNav();
+    document.getElementById('add-client').addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      const f = new FormData(ev.target);
+      const name = String(f.get('name')).trim();
+      if (!name) return;
+      const c = { id: uid(), name, goal: String(f.get('goal')).trim() };
+      db.clients.push(c); save();
+      location.hash = `/klant/${c.id}`;
+    });
+    const demo = document.getElementById('demo-btn');
+    if (demo) demo.addEventListener('click', () => { loadDemo(); save(); render(); });
+    const duoForm = document.getElementById('add-duo');
+    if (duoForm) duoForm.addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      const f = new FormData(ev.target);
+      const a = String(f.get('a')), b = String(f.get('b'));
+      if (a === b) { alert('Kies twee verschillende klanten.'); return; }
+      const d = { id: uid(), clientIds: [a, b], name: String(f.get('name')).trim() };
+      db.duos.push(d); save();
+      location.hash = `/duo/${d.id}`;
+    });
+    document.getElementById('export-btn').addEventListener('click', exportJson);
+    const fileInput = document.getElementById('import-file');
+    document.getElementById('import-btn').addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', importJson);
+    ['kg', 'lbs'].forEach((u) => document.getElementById('unit-' + u).addEventListener('click', () => {
+      db.settings.unit = u; save(); render();
+    }));
+    const syncStatusEl = document.getElementById('sync-status');
+    const connectBtn = document.getElementById('sync-connect');
+    if (connectBtn) connectBtn.addEventListener('click', async () => {
+      const token = document.getElementById('sync-token').value.trim();
+      if (!token) return;
+      connectBtn.disabled = true;
+      syncStatusEl.textContent = 'verbinden…';
+      try {
+        await connectSync(token);
+        render();
+      } catch (e) {
+        syncCfg = null;
+        localStorage.removeItem(SYNC_KEY);
+        syncStatusEl.textContent = 'verbinden mislukt (' + e.message + ') — controleer het token';
+        connectBtn.disabled = false;
+      }
+    });
+    const syncNowBtn = document.getElementById('sync-now');
+    if (syncNowBtn) syncNowBtn.addEventListener('click', async () => {
+      syncStatusEl.textContent = 'synchroniseren…';
+      await syncNow();
+    });
+    const syncOffBtn = document.getElementById('sync-off');
+    if (syncOffBtn) syncOffBtn.addEventListener('click', () => {
+      if (!confirm('Synchronisatie ontkoppelen? Je gegevens blijven op dit apparaat en in de cloud staan.')) return;
+      syncCfg = null;
+      localStorage.removeItem(SYNC_KEY);
+      syncStatus = '';
+      render();
+    });
+  }
+
+  // --- client detail ---
+  const uiState = { metric: 'top', navClients: true, navDuos: true, navTemplates: true, measMetric: 'weight' };
+  let pendingFree = []; // exercises picked for a free session, set by viewPickExercises
+  let pendingDuo = null; // { duoId, picks: { [clientId]: [names] } }, set by viewDuoPick
+  function viewClient(id) {
+    const c = clientById(id);
+    if (!c) { location.hash = '/'; return; }
+    const schemas = schemasOf(id);
+    const workouts = workoutsOf(id);
+    const exercises = loggedExercises(id);
+
+    // stats
+    const last = workouts[workouts.length - 1];
+    const statHtml = `<div class="stat-grid">
+      <div class="stat"><div class="lbl">Trainingen</div><div class="val">${workouts.length}</div></div>
+      <div class="stat"><div class="lbl">Laatste</div><div class="val">${last ? esc(fmtDate(last.date)) : '—'}</div></div>
+      <div class="stat"><div class="lbl">Oefeningen</div><div class="val">${exercises.length}</div></div>
+    </div>`;
+
+    const exerciseCards = exercises.map((name) => {
+      const sessions = exerciseSessions(id, name);
+      const lastSession = sessions[sessions.length - 1];
+      const pr = Math.max(...sessions.map((s) => s.top));
+      return `<div class="card tappable" data-nav="/klant/${id}/oefening/${encodeURIComponent(name)}" role="link" tabindex="0">
+        <div class="row"><div class="grow">
+          <div class="title">${esc(name)}</div>
+          <div class="sub">PR ${esc(fmtKg(pr))} · laatst gedaan ${esc(fmtDate(lastSession.date))}</div>
+        </div><span class="mut">›</span></div>
+      </div>`;
+    }).join('');
+
+    $app.innerHTML = topbar(c.name, '/') +
+      (c.goal ? `<p class="sub" style="margin:0 0 12px">Doel: ${esc(c.goal)}</p>` : '') +
+      statHtml +
+      `<div style="margin-top:16px" class="actions">` +
+      schemas.map((s) => `<button class="primary" data-nav="/klant/${id}/training/${s.id}">Start: ${esc(s.name)}</button>`).join('') +
+      `<button class="primary" data-nav="/klant/${id}/vrij">+ Vrije training</button>` +
+      `</div>` +
+
+      `<div class="eyebrow">Metingen</div>` +
+      (() => {
+        const meas = db.measurements.filter((m) => m.clientId === id).sort((a, b) => a.date.localeCompare(b.date));
+        const lastM = meas[meas.length - 1];
+        const summary = lastM
+          ? `laatste (${fmtDate(lastM.date)}): ` + MEAS_FIELDS.filter((f) => lastM[f.key] != null).map((f) => `${(Math.round(lastM[f.key] * 10) / 10).toLocaleString('nl-NL')} ${f.unit()}`).join(' · ')
+          : 'nog geen metingen';
+        return `<div class="card tappable" data-nav="/klant/${id}/metingen" role="link" tabindex="0"><div class="row"><div class="grow">
+          <div class="title">Lichaamsmetingen</div>
+          <div class="sub">${esc(summary)}</div>
+        </div><span class="mut">›</span></div></div>`;
+      })() +
+
+      `<div class="eyebrow">Progressie per oefening</div>` +
+      (exerciseCards || `<div class="empty"><p>Nog geen trainingen gelogd. Start een training om progressie te zien.</p></div>`) +
+
+      `<div class="eyebrow">Schema's</div>` +
+      schemas.map((s) => `<div class="card tappable" data-nav="/klant/${id}/schema/${s.id}" role="link" tabindex="0">
+          <div class="row"><div class="grow">
+            <div class="title">${esc(s.name)}</div>
+            <div class="sub">${s.exercises.map((e) => esc(e.name)).join(' · ') || 'nog geen oefeningen'}</div>
+          </div><span class="mut">›</span></div>
+        </div>`).join('') +
+      `<div class="actions" style="margin-top:2px"><button data-nav="/klant/${id}/schema/nieuw">+ Nieuw schema</button><button data-nav="/klant/${id}/sjabloon">+ Schema uit sjabloon</button></div>` +
+
+      `<div class="eyebrow">Logboek</div>` +
+      (workouts.length ? [...workouts].reverse().slice(0, 20).map((w) => {
+        const schema = schemaById(w.schemaId);
+        const summary = w.entries.map((e) => {
+          const m = exerciseMetrics(e);
+          return m ? `${esc(e.name)} ${fmtKg(m.top)}` : esc(e.name);
+        }).join(' · ');
+        return `<div class="card">
+          <div class="row">
+            <div class="grow">
+              <div class="title">${esc(fmtDateFull(w.date))} <span class="badge">${esc(schema ? schema.name : w.duoId ? (duoSchemaById(w.schemaId) || {}).name || 'Duo-training' : 'Vrije training')}</span></div>
+              <div class="sub">${summary}</div>
+              ${w.notes ? `<div class="mut">${esc(w.notes)}</div>` : ''}
+            </div>
+            <button class="small ghost" data-edit-workout="${w.id}" aria-label="Bewerk training">✎</button>
+            <button class="small danger ghost" data-del-workout="${w.id}" aria-label="Verwijder training">✕</button>
+          </div>
+        </div>`;
+      }).join('') : `<p class="mut">Nog geen trainingen.</p>`) +
+
+      `<hr class="divider">
+       <button class="danger ghost" id="del-client">Klant verwijderen</button>`;
+
+    bindNav();
+
+    document.querySelectorAll('[data-edit-workout]').forEach((b) => b.addEventListener('click', () => {
+      location.hash = `/klant/${id}/bewerk/${b.dataset.editWorkout}`;
+    }));
+    document.querySelectorAll('[data-del-workout]').forEach((b) => b.addEventListener('click', () => {
+      if (!confirm('Deze training verwijderen?')) return;
+      db.workouts = db.workouts.filter((w) => w.id !== b.dataset.delWorkout);
+      save(); render();
+    }));
+    document.getElementById('del-client').addEventListener('click', () => {
+      if (!confirm(`${c.name} en alle bijbehorende schema's en trainingen verwijderen?`)) return;
+      db.clients = db.clients.filter((x) => x.id !== id);
+      db.schemas = db.schemas.filter((s) => s.clientId !== id);
+      db.workouts = db.workouts.filter((w) => w.clientId !== id);
+      db.duos = db.duos.filter((d) => !d.clientIds.includes(id));
+      db.measurements = db.measurements.filter((m) => m.clientId !== id);
+      save(); location.hash = '/';
+    });
+  }
+
+  // --- body measurements ---
+  const MEAS_FIELDS = [
+    { key: 'weight', label: 'Lichaamsgewicht', unit: () => unitLbl() },
+    { key: 'fat', label: 'Vetpercentage', unit: () => '%' },
+    { key: 'waist', label: 'Taille', unit: () => 'cm' },
+    { key: 'chest', label: 'Borst', unit: () => 'cm' },
+    { key: 'arm', label: 'Arm', unit: () => 'cm' },
+    { key: 'leg', label: 'Bovenbeen', unit: () => 'cm' },
+  ];
+  function viewMeasurements(clientId) {
+    const c = clientById(clientId);
+    if (!c) { location.hash = '/'; return; }
+    const list = db.measurements.filter((m) => m.clientId === clientId).sort((a, b) => a.date.localeCompare(b.date));
+    const withData = MEAS_FIELDS.filter((f) => list.some((m) => m[f.key] != null));
+    if (!withData.some((f) => f.key === uiState.measMetric)) uiState.measMetric = withData.length ? withData[0].key : null;
+    const field = MEAS_FIELDS.find((f) => f.key === uiState.measMetric);
+    const fmtM = (v) => (Math.round(v * 10) / 10).toLocaleString('nl-NL');
+
+    $app.innerHTML = topbar(`Metingen — ${c.name}`, `/klant/${clientId}`) +
+      `<form class="card" id="meas-form">
+        <label class="field"><span>Datum</span><input type="date" name="date" value="${todayIso()}" required></label>
+        <div class="stat-grid cols2" style="gap:10px">
+          ${MEAS_FIELDS.map((f) => `<label class="field" style="margin:0"><span>${f.label} (${f.unit()})</span><input name="${f.key}" type="text" inputmode="decimal" placeholder="–"></label>`).join('')}
+        </div>
+        <p class="mut" style="margin:8px 0 10px">Vul in wat je gemeten hebt; de rest mag leeg blijven.</p>
+        <button class="primary wide" type="submit">Meting opslaan</button>
+      </form>` +
+      (withData.length && field ? `
+        <div class="eyebrow">Verloop</div>
+        <div class="card">
+          <label class="field"><span>Meetwaarde</span>
+            <select id="meas-metric">${withData.map((f) => `<option value="${f.key}" ${f.key === field.key ? 'selected' : ''}>${f.label}</option>`).join('')}</select>
+          </label>
+          <div class="chart-wrap" id="meas-chart"></div>
+        </div>` : '') +
+      `<div class="eyebrow">Alle metingen</div>` +
+      (list.length ? [...list].reverse().map((m) => `<div class="card"><div class="row"><div class="grow">
+          <div class="title">${esc(fmtDateFull(m.date))}</div>
+          <div class="sub">${MEAS_FIELDS.filter((f) => m[f.key] != null).map((f) => `${f.label} ${fmtM(m[f.key])} ${f.unit()}`).join(' · ')}</div>
+        </div><button class="small danger ghost" data-del-meas="${m.id}" aria-label="Verwijder meting">✕</button></div></div>`).join('')
+        : `<p class="mut">Nog geen metingen.</p>`);
+
+    bindNav();
+    if (withData.length && field) {
+      const pts = list.filter((m) => m[field.key] != null).map((m) => ({ date: m.date, value: m[field.key] }));
+      renderChart(document.getElementById('meas-chart'), pts, field.key === 'weight' ? 'kg' : field.unit());
+      document.getElementById('meas-metric').addEventListener('change', (ev) => {
+        uiState.measMetric = ev.target.value; render();
+      });
+    }
+    document.getElementById('meas-form').addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      const f = new FormData(ev.target);
+      const entry = { id: uid(), clientId, date: String(f.get('date')) };
+      let any = false;
+      for (const fld of MEAS_FIELDS) {
+        const v = String(f.get(fld.key)).trim();
+        if (v !== '') { entry[fld.key] = num(v); any = true; }
+      }
+      if (!any) { alert('Vul minstens één waarde in.'); return; }
+      db.measurements.push(entry);
+      save(); render();
+    });
+    document.querySelectorAll('[data-del-meas]').forEach((b) => b.addEventListener('click', () => {
+      if (!confirm('Deze meting verwijderen?')) return;
+      db.measurements = db.measurements.filter((m) => m.id !== b.dataset.delMeas);
+      save(); render();
+    }));
+  }
+
+  // --- exercise progress page ---
+  function viewExercise(clientId, encName) {
+    const c = clientById(clientId);
+    if (!c) { location.hash = '/'; return; }
+    const wanted = decodeURIComponent(encName).toLowerCase();
+    const name = loggedExercises(clientId).find((n) => n.toLowerCase() === wanted);
+    if (!name) { location.hash = `/klant/${clientId}`; return; }
+    const sessions = exerciseSessions(clientId, name);
+    const first = sessions[0], last = sessions[sessions.length - 1];
+
+    const prTop = Math.max(...sessions.map((s) => s.top));
+    const prDate = sessions.find((s) => s.top === prTop).date;
+    const pr1rm = Math.max(...sessions.map((s) => s.e1rm));
+    const delta = last.top - first.top;
+    const deltaCls = delta > 0 ? 'up' : delta < 0 ? 'down' : '';
+    const deltaSign = delta > 0 ? '+' : '';
+    const deltaPct = first.top > 0 ? ` (${deltaSign}${Math.round((delta / first.top) * 100)}%)` : '';
+
+    if (uiState.metric !== 'top' && uiState.metric !== 'e1rm') uiState.metric = 'top';
+    const metricNames = { top: 'Zwaarste set', e1rm: 'Geschat 1RM' };
+
+    $app.innerHTML = topbar(name, `/klant/${clientId}`) +
+      `<div class="stat-grid cols2">
+        <div class="stat"><div class="lbl">PR · zwaarste set</div><div class="val">${esc(fmtKg(prTop))}</div><div class="mut">op ${esc(fmtDateFull(prDate))}</div></div>
+        <div class="stat"><div class="lbl">PR · geschat 1RM</div><div class="val">${esc(fmtKg(pr1rm))}</div><div class="mut">Epley-formule</div></div>
+        <div class="stat"><div class="lbl">Laatst gedaan</div><div class="val">${esc(fmtDate(last.date))}</div><div class="mut">${sessions.length} sessie${sessions.length === 1 ? '' : 's'} sinds ${esc(fmtDate(first.date))}</div></div>
+        <div class="stat"><div class="lbl">Totale progressie</div><div class="val">${deltaSign}${esc(fmtKg(delta))}</div><div class="delta ${deltaCls}">${esc(fmtKg(first.top))} → ${esc(fmtKg(last.top))}${deltaPct}</div></div>
+      </div>` +
+
+      `<div class="eyebrow">Gewicht per training</div>
+      <div class="card">
+        <div class="seg" role="group" aria-label="Meetwaarde">
+          ${['top', 'e1rm'].map((m) => `<button data-metric="${m}" aria-pressed="${uiState.metric === m}">${metricNames[m]}</button>`).join('')}
+        </div>
+        <div class="chart-wrap" id="line-chart" style="margin-top:12px"></div>
+        <p class="mut" style="margin:6px 0 0">${uiState.metric === 'e1rm' ? 'Geschat 1RM via de Epley-formule op basis van de beste set.' : 'Zwaarste set per training.'}</p>
+      </div>` +
+
+      `<div class="eyebrow">Volume per training</div>
+      <div class="card">
+        <div class="chart-wrap" id="bar-chart"></div>
+        <p class="mut" style="margin:6px 0 0">Volume = som van gewicht × herhalingen per training.</p>
+      </div>` +
+
+      `<div class="eyebrow">Alle sessies</div>` +
+      [...sessions].reverse().map((s) => `<div class="card">
+        <div class="row"><div class="grow">
+          <div class="title">${esc(fmtDateFull(s.date))} ${s.isPr ? '<span class="badge pr">🏆 PR</span>' : ''}</div>
+          <div class="sub">${s.sets.map((st) => `${esc(fmtKg(st.weight))} × ${st.reps}${st.rir != null ? ' <span class="mut">RIR ' + st.rir + '</span>' : ''}`).join(' · ')}</div>
+        </div>
+        <div class="mut" style="font-variant-numeric:tabular-nums">${esc(fmtKg(s.top))}</div></div>
+      </div>`).join('');
+
+    bindNav();
+    renderChart(document.getElementById('line-chart'), sessions.map((s) => ({ date: s.date, value: s[uiState.metric] })), 'kg');
+    renderBarChart(document.getElementById('bar-chart'), sessions.map((s) => ({ date: s.date, value: s.volume })));
+    document.querySelectorAll('[data-metric]').forEach((b) => b.addEventListener('click', () => {
+      uiState.metric = b.dataset.metric; render();
+    }));
+  }
+
+  // --- free workout: pick exercises for this session ---
+  function viewPickExercises(clientId) {
+    const c = clientById(clientId);
+    if (!c) { location.hash = '/'; return; }
+    const known = knownExercises(clientId);
+    const selected = new Set(pendingFree.filter((n) => known.some((k) => k.toLowerCase() === n.toLowerCase())));
+
+    const paint = () => {
+      $app.innerHTML = topbar('Vrije training', `/klant/${clientId}`) +
+        `<p class="sub" style="margin:0 0 12px">Kies de oefeningen voor deze sessie — elke training kan anders zijn.</p>` +
+        (known.length ? `<div class="chips">${known.map((n) =>
+          `<button type="button" class="chip" data-ex-name="${esc(n)}" aria-pressed="${selected.has(n)}">${esc(n)}</button>`
+        ).join('')}</div>` : '') +
+        `<form class="card" id="new-ex" style="margin-top:16px">
+          <label class="field"><span>Nieuwe oefening</span><input name="name" placeholder="bijv. Lat pulldown"></label>
+          <button type="submit">+ Toevoegen en selecteren</button>
+        </form>
+        <button class="primary wide" id="start-free" ${selected.size ? '' : 'disabled'} style="margin-top:8px">Start training (${selected.size} oefening${selected.size === 1 ? '' : 'en'})</button>`;
+
+      bindNav();
+      document.querySelectorAll('[data-ex-name]').forEach((b) => b.addEventListener('click', () => {
+        const n = b.dataset.exName;
+        if (selected.has(n)) selected.delete(n); else selected.add(n);
+        paint();
+      }));
+      document.getElementById('new-ex').addEventListener('submit', (ev) => {
+        ev.preventDefault();
+        const n = String(new FormData(ev.target).get('name')).trim();
+        if (!n) return;
+        if (!known.some((k) => k.toLowerCase() === n.toLowerCase())) known.push(n);
+        selected.add(known.find((k) => k.toLowerCase() === n.toLowerCase()));
+        paint();
+      });
+      document.getElementById('start-free').addEventListener('click', () => {
+        pendingFree = known.filter((n) => selected.has(n));
+        location.hash = `/klant/${clientId}/training/vrij`;
+      });
+    };
+    paint();
+  }
+
+  // --- schema template editor (global, linkable to clients and duos) ---
+  function viewTemplate(tid) {
+    const isNew = tid === 'nieuw';
+    const tpl = isNew ? { id: uid(), name: '', exercises: [] } : templateById(tid);
+    if (!tpl) { location.hash = '/'; return; }
+    const newTarget = () => ({ reps: 10, weight: 0 });
+    const newExercise = () => ({ id: uid(), name: '', targets: [newTarget(), newTarget(), newTarget()] });
+    const draft = JSON.parse(JSON.stringify(tpl));
+    draft.exercises.forEach((e) => { if (!e.targets || !e.targets.length) e.targets = [newTarget(), newTarget(), newTarget()]; });
+    if (!draft.exercises.length) draft.exercises.push(newExercise());
+
+    const paint = () => {
+      $app.innerHTML = topbar(isNew ? 'Nieuw sjabloon' : 'Sjabloon bewerken', '/') +
+        `<p class="sub" style="margin:0 0 12px">Een sjabloon koppel je via de klant- of duo-pagina ("+ Schema uit sjabloon"); daar wordt het een eigen kopie die je per klant kunt aanpassen.</p>
+        <form id="schema-form">
+          <label class="field"><span>Naam sjabloon</span><input name="name" required placeholder="bijv. Full body beginner" value="${esc(draft.name)}"></label>
+          <div class="eyebrow">Oefeningen — elke set apart</div>
+          ${draft.exercises.map((e, i) => `<div class="card">
+            <div class="row" style="margin-bottom:8px">
+              <input data-exname="${i}" class="grow" required placeholder="bijv. Squat" value="${esc(e.name)}">
+              <button type="button" class="small danger ghost" data-rm-ex="${i}" aria-label="Verwijder oefening">✕</button>
+            </div>
+            <div class="tgt-row"><span></span><span class="col-head">Gewicht (${unitLbl()})</span><span class="col-head">Herh.</span><span></span></div>
+            ${e.targets.map((t, si) => `<div class="tgt-row">
+              <span class="n">${si + 1}</span>
+              <input data-tgt="${i}.${si}" data-f="weight" type="text" inputmode="decimal" value="${t.weight || ''}" placeholder="${unitLbl()}">
+              <input data-tgt="${i}.${si}" data-f="reps" type="number" min="0" inputmode="numeric" value="${t.reps || ''}" placeholder="herh.">
+              <button type="button" class="small danger ghost" data-rm-tgt="${i}.${si}" aria-label="Verwijder set">✕</button>
+            </div>`).join('')}
+            <button type="button" class="small" data-add-tgt="${i}">+ Set</button>
+          </div>`).join('')}
+          <button type="button" id="add-ex" class="small" style="margin:4px 0 16px">+ Oefening</button>
+          <button class="primary wide" type="submit">Sjabloon opslaan</button>
+        </form>` +
+        (!isNew ? `<hr class="divider"><button class="danger ghost" id="del-template">Sjabloon verwijderen</button>` : '');
+
+      bindNav();
+      const syncDraft = () => {
+        draft.name = document.querySelector('[name="name"]').value;
+        document.querySelectorAll('[data-exname]').forEach((inp) => {
+          draft.exercises[+inp.dataset.exname].name = inp.value;
+        });
+        document.querySelectorAll('[data-tgt]').forEach((inp) => {
+          const [i, si] = inp.dataset.tgt.split('.').map(Number);
+          draft.exercises[i].targets[si][inp.dataset.f] = num(inp.value);
+        });
+      };
+      document.getElementById('add-ex').addEventListener('click', () => {
+        syncDraft();
+        draft.exercises.push(newExercise());
+        paint();
+      });
+      document.querySelectorAll('[data-rm-ex]').forEach((b) => b.addEventListener('click', () => {
+        syncDraft();
+        draft.exercises.splice(+b.dataset.rmEx, 1);
+        if (!draft.exercises.length) draft.exercises.push(newExercise());
+        paint();
+      }));
+      document.querySelectorAll('[data-add-tgt]').forEach((b) => b.addEventListener('click', () => {
+        syncDraft();
+        const targets = draft.exercises[+b.dataset.addTgt].targets;
+        targets.push(targets.length ? { ...targets[targets.length - 1] } : newTarget());
+        paint();
+      }));
+      document.querySelectorAll('[data-rm-tgt]').forEach((b) => b.addEventListener('click', () => {
+        syncDraft();
+        const [i, si] = b.dataset.rmTgt.split('.').map(Number);
+        draft.exercises[i].targets.splice(si, 1);
+        if (!draft.exercises[i].targets.length) draft.exercises[i].targets.push(newTarget());
+        paint();
+      }));
+      document.getElementById('schema-form').addEventListener('submit', (ev) => {
+        ev.preventDefault();
+        syncDraft();
+        draft.name = draft.name.trim();
+        draft.exercises = draft.exercises
+          .filter((e) => e.name.trim())
+          .map((e) => ({ id: e.id, name: e.name.trim(), targets: e.targets }));
+        if (!draft.name || !draft.exercises.length) return;
+        if (isNew) db.templates.push(draft);
+        else db.templates[db.templates.findIndex((t) => t.id === tid)] = draft;
+        save(); location.hash = `/sjabloon/${draft.id}`; render();
+      });
+      const del = document.getElementById('del-template');
+      if (del) del.addEventListener('click', () => {
+        if (!confirm('Dit sjabloon verwijderen? Reeds gekoppelde schema\'s blijven bestaan.')) return;
+        db.templates = db.templates.filter((t) => t.id !== tid);
+        save(); location.hash = '/';
+      });
+    };
+    paint();
+  }
+
+  // --- pick a template to link as a schema for a client or duo ---
+  function viewTemplatePick(kind, id) {
+    const target = kind === 'klant' ? clientById(id) : duoById(id);
+    if (!target) { location.hash = '/'; return; }
+    const backHash = `/${kind}/${id}`;
+    const title = kind === 'klant' ? `Schema uit sjabloon — ${target.name}` : `Duo-schema uit sjabloon — ${duoName(target)}`;
+
+    $app.innerHTML = topbar(title, backHash) +
+      (db.templates.length
+        ? `<p class="sub" style="margin:0 0 12px">Kies een sjabloon; het wordt een eigen kopie die je daarna kunt aanpassen.</p>` +
+          [...db.templates].sort((a, b) => byName(a.name, b.name)).map((t) => `<div class="card tappable" data-apply-tpl="${t.id}" role="button" tabindex="0">
+            <div class="row"><div class="grow">
+              <div class="title">${esc(t.name)}</div>
+              <div class="sub">${t.exercises.map((e) => `${esc(e.name)} (${e.targets.length})`).join(' · ')}</div>
+            </div><span class="mut">›</span></div>
+          </div>`).join('')
+        : `<div class="empty"><p>Nog geen sjablonen. Maak er eerst één via de zijbalk: Sjablonen → + Nieuw sjabloon.</p><button class="primary" data-nav="/sjabloon/nieuw">+ Nieuw sjabloon</button></div>`);
+
+    bindNav();
+    document.querySelectorAll('[data-apply-tpl]').forEach((el) => el.addEventListener('click', () => {
+      const tpl = templateById(el.dataset.applyTpl);
+      if (!tpl) return;
+      if (kind === 'klant') {
+        const schema = { id: uid(), clientId: id, name: tpl.name, exercises: copyExercises(tpl.exercises) };
+        db.schemas.push(schema);
+        save(); location.hash = `/klant/${id}/schema/${schema.id}`;
+      } else {
+        const plans = {};
+        for (const cid of target.clientIds) plans[cid] = copyExercises(tpl.exercises);
+        const schema = { id: uid(), duoId: id, name: tpl.name, plans };
+        db.duoSchemas.push(schema);
+        save(); location.hash = `/duo/${id}/schema/${schema.id}`;
+      }
+    }));
+  }
+
+  // --- duo page: members + duo session history ---
+  function viewDuo(duoId) {
+    const duo = duoById(duoId);
+    const members = duo ? duo.clientIds.map(clientById) : [];
+    if (!duo || members.some((m) => !m)) { location.hash = '/'; return; }
+
+    const duoWorkouts = db.workouts.filter((w) => w.duoId === duoId);
+    const dates = [...new Set(duoWorkouts.map((w) => w.date))].sort().reverse();
+
+    $app.innerHTML = topbar(duoName(duo), '/') +
+      `<div class="actions">` +
+      duoSchemasOf(duoId).map((s) => `<button class="primary" data-nav="/duo/${duoId}/training/${s.id}">Start: ${esc(s.name)}</button>`).join('') +
+      `<button class="primary" data-nav="/duo/${duoId}/vrij">+ Vrije duo-training</button></div>` +
+
+      `<div class="eyebrow">Schema's</div>` +
+      duoSchemasOf(duoId).map((s) => `<div class="card tappable" data-nav="/duo/${duoId}/schema/${s.id}" role="link" tabindex="0">
+        <div class="row"><div class="grow">
+          <div class="title">${esc(s.name)}</div>
+          <div class="sub">${members.map((m) => `${esc(m.name)}: ${(s.plans[m.id] || []).map((e) => esc(e.name)).join(', ') || '—'}`).join(' · ')}</div>
+        </div><span class="mut">›</span></div>
+      </div>`).join('') +
+      `<div class="actions" style="margin-top:2px"><button data-nav="/duo/${duoId}/schema/nieuw">+ Nieuw duo-schema</button><button data-nav="/duo/${duoId}/sjabloon">+ Schema uit sjabloon</button></div>` +
+
+      `<div class="eyebrow">Leden</div>` +
+      members.map((m) => {
+        const ws = workoutsOf(m.id);
+        const lastW = ws[ws.length - 1];
+        return `<div class="card tappable" data-nav="/klant/${m.id}" role="link" tabindex="0">
+          <div class="row"><div class="grow">
+            <div class="title">${esc(m.name)}</div>
+            <div class="sub">${ws.length} training${ws.length === 1 ? '' : 'en'}${lastW ? ' · laatste: ' + esc(fmtDate(lastW.date)) : ''} · schema's en progressie ›</div>
+          </div><span class="mut">›</span></div>
+        </div>`;
+      }).join('') +
+
+      `<div class="eyebrow">Duo-trainingen</div>` +
+      (dates.length ? dates.slice(0, 20).map((date) => {
+        const lines = duoWorkouts.filter((w) => w.date === date).map((w) => {
+          const m = clientById(w.clientId);
+          return `<div class="sub">${esc(m ? m.name : '?')}: ${w.entries.map((e) => esc(e.name)).join(', ')}</div>`;
+        }).join('');
+        return `<div class="card"><div class="title">${esc(fmtDateFull(date))}</div>${lines}</div>`;
+      }).join('') : `<p class="mut">Nog geen duo-trainingen gelogd.</p>`) +
+
+      `<hr class="divider">
+      <button class="danger ghost" id="del-duo">Duo verwijderen</button>`;
+
+    bindNav();
+    document.getElementById('del-duo').addEventListener('click', () => {
+      if (!confirm('Dit duo verwijderen? De klanten en hun trainingen blijven bewaard.')) return;
+      db.duos = db.duos.filter((d) => d.id !== duoId);
+      db.duoSchemas = db.duoSchemas.filter((s) => s.duoId !== duoId);
+      save(); location.hash = '/';
+    });
+  }
+
+  // --- duo schema editor: per member, per-set targets ---
+  function viewDuoSchema(duoId, sid) {
+    const duo = duoById(duoId);
+    const members = duo ? duo.clientIds.map(clientById) : [];
+    if (!duo || members.some((m) => !m)) { location.hash = '/'; return; }
+    const isNew = sid === 'nieuw';
+    const schema = isNew ? { id: uid(), duoId, name: '', plans: {} } : duoSchemaById(sid);
+    if (!schema || schema.duoId !== duoId) { location.hash = `/duo/${duoId}`; return; }
+    const newTarget = () => ({ reps: 10, weight: 0 });
+    const newExercise = () => ({ id: uid(), name: '', targets: [newTarget(), newTarget(), newTarget()] });
+    const draft = JSON.parse(JSON.stringify(schema));
+    for (const m of members) {
+      draft.plans[m.id] = (draft.plans[m.id] || []).map((e) => ({ ...e, targets: e.targets && e.targets.length ? e.targets : [newTarget(), newTarget(), newTarget()] }));
+      if (!draft.plans[m.id].length) draft.plans[m.id].push(newExercise());
+    }
+
+    const paint = () => {
+      $app.innerHTML = topbar(isNew ? 'Nieuw duo-schema' : 'Duo-schema bewerken', `/duo/${duoId}`) +
+        `<form id="dschema-form">
+          <label class="field"><span>Naam schema</span><input name="name" required placeholder="bijv. Duo full body" value="${esc(draft.name)}"></label>
+          <div class="duo-cols">` +
+          members.map((m, mi) =>
+            `<div><div class="eyebrow">${esc(m.name)} — elke set apart</div>` +
+            draft.plans[m.id].map((e, i) => `<div class="card">
+              <div class="row" style="margin-bottom:8px">
+                <input data-dexname="${mi}.${i}" class="grow" required placeholder="bijv. Squat" value="${esc(e.name)}">
+                <button type="button" class="small danger ghost" data-drm-ex="${mi}.${i}" aria-label="Verwijder oefening">✕</button>
+              </div>
+              <div class="tgt-row"><span></span><span class="col-head">Gewicht (${unitLbl()})</span><span class="col-head">Herh.</span><span></span></div>
+              ${e.targets.map((t, si) => `<div class="tgt-row">
+                <span class="n">${si + 1}</span>
+                <input data-tgt="${mi}.${i}.${si}" data-f="weight" type="text" inputmode="decimal" value="${t.weight || ''}" placeholder="${unitLbl()}">
+                <input data-tgt="${mi}.${i}.${si}" data-f="reps" type="number" min="0" inputmode="numeric" value="${t.reps || ''}" placeholder="herh.">
+                <button type="button" class="small danger ghost" data-drm-tgt="${mi}.${i}.${si}" aria-label="Verwijder set">✕</button>
+              </div>`).join('')}
+              <button type="button" class="small" data-dadd-tgt="${mi}.${i}">+ Set</button>
+            </div>`).join('') +
+            `<button type="button" class="small" data-dadd-ex="${mi}" style="margin:4px 0 16px">+ Oefening voor ${esc(m.name)}</button></div>`
+          ).join('') +
+          `</div>
+          <button class="primary wide" type="submit">Duo-schema opslaan</button>
+        </form>` +
+        (!isNew ? `<hr class="divider"><button class="danger ghost" id="del-dschema">Duo-schema verwijderen</button>` : '');
+
+      bindNav();
+      const planOf = (mi) => draft.plans[members[mi].id];
+      const syncDraft = () => {
+        draft.name = document.querySelector('[name="name"]').value;
+        document.querySelectorAll('[data-dexname]').forEach((inp) => {
+          const [mi, i] = inp.dataset.dexname.split('.').map(Number);
+          planOf(mi)[i].name = inp.value;
+        });
+        document.querySelectorAll('[data-tgt]').forEach((inp) => {
+          const [mi, i, si] = inp.dataset.tgt.split('.').map(Number);
+          planOf(mi)[i].targets[si][inp.dataset.f] = num(inp.value);
+        });
+      };
+      document.querySelectorAll('[data-dadd-ex]').forEach((b) => b.addEventListener('click', () => {
+        syncDraft();
+        planOf(+b.dataset.daddEx).push(newExercise());
+        paint();
+      }));
+      document.querySelectorAll('[data-drm-ex]').forEach((b) => b.addEventListener('click', () => {
+        syncDraft();
+        const [mi, i] = b.dataset.drmEx.split('.').map(Number);
+        planOf(mi).splice(i, 1);
+        if (!planOf(mi).length) planOf(mi).push(newExercise());
+        paint();
+      }));
+      document.querySelectorAll('[data-dadd-tgt]').forEach((b) => b.addEventListener('click', () => {
+        syncDraft();
+        const [mi, i] = b.dataset.daddTgt.split('.').map(Number);
+        const targets = planOf(mi)[i].targets;
+        targets.push(targets.length ? { ...targets[targets.length - 1] } : newTarget());
+        paint();
+      }));
+      document.querySelectorAll('[data-drm-tgt]').forEach((b) => b.addEventListener('click', () => {
+        syncDraft();
+        const [mi, i, si] = b.dataset.drmTgt.split('.').map(Number);
+        planOf(mi)[i].targets.splice(si, 1);
+        if (!planOf(mi)[i].targets.length) planOf(mi)[i].targets.push(newTarget());
+        paint();
+      }));
+      document.getElementById('dschema-form').addEventListener('submit', (ev) => {
+        ev.preventDefault();
+        syncDraft();
+        draft.name = draft.name.trim();
+        for (const m of members) {
+          draft.plans[m.id] = draft.plans[m.id]
+            .filter((e) => e.name.trim())
+            .map((e) => ({ id: e.id, name: e.name.trim(), targets: e.targets }));
+        }
+        if (!draft.name || members.some((m) => !draft.plans[m.id].length)) {
+          alert('Geef het schema een naam en minstens één oefening per persoon.');
+          return;
+        }
+        if (isNew) db.duoSchemas.push(draft);
+        else db.duoSchemas[db.duoSchemas.findIndex((s) => s.id === sid)] = draft;
+        save(); location.hash = `/duo/${duoId}`;
+      });
+      const del = document.getElementById('del-dschema');
+      if (del) del.addEventListener('click', () => {
+        if (!confirm('Dit duo-schema verwijderen? Gelogde trainingen blijven bewaard.')) return;
+        db.duoSchemas = db.duoSchemas.filter((s) => s.id !== sid);
+        save(); location.hash = `/duo/${duoId}`;
+      });
+    };
+    paint();
+  }
+
+  // --- duo free workout: pick exercises per member ---
+  function viewDuoPick(duoId) {
+    const duo = duoById(duoId);
+    const members = duo ? duo.clientIds.map(clientById) : [];
+    if (!duo || members.some((m) => !m)) { location.hash = '/'; return; }
+    const known = members.map((m) => knownExercises(m.id));
+    const selected = members.map(() => new Set());
+
+    const paint = () => {
+      $app.innerHTML = topbar(`Duo-training — ${duoName(duo)}`, `/duo/${duoId}`) +
+        `<p class="sub" style="margin:0 0 12px">Kies per persoon de oefeningen voor deze sessie.</p>
+        <div class="duo-cols">` +
+        members.map((m, mi) =>
+          `<div><div class="eyebrow">${esc(m.name)}</div>` +
+          (schemasOf(m.id).length ? `<div class="actions" style="margin-bottom:10px">${schemasOf(m.id).map((s) =>
+            `<button type="button" class="small" data-schema-pick="${mi}.${s.id}">Schema: ${esc(s.name)}</button>`
+          ).join('')}</div>` : '') +
+          (known[mi].length ? `<div class="chips">${known[mi].map((n) =>
+            `<button type="button" class="chip" data-pick="${mi}" data-ex-name="${esc(n)}" aria-pressed="${selected[mi].has(n)}">${esc(n)}</button>`
+          ).join('')}</div>` : '') +
+          `<form class="card" data-new-ex="${mi}" style="margin-top:10px">
+            <label class="field"><span>Nieuwe oefening voor ${esc(m.name)}</span><input name="name" placeholder="bijv. Lat pulldown"></label>
+            <button type="submit">+ Toevoegen en selecteren</button>
+          </form></div>`
+        ).join('') +
+        `</div>
+        <button class="primary wide" id="start-duo" ${selected.every((s) => s.size) ? '' : 'disabled'} style="margin-top:8px">Start duo-training</button>` +
+        (selected.every((s) => s.size) ? '' : `<p class="mut">Kies voor beide personen minstens één oefening.</p>`);
+
+      bindNav();
+      document.querySelectorAll('[data-pick]').forEach((b) => b.addEventListener('click', () => {
+        const mi = +b.dataset.pick, n = b.dataset.exName;
+        if (selected[mi].has(n)) selected[mi].delete(n); else selected[mi].add(n);
+        paint();
+      }));
+      document.querySelectorAll('[data-schema-pick]').forEach((b) => b.addEventListener('click', () => {
+        const dot = b.dataset.schemaPick.indexOf('.');
+        const mi = +b.dataset.schemaPick.slice(0, dot);
+        const schema = schemaById(b.dataset.schemaPick.slice(dot + 1));
+        if (!schema) return;
+        for (const ex of schema.exercises) {
+          const existing = known[mi].find((k) => k.toLowerCase() === ex.name.toLowerCase());
+          if (!existing) known[mi].push(ex.name);
+          selected[mi].add(existing || ex.name);
+        }
+        paint();
+      }));
+      document.querySelectorAll('[data-new-ex]').forEach((form) => form.addEventListener('submit', (ev) => {
+        ev.preventDefault();
+        const mi = +form.dataset.newEx;
+        const n = String(new FormData(form).get('name')).trim();
+        if (!n) return;
+        const existing = known[mi].find((k) => k.toLowerCase() === n.toLowerCase());
+        if (!existing) known[mi].push(n);
+        selected[mi].add(existing || n);
+        paint();
+      }));
+      document.getElementById('start-duo').addEventListener('click', () => {
+        pendingDuo = { duoId, picks: {} };
+        members.forEach((m, mi) => { pendingDuo.picks[m.id] = known[mi].filter((n) => selected[mi].has(n)); });
+        location.hash = `/duo/${duoId}/training`;
+      });
+    };
+    paint();
+  }
+
+  // --- duo workout logging: both members on one screen ---
+  function viewDuoWorkout(duoId, duoSchemaId) {
+    const duo = duoById(duoId);
+    const members = duo ? duo.clientIds.map(clientById) : [];
+    if (!duo || members.some((m) => !m)) { location.hash = '/'; return; }
+    const duoSchema = duoSchemaId ? duoSchemaById(duoSchemaId) : null;
+    if (duoSchemaId && (!duoSchema || duoSchema.duoId !== duoId)) { location.hash = `/duo/${duoId}`; return; }
+    if (!duoSchema && (!pendingDuo || pendingDuo.duoId !== duoId)) { location.hash = `/duo/${duoId}/vrij`; return; }
+
+    const prefill = (clientId, name, targets) => {
+      const prev = lastEntryFor(clientId, name);
+      if (prev) return prev.entry.sets.map((s) => ({ reps: s.reps, weight: s.weight }));
+      const t = (targets && targets.length ? targets : null) || targetsFor(clientId, name);
+      return t
+        ? t.map((x) => ({ reps: x.reps, weight: x.weight }))
+        : Array.from({ length: 3 }, () => ({ reps: 10, weight: 0 }));
+    };
+    const draft = members.map((m) => ({
+      client: m,
+      exercises: duoSchema
+        ? (duoSchema.plans[m.id] || []).map((ex) => ({ name: ex.name, sets: prefill(m.id, ex.name, ex.targets) }))
+        : (pendingDuo.picks[m.id] || []).map((n) => ({ name: n, sets: prefill(m.id, n) })),
+    }));
+    let swapping = null; // "mi.xi" of exercise currently in swap mode
+
+    const paint = () => {
+      $app.innerHTML = topbar(`Duo-training — ${duoName(duo)}`, `/duo/${duoId}`) +
+        `<p style="margin:0 0 12px"><span class="badge">${duoSchema ? esc(duoSchema.name) : 'Vrije training'}</span></p>` +
+        `<form id="duo-form">
+          <label class="field"><span>Datum</span><input type="date" name="date" value="${todayIso()}" required></label>
+          <div class="duo-cols">
+          ${draft.map((mem, mi) =>
+            `<div><div class="eyebrow">${esc(mem.client.name)}</div>` +
+            mem.exercises.map((ex, xi) => {
+              const prev = lastEntryFor(mem.client.id, ex.name);
+              const key = `${mi}.${xi}`;
+              return `<div class="card">
+              <div class="row" style="margin-bottom:2px"><div class="title grow">${esc(ex.name)}</div><button type="button" class="small ghost" data-dswap="${key}">⇄ Vervang</button></div>
+              ${prev ? `<div class="mut" style="margin-bottom:8px">vorige sessie: ${esc(fmtDate(prev.date))}</div>` : `<div class="mut" style="margin-bottom:8px">eerste keer</div>`}
+              ${swapping === key ? `<div class="row" style="margin-bottom:10px">
+                <input id="swap-input" class="grow" list="swap-list" placeholder="Vervangende oefening">
+                <button type="button" class="small primary" id="swap-ok">OK</button>
+                <datalist id="swap-list">${knownExercises(mem.client.id)
+                  .filter((n) => !mem.exercises.some((e) => e.name.toLowerCase() === n.toLowerCase()))
+                  .map((n) => `<option value="${esc(n)}">`).join('')}</datalist>
+              </div>` : ''}
+              <div class="pr-live" data-pr-live="${key}" hidden></div>
+              ${setRowsHtml('dset', key, ex.sets, prev && prev.entry.sets)}
+              <button type="button" class="small" data-dadd-set="${key}">+ Set</button>
+            </div>`;
+            }).join('') +
+            `<div class="card">
+              <label class="field"><span>Oefening toevoegen voor ${esc(mem.client.name)}</span>
+                <input data-extra-input="${mi}" list="dex-list-${mi}" placeholder="bijv. Lat pulldown"></label>
+              <datalist id="dex-list-${mi}">${knownExercises(mem.client.id)
+                .filter((n) => !mem.exercises.some((e) => e.name.toLowerCase() === n.toLowerCase()))
+                .map((n) => `<option value="${esc(n)}">`).join('')}</datalist>
+              <button type="button" class="small" data-extra-add="${mi}">+ Oefening</button>
+            </div></div>`
+          ).join('')}
+          </div>
+          <label class="field"><span>Notities (optioneel)</span><textarea name="notes" rows="2" placeholder="bijv. samen circuit gedaan"></textarea></label>
+          <button class="primary wide" type="submit">Duo-training opslaan</button>
+        </form>`;
+
+      bindNav();
+      const syncDraft = () => {
+        document.querySelectorAll('[data-dset]').forEach((inp) => {
+          const [mi, xi, si] = inp.dataset.dset.split('.').map(Number);
+          const f = inp.dataset.f;
+          draft[mi].exercises[xi].sets[si][f] = f === 'rir' && inp.value.trim() === '' ? undefined : num(inp.value);
+        });
+      };
+      draft.forEach((mem, mi) => mem.exercises.forEach((ex, xi) => bindPrLive('dset', `${mi}.${xi}`, mem.client.id, ex.name)));
+      document.querySelectorAll('[data-dswap]').forEach((b) => b.addEventListener('click', () => {
+        syncDraft();
+        swapping = swapping === b.dataset.dswap ? null : b.dataset.dswap;
+        repaintKeeping();
+        const inp = document.getElementById('swap-input');
+        if (inp) inp.focus();
+      }));
+      const swapOk = document.getElementById('swap-ok');
+      if (swapOk) swapOk.addEventListener('click', () => {
+        const name = document.getElementById('swap-input').value.trim();
+        const [mi, xi] = swapping.split('.').map(Number);
+        if (!name || draft[mi].exercises.some((e) => e.name.toLowerCase() === name.toLowerCase())) return;
+        syncDraft();
+        draft[mi].exercises[xi] = { name, sets: prefill(draft[mi].client.id, name) };
+        swapping = null;
+        repaintKeeping();
+      });
+      const repaintKeeping = () => {
+        const dateVal = document.querySelector('[name="date"]').value;
+        const notesVal = document.querySelector('[name="notes"]').value;
+        paint();
+        document.querySelector('[name="date"]').value = dateVal;
+        document.querySelector('[name="notes"]').value = notesVal;
+      };
+      document.querySelectorAll('[data-dadd-set]').forEach((b) => b.addEventListener('click', () => {
+        syncDraft();
+        const [mi, xi] = b.dataset.daddSet.split('.').map(Number);
+        const sets = draft[mi].exercises[xi].sets;
+        const lastSet = sets[sets.length - 1];
+        sets.push(lastSet ? { ...lastSet } : { reps: 10, weight: 0 });
+        repaintKeeping();
+      }));
+      document.querySelectorAll('[data-rm-dset]').forEach((b) => b.addEventListener('click', () => {
+        syncDraft();
+        const [mi, xi, si] = b.dataset.rmDset.split('.').map(Number);
+        draft[mi].exercises[xi].sets.splice(si, 1);
+        repaintKeeping();
+      }));
+      document.querySelectorAll('[data-extra-add]').forEach((b) => b.addEventListener('click', () => {
+        const mi = +b.dataset.extraAdd;
+        const inp = document.querySelector(`[data-extra-input="${mi}"]`);
+        const name = inp.value.trim();
+        if (!name || draft[mi].exercises.some((e) => e.name.toLowerCase() === name.toLowerCase())) return;
+        syncDraft();
+        draft[mi].exercises.push({ name, sets: prefill(draft[mi].client.id, name) });
+        repaintKeeping();
+      }));
+      document.getElementById('duo-form').addEventListener('submit', (ev) => {
+        ev.preventDefault();
+        syncDraft();
+        const f = new FormData(ev.target);
+        const date = String(f.get('date'));
+        const notes = String(f.get('notes')).trim();
+        let saved = 0;
+        for (const mem of draft) {
+          const entries = mem.exercises
+            .map((ex) => ({ name: ex.name, sets: ex.sets.filter((s) => s.weight > 0 || s.reps > 0) }))
+            .filter((ex) => ex.sets.length);
+          if (!entries.length) continue;
+          db.workouts.push({ id: uid(), clientId: mem.client.id, schemaId: duoSchema ? duoSchema.id : null, duoId, date, notes, entries });
+          saved++;
+        }
+        if (!saved) { alert('Vul minstens één set in.'); return; }
+        save();
+        pendingDuo = null;
+        location.hash = `/duo/${duoId}`;
+      });
+    };
+    paint();
+  }
+
+  // --- schema editor ---
+  function viewSchema(clientId, schemaId) {
+    const c = clientById(clientId);
+    if (!c) { location.hash = '/'; return; }
+    const isNew = schemaId === 'nieuw';
+    const schema = isNew
+      ? { id: uid(), clientId, name: '', exercises: [] }
+      : schemaById(schemaId);
+    if (!schema) { location.hash = `/klant/${clientId}`; return; }
+    const newTarget = () => ({ reps: 10, weight: 0 });
+    const newExercise = () => ({ id: uid(), name: '', targets: [newTarget(), newTarget(), newTarget()] });
+    const draft = JSON.parse(JSON.stringify(schema));
+    draft.exercises.forEach((e) => { if (!e.targets || !e.targets.length) e.targets = [newTarget(), newTarget(), newTarget()]; });
+    if (!draft.exercises.length) draft.exercises.push(newExercise());
+
+    const paint = () => {
+      $app.innerHTML = topbar(isNew ? 'Nieuw schema' : 'Schema bewerken', `/klant/${clientId}`) +
+        `<form id="schema-form">
+          <label class="field"><span>Naam schema</span><input name="name" required placeholder="bijv. Full body A" value="${esc(draft.name)}"></label>
+          <div class="eyebrow">Oefeningen — elke set apart</div>
+          ${draft.exercises.map((e, i) => `<div class="card">
+            <div class="row" style="margin-bottom:8px">
+              <input data-exname="${i}" class="grow" required placeholder="bijv. Squat" value="${esc(e.name)}">
+              <button type="button" class="small danger ghost" data-rm-ex="${i}" aria-label="Verwijder oefening">✕</button>
+            </div>
+            <div class="tgt-row"><span></span><span class="col-head">Gewicht (${unitLbl()})</span><span class="col-head">Herh.</span><span></span></div>
+            ${e.targets.map((t, si) => `<div class="tgt-row">
+              <span class="n">${si + 1}</span>
+              <input data-tgt="${i}.${si}" data-f="weight" type="text" inputmode="decimal" value="${t.weight || ''}" placeholder="${unitLbl()}">
+              <input data-tgt="${i}.${si}" data-f="reps" type="number" min="0" inputmode="numeric" value="${t.reps || ''}" placeholder="herh.">
+              <button type="button" class="small danger ghost" data-rm-tgt="${i}.${si}" aria-label="Verwijder set">✕</button>
+            </div>`).join('')}
+            <button type="button" class="small" data-add-tgt="${i}">+ Set</button>
+          </div>`).join('')}
+          <button type="button" id="add-ex" class="small" style="margin:4px 0 16px">+ Oefening</button>
+          <button class="primary wide" type="submit">Schema opslaan</button>
+        </form>` +
+        (!isNew ? `<hr class="divider"><button class="danger ghost" id="del-schema">Schema verwijderen</button>` : '');
+
+      bindNav();
+      const syncDraft = () => {
+        draft.name = document.querySelector('[name="name"]').value;
+        document.querySelectorAll('[data-exname]').forEach((inp) => {
+          draft.exercises[+inp.dataset.exname].name = inp.value;
+        });
+        document.querySelectorAll('[data-tgt]').forEach((inp) => {
+          const [i, si] = inp.dataset.tgt.split('.').map(Number);
+          draft.exercises[i].targets[si][inp.dataset.f] = num(inp.value);
+        });
+      };
+      document.getElementById('add-ex').addEventListener('click', () => {
+        syncDraft();
+        draft.exercises.push(newExercise());
+        paint();
+      });
+      document.querySelectorAll('[data-rm-ex]').forEach((b) => b.addEventListener('click', () => {
+        syncDraft();
+        draft.exercises.splice(+b.dataset.rmEx, 1);
+        if (!draft.exercises.length) draft.exercises.push(newExercise());
+        paint();
+      }));
+      document.querySelectorAll('[data-add-tgt]').forEach((b) => b.addEventListener('click', () => {
+        syncDraft();
+        const targets = draft.exercises[+b.dataset.addTgt].targets;
+        targets.push(targets.length ? { ...targets[targets.length - 1] } : newTarget());
+        paint();
+      }));
+      document.querySelectorAll('[data-rm-tgt]').forEach((b) => b.addEventListener('click', () => {
+        syncDraft();
+        const [i, si] = b.dataset.rmTgt.split('.').map(Number);
+        draft.exercises[i].targets.splice(si, 1);
+        if (!draft.exercises[i].targets.length) draft.exercises[i].targets.push(newTarget());
+        paint();
+      }));
+      document.getElementById('schema-form').addEventListener('submit', (ev) => {
+        ev.preventDefault();
+        syncDraft();
+        draft.name = draft.name.trim();
+        draft.exercises = draft.exercises
+          .filter((e) => e.name.trim())
+          .map((e) => ({ id: e.id, name: e.name.trim(), targets: e.targets }));
+        if (!draft.name || !draft.exercises.length) return;
+        if (isNew) db.schemas.push(draft);
+        else db.schemas[db.schemas.findIndex((s) => s.id === schemaId)] = draft;
+        save(); location.hash = `/klant/${clientId}`;
+      });
+      const del = document.getElementById('del-schema');
+      if (del) del.addEventListener('click', () => {
+        if (!confirm('Dit schema verwijderen? Gelogde trainingen blijven bewaard.')) return;
+        db.schemas = db.schemas.filter((s) => s.id !== schemaId);
+        save(); location.hash = `/klant/${clientId}`;
+      });
+    };
+    paint();
+  }
+
+  // --- workout logging ---
+  function viewWorkout(clientId, schemaId, editId) {
+    const c = clientById(clientId);
+    const editing = editId ? db.workouts.find((w) => w.id === editId && w.clientId === clientId) : null;
+    if (editId && !editing) { location.hash = c ? `/klant/${clientId}` : '/'; return; }
+    const isFree = !editing && schemaId === 'vrij';
+    const schema = editing ? schemaById(editing.schemaId) : isFree ? null : schemaById(schemaId);
+    if (!c || (!editing && !isFree && !schema)) { location.hash = c ? `/klant/${clientId}` : '/'; return; }
+    if (isFree && !pendingFree.length) { location.hash = `/klant/${clientId}/vrij`; return; }
+
+    // prefill: most recent logged sets of this exercise (any session), else per-set schema targets
+    const prefill = (ex) => {
+      const prev = lastEntryFor(clientId, ex.name, editing && editing.id);
+      if (prev) return prev.entry.sets.map((s) => ({ reps: s.reps, weight: s.weight }));
+      const targets = (ex.targets && ex.targets.length ? ex.targets : null) || targetsFor(clientId, ex.name);
+      return targets
+        ? targets.map((t) => ({ reps: t.reps, weight: t.weight }))
+        : Array.from({ length: 3 }, () => ({ reps: 10, weight: 0 }));
+    };
+    const draft = editing
+      ? editing.entries.map((e) => ({ name: e.name, sets: e.sets.map((s) => ({ ...s })) }))
+      : (isFree ? pendingFree.map((n) => ({ name: n })) : schema.exercises).map((ex) => ({ name: ex.name, sets: prefill(ex) }));
+    let swapping = null; // exercise index currently in swap mode
+
+    const paint = () => {
+      const extraOptions = knownExercises(clientId)
+        .filter((n) => !draft.some((d) => d.name.toLowerCase() === n.toLowerCase()));
+      $app.innerHTML = topbar(editing ? `Bewerken — ${c.name}` : `Training — ${c.name}`, `/klant/${clientId}`) +
+        `<p style="margin:0 0 12px"><span class="badge">${esc(schema ? schema.name : editing && editing.duoId ? (duoSchemaById(editing.schemaId) || {}).name || 'Duo-training' : 'Vrije training')}</span></p>` +
+        `<form id="wo-form">
+          <label class="field"><span>Datum</span><input type="date" name="date" value="${editing ? esc(editing.date) : todayIso()}" required></label>
+          ${draft.map((ex, xi) => {
+            const prev = lastEntryFor(clientId, ex.name, editing && editing.id);
+            return `<div class="card">
+            <div class="row" style="margin-bottom:2px"><div class="title grow">${esc(ex.name)}</div><button type="button" class="small ghost" data-swap="${xi}">⇄ Vervang</button></div>
+            ${prev ? `<div class="mut" style="margin-bottom:8px">vorige sessie: ${esc(fmtDate(prev.date))}</div>` : `<div class="mut" style="margin-bottom:8px">eerste keer</div>`}
+            ${swapping === xi ? `<div class="row" style="margin-bottom:10px">
+              <input id="swap-input" class="grow" list="swap-list" placeholder="Vervangende oefening">
+              <button type="button" class="small primary" id="swap-ok">OK</button>
+              <datalist id="swap-list">${knownExercises(clientId)
+                .filter((n) => !draft.some((d) => d.name.toLowerCase() === n.toLowerCase()))
+                .map((n) => `<option value="${esc(n)}">`).join('')}</datalist>
+            </div>` : ''}
+            <div class="pr-live" data-pr-live="${xi}" hidden></div>
+            ${setRowsHtml('set', xi, ex.sets, prev && prev.entry.sets)}
+            <button type="button" class="small" data-add-set="${xi}">+ Set</button>
+          </div>`;
+          }).join('')}
+          <div class="card">
+            <label class="field"><span>Oefening toevoegen aan deze sessie</span>
+              <input id="extra-ex" list="ex-list" placeholder="bijv. Lat pulldown"></label>
+            <datalist id="ex-list">${extraOptions.map((n) => `<option value="${esc(n)}">`).join('')}</datalist>
+            <button type="button" class="small" id="add-extra">+ Oefening</button>
+          </div>
+          <label class="field"><span>Notities (optioneel)</span><textarea name="notes" rows="2" placeholder="bijv. voelde sterk, knie licht gevoelig">${editing ? esc(editing.notes || '') : ''}</textarea></label>
+          <button class="primary wide" type="submit">${editing ? 'Wijzigingen opslaan' : 'Training opslaan'}</button>
+        </form>`;
+
+      bindNav();
+      const syncDraft = () => {
+        document.querySelectorAll('[data-set]').forEach((inp) => {
+          const [xi, si] = inp.dataset.set.split('.').map(Number);
+          const f = inp.dataset.f;
+          draft[xi].sets[si][f] = f === 'rir' && inp.value.trim() === '' ? undefined : num(inp.value);
+        });
+      };
+      draft.forEach((ex, xi) => bindPrLive('set', String(xi), clientId, ex.name, editing && editing.id));
+      const repaintKeeping = () => {
+        const dateVal = document.querySelector('[name="date"]').value;
+        const notesVal = document.querySelector('[name="notes"]').value;
+        paint();
+        document.querySelector('[name="date"]').value = dateVal;
+        document.querySelector('[name="notes"]').value = notesVal;
+      };
+      document.querySelectorAll('[data-swap]').forEach((b) => b.addEventListener('click', () => {
+        syncDraft();
+        swapping = swapping === +b.dataset.swap ? null : +b.dataset.swap;
+        repaintKeeping();
+        const inp = document.getElementById('swap-input');
+        if (inp) inp.focus();
+      }));
+      const swapOk = document.getElementById('swap-ok');
+      if (swapOk) swapOk.addEventListener('click', () => {
+        const name = document.getElementById('swap-input').value.trim();
+        if (!name || draft.some((d) => d.name.toLowerCase() === name.toLowerCase())) return;
+        syncDraft();
+        draft[swapping] = { name, sets: prefill({ name }) };
+        swapping = null;
+        repaintKeeping();
+      });
+      document.querySelectorAll('[data-add-set]').forEach((b) => b.addEventListener('click', () => {
+        syncDraft();
+        const sets = draft[+b.dataset.addSet].sets;
+        const lastSet = sets[sets.length - 1];
+        sets.push(lastSet ? { ...lastSet } : { reps: 10, weight: 0 });
+        const dateVal = document.querySelector('[name="date"]').value;
+        const notesVal = document.querySelector('[name="notes"]').value;
+        paint();
+        document.querySelector('[name="date"]').value = dateVal;
+        document.querySelector('[name="notes"]').value = notesVal;
+      }));
+      document.querySelectorAll('[data-rm-set]').forEach((b) => b.addEventListener('click', () => {
+        syncDraft();
+        const [xi, si] = b.dataset.rmSet.split('.').map(Number);
+        draft[xi].sets.splice(si, 1);
+        paint();
+      }));
+      document.getElementById('add-extra').addEventListener('click', () => {
+        const inp = document.getElementById('extra-ex');
+        const name = inp.value.trim();
+        if (!name || draft.some((d) => d.name.toLowerCase() === name.toLowerCase())) return;
+        syncDraft();
+        draft.push({ name, sets: prefill({ name }) });
+        const dateVal = document.querySelector('[name="date"]').value;
+        const notesVal = document.querySelector('[name="notes"]').value;
+        paint();
+        document.querySelector('[name="date"]').value = dateVal;
+        document.querySelector('[name="notes"]').value = notesVal;
+      });
+      document.getElementById('wo-form').addEventListener('submit', (ev) => {
+        ev.preventDefault();
+        syncDraft();
+        const f = new FormData(ev.target);
+        const entries = draft
+          .map((ex) => ({ name: ex.name, sets: ex.sets.filter((s) => s.weight > 0 || s.reps > 0) }))
+          .filter((ex) => ex.sets.length);
+        if (!entries.length) { alert('Vul minstens één set in.'); return; }
+        if (editing) {
+          editing.entries = entries;
+          editing.date = String(f.get('date'));
+          editing.notes = String(f.get('notes')).trim();
+        } else {
+          db.workouts.push({
+            id: uid(), clientId,
+            schemaId: isFree ? null : schemaId,
+            date: String(f.get('date')),
+            notes: String(f.get('notes')).trim(),
+            entries,
+          });
+        }
+        save();
+        if (isFree) pendingFree = [];
+        location.hash = `/klant/${clientId}`;
+      });
+    };
+    paint();
+  }
+
+  // ---------- export / import ----------
+  function exportJson() {
+    const blob = new Blob([JSON.stringify(db, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `coachlog-backup-${todayIso()}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+  function importJson(ev) {
+    const file = ev.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const d = JSON.parse(reader.result);
+        if (!Array.isArray(d.clients)) throw new Error('ongeldig bestand');
+        if (!confirm('Huidige gegevens vervangen door deze back-up?')) return;
+        db = normalizeDb(d);
+        save(); render();
+      } catch {
+        alert('Dit bestand is geen geldige Coachlog-back-up.');
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  // ---------- demo data ----------
+  function loadDemo() {
+    const cid = uid(), sid = uid();
+    db.clients.push({ id: cid, name: 'Demo — Sanne', goal: 'Kracht opbouwen' });
+    db.schemas.push({
+      id: sid, clientId: cid, name: 'Full body A',
+      exercises: [
+        { id: uid(), name: 'Squat', targets: Array.from({ length: 4 }, () => ({ reps: 8, weight: 60 })) },
+        { id: uid(), name: 'Bankdrukken', targets: Array.from({ length: 4 }, () => ({ reps: 8, weight: 40 })) },
+        { id: uid(), name: 'Deadlift', targets: Array.from({ length: 3 }, () => ({ reps: 5, weight: 80 })) },
+      ],
+    });
+    const day = 24 * 3600 * 1000;
+    for (let i = 0; i < 10; i++) {
+      const date = new Date(Date.now() - (9 - i) * 6 * day).toISOString().slice(0, 10);
+      const bump = (base) => base + i * 2.5 + (i % 3 === 2 ? -2.5 : 0);
+      db.workouts.push({
+        id: uid(), clientId: cid, schemaId: sid, date, notes: '',
+        entries: [
+          { name: 'Squat', sets: [1, 2, 3, 4].map(() => ({ reps: 8, weight: bump(60) })) },
+          { name: 'Bankdrukken', sets: [1, 2, 3, 4].map(() => ({ reps: 8, weight: bump(40) })) },
+          { name: 'Deadlift', sets: [1, 2, 3].map(() => ({ reps: 5, weight: bump(80) })) },
+        ],
+      });
+    }
+  }
+
+  // ---------- nav ----------
+  function bindNav() {
+    document.querySelectorAll('[data-nav]').forEach((el) => {
+      const go = () => { location.hash = el.dataset.nav; };
+      el.addEventListener('click', (ev) => { if (ev.target.closest('button') !== el && ev.target.closest('button')) return; go(); });
+      if (el.tagName !== 'BUTTON') el.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') go(); });
+    });
+  }
+
+  // tap a prefilled set/target field -> select its content so typing overwrites it
+  document.addEventListener('focusin', (ev) => {
+    const t = ev.target;
+    if (t instanceof HTMLInputElement && (t.dataset.set !== undefined || t.dataset.dset !== undefined || t.dataset.tgt !== undefined)) t.select();
+  });
+
+  window.addEventListener('hashchange', render);
+  render();
+  if (syncCfg && syncCfg.gistId && navigator.onLine) syncNow();
+
+  // offline: alleen op https/localhost (PWA-hosting); op file:// of zonder sw.js gebeurt er niets
+  if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+    navigator.serviceWorker.register('./sw.js').catch(() => {});
+  }
+})();
+</script>
+<!-- APP END -->
+</body>
+</html>
