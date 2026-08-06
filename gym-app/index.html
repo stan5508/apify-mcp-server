@@ -943,6 +943,7 @@
       client: m,
       exercises: (pendingDuo.picks[m.id] || []).map((n) => ({ name: n, sets: prefill(m.id, n) })),
     }));
+    let swapping = null; // "mi.xi" of exercise currently in swap mode
 
     const paint = () => {
       $app.innerHTML = topbar(`Duo-training — ${duoName(duo)}`, `/duo/${duoId}`) +
@@ -952,12 +953,20 @@
             `<div class="eyebrow">${esc(mem.client.name)}</div>` +
             mem.exercises.map((ex, xi) => {
               const prev = lastEntryFor(mem.client.id, ex.name);
+              const key = `${mi}.${xi}`;
               return `<div class="card">
-              <div class="title" style="margin-bottom:2px">${esc(ex.name)}</div>
+              <div class="row" style="margin-bottom:2px"><div class="title grow">${esc(ex.name)}</div><button type="button" class="small ghost" data-dswap="${key}">⇄ Vervang</button></div>
               ${prev ? `<div class="mut" style="margin-bottom:8px">vorige sessie: ${esc(fmtDate(prev.date))}</div>` : `<div class="mut" style="margin-bottom:8px">eerste keer</div>`}
-              <div class="pr-live" data-pr-live="${mi}.${xi}" hidden></div>
-              ${setRowsHtml('dset', `${mi}.${xi}`, ex.sets, prev && prev.entry.sets)}
-              <button type="button" class="small" data-dadd-set="${mi}.${xi}">+ Set</button>
+              ${swapping === key ? `<div class="row" style="margin-bottom:10px">
+                <input id="swap-input" class="grow" list="swap-list" placeholder="Vervangende oefening">
+                <button type="button" class="small primary" id="swap-ok">OK</button>
+                <datalist id="swap-list">${knownExercises(mem.client.id)
+                  .filter((n) => !mem.exercises.some((e) => e.name.toLowerCase() === n.toLowerCase()))
+                  .map((n) => `<option value="${esc(n)}">`).join('')}</datalist>
+              </div>` : ''}
+              <div class="pr-live" data-pr-live="${key}" hidden></div>
+              ${setRowsHtml('dset', key, ex.sets, prev && prev.entry.sets)}
+              <button type="button" class="small" data-dadd-set="${key}">+ Set</button>
             </div>`;
             }).join('') +
             `<div class="card">
@@ -982,6 +991,23 @@
         });
       };
       draft.forEach((mem, mi) => mem.exercises.forEach((ex, xi) => bindPrLive('dset', `${mi}.${xi}`, mem.client.id, ex.name)));
+      document.querySelectorAll('[data-dswap]').forEach((b) => b.addEventListener('click', () => {
+        syncDraft();
+        swapping = swapping === b.dataset.dswap ? null : b.dataset.dswap;
+        repaintKeeping();
+        const inp = document.getElementById('swap-input');
+        if (inp) inp.focus();
+      }));
+      const swapOk = document.getElementById('swap-ok');
+      if (swapOk) swapOk.addEventListener('click', () => {
+        const name = document.getElementById('swap-input').value.trim();
+        const [mi, xi] = swapping.split('.').map(Number);
+        if (!name || draft[mi].exercises.some((e) => e.name.toLowerCase() === name.toLowerCase())) return;
+        syncDraft();
+        draft[mi].exercises[xi] = { name, sets: prefill(draft[mi].client.id, name) };
+        swapping = null;
+        repaintKeeping();
+      });
       const repaintKeeping = () => {
         const dateVal = document.querySelector('[name="date"]').value;
         const notesVal = document.querySelector('[name="notes"]').value;
@@ -1125,6 +1151,7 @@
     };
     const baseList = isFree ? pendingFree.map((n) => ({ name: n })) : schema.exercises;
     const draft = baseList.map((ex) => ({ name: ex.name, sets: prefill(ex) }));
+    let swapping = null; // exercise index currently in swap mode
 
     const paint = () => {
       const extraOptions = knownExercises(clientId)
@@ -1136,8 +1163,15 @@
           ${draft.map((ex, xi) => {
             const prev = lastEntryFor(clientId, ex.name);
             return `<div class="card">
-            <div class="title" style="margin-bottom:2px">${esc(ex.name)}</div>
+            <div class="row" style="margin-bottom:2px"><div class="title grow">${esc(ex.name)}</div><button type="button" class="small ghost" data-swap="${xi}">⇄ Vervang</button></div>
             ${prev ? `<div class="mut" style="margin-bottom:8px">vorige sessie: ${esc(fmtDate(prev.date))}</div>` : `<div class="mut" style="margin-bottom:8px">eerste keer</div>`}
+            ${swapping === xi ? `<div class="row" style="margin-bottom:10px">
+              <input id="swap-input" class="grow" list="swap-list" placeholder="Vervangende oefening">
+              <button type="button" class="small primary" id="swap-ok">OK</button>
+              <datalist id="swap-list">${knownExercises(clientId)
+                .filter((n) => !draft.some((d) => d.name.toLowerCase() === n.toLowerCase()))
+                .map((n) => `<option value="${esc(n)}">`).join('')}</datalist>
+            </div>` : ''}
             <div class="pr-live" data-pr-live="${xi}" hidden></div>
             ${setRowsHtml('set', xi, ex.sets, prev && prev.entry.sets)}
             <button type="button" class="small" data-add-set="${xi}">+ Set</button>
@@ -1162,6 +1196,29 @@
         });
       };
       draft.forEach((ex, xi) => bindPrLive('set', String(xi), clientId, ex.name));
+      const repaintKeeping = () => {
+        const dateVal = document.querySelector('[name="date"]').value;
+        const notesVal = document.querySelector('[name="notes"]').value;
+        paint();
+        document.querySelector('[name="date"]').value = dateVal;
+        document.querySelector('[name="notes"]').value = notesVal;
+      };
+      document.querySelectorAll('[data-swap]').forEach((b) => b.addEventListener('click', () => {
+        syncDraft();
+        swapping = swapping === +b.dataset.swap ? null : +b.dataset.swap;
+        repaintKeeping();
+        const inp = document.getElementById('swap-input');
+        if (inp) inp.focus();
+      }));
+      const swapOk = document.getElementById('swap-ok');
+      if (swapOk) swapOk.addEventListener('click', () => {
+        const name = document.getElementById('swap-input').value.trim();
+        if (!name || draft.some((d) => d.name.toLowerCase() === name.toLowerCase())) return;
+        syncDraft();
+        draft[swapping] = { name, sets: prefill({ name }) };
+        swapping = null;
+        repaintKeeping();
+      });
       document.querySelectorAll('[data-add-set]').forEach((b) => b.addEventListener('click', () => {
         syncDraft();
         const sets = draft[+b.dataset.addSet].sets;
