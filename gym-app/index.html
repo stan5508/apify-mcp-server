@@ -235,6 +235,9 @@
   .badge { display: inline-block; font-size: 12px; color: var(--accent-strong); background: var(--wash); border-radius: 99px; padding: 2px 9px; font-weight: 600; }
   .badge.pr { color: var(--good); background: rgba(12, 163, 12, 0.10); border: 1px solid var(--good); }
 
+  #app.wide { max-width: none; }
+  .duo-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 0 20px; align-items: start; }
+
   .chips { display: flex; flex-wrap: wrap; gap: 8px; }
   .chip { border-radius: 99px; padding: 8px 14px; font-size: 14px; }
   .chip[aria-pressed="true"] { background: var(--wash); border-color: var(--accent); color: var(--accent-strong); font-weight: 600; }
@@ -664,6 +667,7 @@
     const hash = location.hash.slice(1) || '/';
     const parts = hash.split('/').filter(Boolean);
     window.scrollTo(0, 0);
+    $app.classList.toggle('wide', parts[0] === 'duo' && (parts[2] === 'training' || parts[2] === 'schema' || parts[2] === 'vrij'));
     renderSidebar();
     if (parts[0] === 'klant' && parts[2] === 'schema') return viewSchema(parts[1], parts[3]);
     if (parts[0] === 'klant' && parts[2] === 'training') return viewWorkout(parts[1], parts[3]);
@@ -1154,9 +1158,10 @@
     const paint = () => {
       $app.innerHTML = topbar(isNew ? 'Nieuw duo-schema' : 'Duo-schema bewerken', `/duo/${duoId}`) +
         `<form id="dschema-form">
-          <label class="field"><span>Naam schema</span><input name="name" required placeholder="bijv. Duo full body" value="${esc(draft.name)}"></label>` +
+          <label class="field"><span>Naam schema</span><input name="name" required placeholder="bijv. Duo full body" value="${esc(draft.name)}"></label>
+          <div class="duo-cols">` +
           members.map((m, mi) =>
-            `<div class="eyebrow">${esc(m.name)} — elke set apart</div>` +
+            `<div><div class="eyebrow">${esc(m.name)} — elke set apart</div>` +
             draft.plans[m.id].map((e, i) => `<div class="card">
               <div class="row" style="margin-bottom:8px">
                 <input data-dexname="${mi}.${i}" class="grow" required placeholder="bijv. Squat" value="${esc(e.name)}">
@@ -1171,9 +1176,10 @@
               </div>`).join('')}
               <button type="button" class="small" data-dadd-tgt="${mi}.${i}">+ Set</button>
             </div>`).join('') +
-            `<button type="button" class="small" data-dadd-ex="${mi}" style="margin:4px 0 16px">+ Oefening voor ${esc(m.name)}</button>`
+            `<button type="button" class="small" data-dadd-ex="${mi}" style="margin:4px 0 16px">+ Oefening voor ${esc(m.name)}</button></div>`
           ).join('') +
-          `<button class="primary wide" type="submit">Duo-schema opslaan</button>
+          `</div>
+          <button class="primary wide" type="submit">Duo-schema opslaan</button>
         </form>` +
         (!isNew ? `<hr class="divider"><button class="danger ghost" id="del-dschema">Duo-schema verwijderen</button>` : '');
 
@@ -1253,9 +1259,10 @@
 
     const paint = () => {
       $app.innerHTML = topbar(`Duo-training — ${duoName(duo)}`, `/duo/${duoId}`) +
-        `<p class="sub" style="margin:0 0 12px">Kies per persoon de oefeningen voor deze sessie.</p>` +
+        `<p class="sub" style="margin:0 0 12px">Kies per persoon de oefeningen voor deze sessie.</p>
+        <div class="duo-cols">` +
         members.map((m, mi) =>
-          `<div class="eyebrow">${esc(m.name)}</div>` +
+          `<div><div class="eyebrow">${esc(m.name)}</div>` +
           (schemasOf(m.id).length ? `<div class="actions" style="margin-bottom:10px">${schemasOf(m.id).map((s) =>
             `<button type="button" class="small" data-schema-pick="${mi}.${s.id}">Schema: ${esc(s.name)}</button>`
           ).join('')}</div>` : '') +
@@ -1265,9 +1272,10 @@
           `<form class="card" data-new-ex="${mi}" style="margin-top:10px">
             <label class="field"><span>Nieuwe oefening voor ${esc(m.name)}</span><input name="name" placeholder="bijv. Lat pulldown"></label>
             <button type="submit">+ Toevoegen en selecteren</button>
-          </form>`
+          </form></div>`
         ).join('') +
-        `<button class="primary wide" id="start-duo" ${selected.every((s) => s.size) ? '' : 'disabled'} style="margin-top:8px">Start duo-training</button>` +
+        `</div>
+        <button class="primary wide" id="start-duo" ${selected.every((s) => s.size) ? '' : 'disabled'} style="margin-top:8px">Start duo-training</button>` +
         (selected.every((s) => s.size) ? '' : `<p class="mut">Kies voor beide personen minstens één oefening.</p>`);
 
       bindNav();
@@ -1337,8 +1345,9 @@
         `<p style="margin:0 0 12px"><span class="badge">${duoSchema ? esc(duoSchema.name) : 'Vrije training'}</span></p>` +
         `<form id="duo-form">
           <label class="field"><span>Datum</span><input type="date" name="date" value="${todayIso()}" required></label>
+          <div class="duo-cols">
           ${draft.map((mem, mi) =>
-            `<div class="eyebrow">${esc(mem.client.name)}</div>` +
+            `<div><div class="eyebrow">${esc(mem.client.name)}</div>` +
             mem.exercises.map((ex, xi) => {
               const prev = lastEntryFor(mem.client.id, ex.name);
               const key = `${mi}.${xi}`;
@@ -1364,8 +1373,9 @@
                 .filter((n) => !mem.exercises.some((e) => e.name.toLowerCase() === n.toLowerCase()))
                 .map((n) => `<option value="${esc(n)}">`).join('')}</datalist>
               <button type="button" class="small" data-extra-add="${mi}">+ Oefening</button>
-            </div>`
+            </div></div>`
           ).join('')}
+          </div>
           <label class="field"><span>Notities (optioneel)</span><textarea name="notes" rows="2" placeholder="bijv. samen circuit gedaan"></textarea></label>
           <button class="primary wide" type="submit">Duo-training opslaan</button>
         </form>`;
