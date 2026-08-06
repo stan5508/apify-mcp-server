@@ -11,8 +11,10 @@ Bewust afgewezen (niet meer voorstellen):
 - **Oefeningenbibliotheek met instructies** — coach kent alle oefeningen zelf.
 - **Techniek-notities per oefening** — zelfde reden.
 
+Inmiddels toegevoegd: vorige-prestatie-hints, RIR, live PR-melding, oefening
+vervangen, lichaamsmetingen, sync via GitHub Gist, training bewerken, kg/lbs-label.
+
 Overige suggesties uit de vergelijking met andere trainingsapps (rusttimer, set-types,
-supersets, sessieduur, lichaamsmetingen, progressiefoto's, aanwezigheid/streaks,
-spiergroepverdeling, weekrapport, agenda, sessietegoed, klantnotities/intake,
-PDF-rapport, archiveren, zoekveld, sync/cloud-backup, klant-inzage, training bewerken,
-kg/lbs): nog niet besproken of nog open.
+supersets, sessieduur, progressiefoto's, aanwezigheid/streaks, spiergroepverdeling,
+weekrapport, agenda, sessietegoed, klantnotities/intake, PDF-rapport, archiveren,
+zoekveld, klant-inzage): nog niet besproken of nog open.

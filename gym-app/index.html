@@ -256,17 +256,94 @@
   const $app = document.getElementById('app');
 
   // ---------- data ----------
-  const emptyDb = () => ({ clients: [], schemas: [], workouts: [], duos: [] });
+  const emptyDb = () => ({ clients: [], schemas: [], workouts: [], duos: [], measurements: [], settings: { unit: 'kg' }, updatedAt: 0 });
   let db = loadDb();
   function loadDb() {
     try {
       const raw = localStorage.getItem(KEY);
       if (!raw) return emptyDb();
-      const d = JSON.parse(raw);
-      return { clients: d.clients || [], schemas: d.schemas || [], workouts: d.workouts || [], duos: d.duos || [] };
+      return normalizeDb(JSON.parse(raw));
     } catch { return emptyDb(); }
   }
-  function save() { localStorage.setItem(KEY, JSON.stringify(db)); }
+  function normalizeDb(d) {
+    return {
+      clients: d.clients || [], schemas: d.schemas || [], workouts: d.workouts || [], duos: d.duos || [],
+      measurements: d.measurements || [], settings: d.settings || { unit: 'kg' }, updatedAt: d.updatedAt || 0,
+    };
+  }
+  function save() {
+    db.updatedAt = Date.now();
+    localStorage.setItem(KEY, JSON.stringify(db));
+    scheduleSync();
+  }
+
+  // ---------- sync via private GitHub Gist ----------
+  const SYNC_KEY = 'coachlog-sync';
+  let syncCfg = null;
+  try { syncCfg = JSON.parse(localStorage.getItem(SYNC_KEY) || 'null'); } catch { syncCfg = null; }
+  let syncStatus = syncCfg ? 'nog niet gesynchroniseerd deze sessie' : '';
+  let syncTimer = null;
+  const syncTime = () => new Date().toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit' });
+  function scheduleSync() {
+    if (!syncCfg || !syncCfg.gistId) return;
+    clearTimeout(syncTimer);
+    syncTimer = setTimeout(() => { syncNow(); }, 2000);
+  }
+  async function gh(path, opts = {}) {
+    const res = await fetch('https://api.github.com' + path, {
+      ...opts,
+      signal: AbortSignal.timeout(15000),
+      headers: { Authorization: 'Bearer ' + syncCfg.token, Accept: 'application/vnd.github+json', ...(opts.headers || {}) },
+    });
+    if (!res.ok) throw new Error('GitHub antwoordde ' + res.status);
+    return res.json();
+  }
+  async function connectSync(token) {
+    syncCfg = { token, gistId: null };
+    const gists = await gh('/gists?per_page=100');
+    const found = gists.find((g) => g.description === 'Coachlog sync' && g.files['coachlog.json']);
+    if (found) {
+      syncCfg.gistId = found.id;
+      localStorage.setItem(SYNC_KEY, JSON.stringify(syncCfg));
+      await syncNow();
+    } else {
+      const g = await gh('/gists', { method: 'POST', body: JSON.stringify({ description: 'Coachlog sync', public: false, files: { 'coachlog.json': { content: JSON.stringify(db) } } }) });
+      syncCfg.gistId = g.id;
+      localStorage.setItem(SYNC_KEY, JSON.stringify(syncCfg));
+      syncStatus = 'gekoppeld en eerste back-up gemaakt · ' + syncTime();
+    }
+  }
+  async function syncNow() {
+    if (!syncCfg || !syncCfg.gistId) return;
+    try {
+      const g = await gh('/gists/' + syncCfg.gistId);
+      let remote = null;
+      try {
+        const file = g.files['coachlog.json'];
+        const content = file.truncated ? await (await fetch(file.raw_url)).text() : file.content;
+        remote = normalizeDb(JSON.parse(content));
+      } catch { remote = null; }
+      const remoteAt = (remote && remote.updatedAt) || 0;
+      const localAt = db.updatedAt || 0;
+      if (remoteAt > localAt) {
+        db = remote;
+        localStorage.setItem(KEY, JSON.stringify(db));
+        syncStatus = 'opgehaald van ander apparaat · ' + syncTime();
+        render();
+        return;
+      }
+      if (localAt > remoteAt) {
+        await gh('/gists/' + syncCfg.gistId, { method: 'PATCH', body: JSON.stringify({ files: { 'coachlog.json': { content: JSON.stringify(db) } } }) });
+        syncStatus = 'opgeslagen naar cloud · ' + syncTime();
+      } else {
+        syncStatus = 'up-to-date · ' + syncTime();
+      }
+    } catch (e) {
+      syncStatus = 'sync mislukt (' + e.message + ')';
+    }
+    const el = document.getElementById('sync-status');
+    if (el) el.textContent = syncStatus;
+  }
   function uid() { return Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4); }
 
   const clientById = (id) => db.clients.find((c) => c.id === id);
@@ -285,7 +362,8 @@
   const todayIso = () => new Date().toISOString().slice(0, 10);
   const fmtDate = (iso) => new Date(iso + 'T12:00:00').toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' });
   const fmtDateFull = (iso) => new Date(iso + 'T12:00:00').toLocaleDateString('nl-NL', { weekday: 'short', day: 'numeric', month: 'long' });
-  const fmtKg = (n) => (Math.round(n * 10) / 10).toLocaleString('nl-NL') + ' kg';
+  const unitLbl = () => (db.settings && db.settings.unit) || 'kg';
+  const fmtKg = (n) => (Math.round(n * 10) / 10).toLocaleString('nl-NL') + ' ' + unitLbl();
 
   // metrics per workout for one exercise name
   function exerciseMetrics(entry) {
@@ -324,10 +402,10 @@
     return [...seen.values()];
   }
 
-  // most recent logged entry of an exercise, any workout
-  function lastEntryFor(clientId, name) {
+  // most recent logged entry of an exercise, any workout (excludeId: skip the workout being edited)
+  function lastEntryFor(clientId, name, excludeId) {
     const key = name.trim().toLowerCase();
-    const ws = workoutsOf(clientId);
+    const ws = workoutsOf(clientId).filter((w) => w.id !== excludeId);
     for (let i = ws.length - 1; i >= 0; i--) {
       const entry = ws[i].entries.find((e) => e.name.trim().toLowerCase() === key);
       if (entry) return { entry, date: ws[i].date };
@@ -336,14 +414,14 @@
   }
 
   // best logged top weight for an exercise, null if never done
-  function bestTopFor(clientId, name) {
-    const sessions = exerciseSessions(clientId, name);
+  function bestTopFor(clientId, name, excludeId) {
+    const sessions = exerciseSessions(clientId, name, excludeId);
     return sessions.length ? Math.max(...sessions.map((s) => s.top)) : null;
   }
 
   // set input rows for workout logging, incl. RIR column and previous-session hints
   function setRowsHtml(attr, idx, sets, prevSets) {
-    const header = `<div class="set-row"><span></span><span class="col-head">Gewicht (kg)</span><span class="col-head">Herh.</span><span class="col-head">RIR</span><span></span></div>`;
+    const header = `<div class="set-row"><span></span><span class="col-head">Gewicht (${unitLbl()})</span><span class="col-head">Herh.</span><span class="col-head">RIR</span><span></span></div>`;
     return header + sets.map((s, si) => {
       const p = prevSets && prevSets[si];
       return `<div class="set-row">
@@ -358,10 +436,10 @@
   }
 
   // live PR badge: show while typed weight beats the client's best for that exercise
-  function bindPrLive(attr, key, clientId, exName) {
+  function bindPrLive(attr, key, clientId, exName, excludeId) {
     const badge = document.querySelector(`[data-pr-live="${key}"]`);
     if (!badge) return;
-    const best = bestTopFor(clientId, exName);
+    const best = bestTopFor(clientId, exName, excludeId);
     if (best == null) return;
     const inputs = [...document.querySelectorAll(`[data-${attr}^="${key}."][data-f="weight"]`)];
     const update = () => {
@@ -378,10 +456,10 @@
   }
 
   // all sessions of one exercise, chronological, with metrics and PR markers
-  function exerciseSessions(clientId, name) {
+  function exerciseSessions(clientId, name, excludeId) {
     const key = name.trim().toLowerCase();
     const sessions = [];
-    for (const w of workoutsOf(clientId)) {
+    for (const w of workoutsOf(clientId).filter((x) => x.id !== excludeId)) {
       for (const e of w.entries) {
         if (e.name.trim().toLowerCase() !== key) continue;
         const m = exerciseMetrics(e);
@@ -418,7 +496,9 @@
     const yMin = ticks[0], yMax = ticks[ticks.length - 1];
     const x = (i) => points.length === 1 ? padL + iw / 2 : padL + (i / (points.length - 1)) * iw;
     const y = (v) => padT + ih - ((v - yMin) / (yMax - yMin || 1)) * ih;
-    const fmtVal = (v) => unit === 'kg' ? fmtKg(v) : Math.round(v).toLocaleString('nl-NL') + ' kg';
+    const fmtVal = (v) => unit === 'kg' ? fmtKg(v)
+      : unit === 'vol' ? Math.round(v).toLocaleString('nl-NL') + ' ' + unitLbl()
+      : (Math.round(v * 10) / 10).toLocaleString('nl-NL') + ' ' + unit;
 
     const grid = ticks.map((t) =>
       `<line x1="${padL}" y1="${y(t)}" x2="${W - padR}" y2="${y(t)}" stroke="var(--grid)" stroke-width="1"/>` +
@@ -488,7 +568,7 @@
     const band = iw / points.length;
     const bw = Math.max(2, Math.min(24, band - 2));
     const bx = (i) => padL + i * band + (band - bw) / 2;
-    const fmtVal = (v) => Math.round(v).toLocaleString('nl-NL') + ' kg';
+    const fmtVal = (v) => Math.round(v).toLocaleString('nl-NL') + ' ' + unitLbl();
 
     const grid = ticks.map((t) =>
       `<line x1="${padL}" y1="${y(t)}" x2="${W - padR}" y2="${y(t)}" stroke="var(--grid)" stroke-width="1"/>` +
@@ -565,6 +645,8 @@
     renderSidebar();
     if (parts[0] === 'klant' && parts[2] === 'schema') return viewSchema(parts[1], parts[3]);
     if (parts[0] === 'klant' && parts[2] === 'training') return viewWorkout(parts[1], parts[3]);
+    if (parts[0] === 'klant' && parts[2] === 'bewerk') return viewWorkout(parts[1], null, parts[3]);
+    if (parts[0] === 'klant' && parts[2] === 'metingen') return viewMeasurements(parts[1]);
     if (parts[0] === 'klant' && parts[2] === 'oefening') return viewExercise(parts[1], parts[3]);
     if (parts[0] === 'klant' && parts[2] === 'vrij') return viewPickExercises(parts[1]);
     if (parts[0] === 'klant') return viewClient(parts[1]);
@@ -605,6 +687,26 @@
         <button class="primary wide" type="submit">Duo toevoegen</button>
       </form>` : `<p class="mut">Voeg minstens twee klanten toe om een duo te maken.</p>`) +
       `<hr class="divider">
+      <div class="eyebrow">Instellingen</div>
+      <div class="card">
+        <label class="field"><span>Gewichtseenheid</span></label>
+        <div class="seg" role="group" aria-label="Gewichtseenheid" style="max-width:200px">
+          ${['kg', 'lbs'].map((u) => `<button id="unit-${u}" aria-pressed="${unitLbl() === u}">${u}</button>`).join('')}
+        </div>
+        <p class="mut" style="margin:8px 0 0">Alleen het label wijzigt; bestaande getallen worden niet omgerekend.</p>
+      </div>
+      <div class="eyebrow">Synchronisatie</div>
+      <div class="card">` +
+      (syncCfg && syncCfg.gistId
+        ? `<p class="sub" style="margin:0 0 6px">Gekoppeld aan je privé-cloudopslag (GitHub Gist).</p>
+           <p class="mut" id="sync-status" style="margin:0 0 10px">${esc(syncStatus)}</p>
+           <div class="actions"><button id="sync-now">Nu synchroniseren</button><button class="danger ghost" id="sync-off">Ontkoppelen</button></div>`
+        : `<p class="sub" style="margin:0 0 10px">Synchroniseer automatisch tussen tablet en telefoon via een privé GitHub Gist (gratis).</p>
+           <label class="field"><span>GitHub-token met gist-rechten</span><input type="password" id="sync-token" placeholder="github_pat_… of ghp_…"></label>
+           <button class="primary" id="sync-connect">Verbinden</button>
+           <p class="mut" id="sync-status" style="margin:8px 0 0">${esc(syncStatus)}</p>
+           <p class="mut" style="margin:8px 0 0">Eenmalig: maak op github.com → Settings → Developer settings een token met alleen <strong>Gists: read &amp; write</strong>. Plak hetzelfde token op je andere apparaat en de gegevens lopen automatisch gelijk (nieuwste versie wint). Het token blijft op dit apparaat en zit niet in je back-upbestand.</p>`) +
+      `</div>
       <div class="eyebrow">Gegevens</div>
       <div class="actions">
         <button id="export-btn">Exporteer back-up</button>
@@ -639,10 +741,43 @@
     const fileInput = document.getElementById('import-file');
     document.getElementById('import-btn').addEventListener('click', () => fileInput.click());
     fileInput.addEventListener('change', importJson);
+    ['kg', 'lbs'].forEach((u) => document.getElementById('unit-' + u).addEventListener('click', () => {
+      db.settings.unit = u; save(); render();
+    }));
+    const syncStatusEl = document.getElementById('sync-status');
+    const connectBtn = document.getElementById('sync-connect');
+    if (connectBtn) connectBtn.addEventListener('click', async () => {
+      const token = document.getElementById('sync-token').value.trim();
+      if (!token) return;
+      connectBtn.disabled = true;
+      syncStatusEl.textContent = 'verbinden…';
+      try {
+        await connectSync(token);
+        render();
+      } catch (e) {
+        syncCfg = null;
+        localStorage.removeItem(SYNC_KEY);
+        syncStatusEl.textContent = 'verbinden mislukt (' + e.message + ') — controleer het token';
+        connectBtn.disabled = false;
+      }
+    });
+    const syncNowBtn = document.getElementById('sync-now');
+    if (syncNowBtn) syncNowBtn.addEventListener('click', async () => {
+      syncStatusEl.textContent = 'synchroniseren…';
+      await syncNow();
+    });
+    const syncOffBtn = document.getElementById('sync-off');
+    if (syncOffBtn) syncOffBtn.addEventListener('click', () => {
+      if (!confirm('Synchronisatie ontkoppelen? Je gegevens blijven op dit apparaat en in de cloud staan.')) return;
+      syncCfg = null;
+      localStorage.removeItem(SYNC_KEY);
+      syncStatus = '';
+      render();
+    });
   }
 
   // --- client detail ---
-  const uiState = { metric: 'top', navClients: true, navDuos: true };
+  const uiState = { metric: 'top', navClients: true, navDuos: true, measMetric: 'weight' };
   let pendingFree = []; // exercises picked for a free session, set by viewPickExercises
   let pendingDuo = null; // { duoId, picks: { [clientId]: [names] } }, set by viewDuoPick
   function viewClient(id) {
@@ -680,6 +815,19 @@
       `<button class="primary" data-nav="/klant/${id}/vrij">+ Vrije training</button>` +
       `</div>` +
 
+      `<div class="eyebrow">Metingen</div>` +
+      (() => {
+        const meas = db.measurements.filter((m) => m.clientId === id).sort((a, b) => a.date.localeCompare(b.date));
+        const lastM = meas[meas.length - 1];
+        const summary = lastM
+          ? `laatste (${fmtDate(lastM.date)}): ` + MEAS_FIELDS.filter((f) => lastM[f.key] != null).map((f) => `${(Math.round(lastM[f.key] * 10) / 10).toLocaleString('nl-NL')} ${f.unit()}`).join(' · ')
+          : 'nog geen metingen';
+        return `<div class="card tappable" data-nav="/klant/${id}/metingen" role="link" tabindex="0"><div class="row"><div class="grow">
+          <div class="title">Lichaamsmetingen</div>
+          <div class="sub">${esc(summary)}</div>
+        </div><span class="mut">›</span></div></div>`;
+      })() +
+
       `<div class="eyebrow">Progressie per oefening</div>` +
       (exerciseCards || `<div class="empty"><p>Nog geen trainingen gelogd. Start een training om progressie te zien.</p></div>`) +
 
@@ -706,6 +854,7 @@
               <div class="sub">${summary}</div>
               ${w.notes ? `<div class="mut">${esc(w.notes)}</div>` : ''}
             </div>
+            <button class="small ghost" data-edit-workout="${w.id}" aria-label="Bewerk training">✎</button>
             <button class="small danger ghost" data-del-workout="${w.id}" aria-label="Verwijder training">✕</button>
           </div>
         </div>`;
@@ -716,6 +865,9 @@
 
     bindNav();
 
+    document.querySelectorAll('[data-edit-workout]').forEach((b) => b.addEventListener('click', () => {
+      location.hash = `/klant/${id}/bewerk/${b.dataset.editWorkout}`;
+    }));
     document.querySelectorAll('[data-del-workout]').forEach((b) => b.addEventListener('click', () => {
       if (!confirm('Deze training verwijderen?')) return;
       db.workouts = db.workouts.filter((w) => w.id !== b.dataset.delWorkout);
@@ -727,8 +879,79 @@
       db.schemas = db.schemas.filter((s) => s.clientId !== id);
       db.workouts = db.workouts.filter((w) => w.clientId !== id);
       db.duos = db.duos.filter((d) => !d.clientIds.includes(id));
+      db.measurements = db.measurements.filter((m) => m.clientId !== id);
       save(); location.hash = '/';
     });
+  }
+
+  // --- body measurements ---
+  const MEAS_FIELDS = [
+    { key: 'weight', label: 'Lichaamsgewicht', unit: () => unitLbl() },
+    { key: 'fat', label: 'Vetpercentage', unit: () => '%' },
+    { key: 'waist', label: 'Taille', unit: () => 'cm' },
+    { key: 'chest', label: 'Borst', unit: () => 'cm' },
+    { key: 'arm', label: 'Arm', unit: () => 'cm' },
+    { key: 'leg', label: 'Bovenbeen', unit: () => 'cm' },
+  ];
+  function viewMeasurements(clientId) {
+    const c = clientById(clientId);
+    if (!c) { location.hash = '/'; return; }
+    const list = db.measurements.filter((m) => m.clientId === clientId).sort((a, b) => a.date.localeCompare(b.date));
+    const withData = MEAS_FIELDS.filter((f) => list.some((m) => m[f.key] != null));
+    if (!withData.some((f) => f.key === uiState.measMetric)) uiState.measMetric = withData.length ? withData[0].key : null;
+    const field = MEAS_FIELDS.find((f) => f.key === uiState.measMetric);
+    const fmtM = (v) => (Math.round(v * 10) / 10).toLocaleString('nl-NL');
+
+    $app.innerHTML = topbar(`Metingen — ${c.name}`, `/klant/${clientId}`) +
+      `<form class="card" id="meas-form">
+        <label class="field"><span>Datum</span><input type="date" name="date" value="${todayIso()}" required></label>
+        <div class="stat-grid cols2" style="gap:10px">
+          ${MEAS_FIELDS.map((f) => `<label class="field" style="margin:0"><span>${f.label} (${f.unit()})</span><input name="${f.key}" type="text" inputmode="decimal" placeholder="–"></label>`).join('')}
+        </div>
+        <p class="mut" style="margin:8px 0 10px">Vul in wat je gemeten hebt; de rest mag leeg blijven.</p>
+        <button class="primary wide" type="submit">Meting opslaan</button>
+      </form>` +
+      (withData.length && field ? `
+        <div class="eyebrow">Verloop</div>
+        <div class="card">
+          <label class="field"><span>Meetwaarde</span>
+            <select id="meas-metric">${withData.map((f) => `<option value="${f.key}" ${f.key === field.key ? 'selected' : ''}>${f.label}</option>`).join('')}</select>
+          </label>
+          <div class="chart-wrap" id="meas-chart"></div>
+        </div>` : '') +
+      `<div class="eyebrow">Alle metingen</div>` +
+      (list.length ? [...list].reverse().map((m) => `<div class="card"><div class="row"><div class="grow">
+          <div class="title">${esc(fmtDateFull(m.date))}</div>
+          <div class="sub">${MEAS_FIELDS.filter((f) => m[f.key] != null).map((f) => `${f.label} ${fmtM(m[f.key])} ${f.unit()}`).join(' · ')}</div>
+        </div><button class="small danger ghost" data-del-meas="${m.id}" aria-label="Verwijder meting">✕</button></div></div>`).join('')
+        : `<p class="mut">Nog geen metingen.</p>`);
+
+    bindNav();
+    if (withData.length && field) {
+      const pts = list.filter((m) => m[field.key] != null).map((m) => ({ date: m.date, value: m[field.key] }));
+      renderChart(document.getElementById('meas-chart'), pts, field.key === 'weight' ? 'kg' : field.unit());
+      document.getElementById('meas-metric').addEventListener('change', (ev) => {
+        uiState.measMetric = ev.target.value; render();
+      });
+    }
+    document.getElementById('meas-form').addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      const f = new FormData(ev.target);
+      const entry = { id: uid(), clientId, date: String(f.get('date')) };
+      let any = false;
+      for (const fld of MEAS_FIELDS) {
+        const v = String(f.get(fld.key)).trim();
+        if (v !== '') { entry[fld.key] = num(v); any = true; }
+      }
+      if (!any) { alert('Vul minstens één waarde in.'); return; }
+      db.measurements.push(entry);
+      save(); render();
+    });
+    document.querySelectorAll('[data-del-meas]').forEach((b) => b.addEventListener('click', () => {
+      if (!confirm('Deze meting verwijderen?')) return;
+      db.measurements = db.measurements.filter((m) => m.id !== b.dataset.delMeas);
+      save(); render();
+    }));
   }
 
   // --- exercise progress page ---
@@ -1135,33 +1358,36 @@
   }
 
   // --- workout logging ---
-  function viewWorkout(clientId, schemaId) {
+  function viewWorkout(clientId, schemaId, editId) {
     const c = clientById(clientId);
-    const isFree = schemaId === 'vrij';
-    const schema = isFree ? null : schemaById(schemaId);
-    if (!c || (!isFree && !schema)) { location.hash = c ? `/klant/${clientId}` : '/'; return; }
+    const editing = editId ? db.workouts.find((w) => w.id === editId && w.clientId === clientId) : null;
+    if (editId && !editing) { location.hash = c ? `/klant/${clientId}` : '/'; return; }
+    const isFree = !editing && schemaId === 'vrij';
+    const schema = editing ? schemaById(editing.schemaId) : isFree ? null : schemaById(schemaId);
+    if (!c || (!editing && !isFree && !schema)) { location.hash = c ? `/klant/${clientId}` : '/'; return; }
     if (isFree && !pendingFree.length) { location.hash = `/klant/${clientId}/vrij`; return; }
 
     // prefill: most recent logged sets of this exercise (any session), else schema targets
     const prefill = (ex) => {
-      const prev = lastEntryFor(clientId, ex.name);
+      const prev = lastEntryFor(clientId, ex.name, editing && editing.id);
       return prev
         ? prev.entry.sets.map((s) => ({ reps: s.reps, weight: s.weight }))
         : Array.from({ length: ex.sets || 3 }, () => ({ reps: ex.reps || 10, weight: ex.weight || 0 }));
     };
-    const baseList = isFree ? pendingFree.map((n) => ({ name: n })) : schema.exercises;
-    const draft = baseList.map((ex) => ({ name: ex.name, sets: prefill(ex) }));
+    const draft = editing
+      ? editing.entries.map((e) => ({ name: e.name, sets: e.sets.map((s) => ({ ...s })) }))
+      : (isFree ? pendingFree.map((n) => ({ name: n })) : schema.exercises).map((ex) => ({ name: ex.name, sets: prefill(ex) }));
     let swapping = null; // exercise index currently in swap mode
 
     const paint = () => {
       const extraOptions = knownExercises(clientId)
         .filter((n) => !draft.some((d) => d.name.toLowerCase() === n.toLowerCase()));
-      $app.innerHTML = topbar(`Training — ${c.name}`, `/klant/${clientId}`) +
-        `<p style="margin:0 0 12px"><span class="badge">${schema ? esc(schema.name) : 'Vrije training'}</span></p>` +
+      $app.innerHTML = topbar(editing ? `Bewerken — ${c.name}` : `Training — ${c.name}`, `/klant/${clientId}`) +
+        `<p style="margin:0 0 12px"><span class="badge">${schema ? esc(schema.name) : (editing && editing.duoId) ? 'Duo-training' : 'Vrije training'}</span></p>` +
         `<form id="wo-form">
-          <label class="field"><span>Datum</span><input type="date" name="date" value="${todayIso()}" required></label>
+          <label class="field"><span>Datum</span><input type="date" name="date" value="${editing ? esc(editing.date) : todayIso()}" required></label>
           ${draft.map((ex, xi) => {
-            const prev = lastEntryFor(clientId, ex.name);
+            const prev = lastEntryFor(clientId, ex.name, editing && editing.id);
             return `<div class="card">
             <div class="row" style="margin-bottom:2px"><div class="title grow">${esc(ex.name)}</div><button type="button" class="small ghost" data-swap="${xi}">⇄ Vervang</button></div>
             ${prev ? `<div class="mut" style="margin-bottom:8px">vorige sessie: ${esc(fmtDate(prev.date))}</div>` : `<div class="mut" style="margin-bottom:8px">eerste keer</div>`}
@@ -1183,8 +1409,8 @@
             <datalist id="ex-list">${extraOptions.map((n) => `<option value="${esc(n)}">`).join('')}</datalist>
             <button type="button" class="small" id="add-extra">+ Oefening</button>
           </div>
-          <label class="field"><span>Notities (optioneel)</span><textarea name="notes" rows="2" placeholder="bijv. voelde sterk, knie licht gevoelig"></textarea></label>
-          <button class="primary wide" type="submit">Training opslaan</button>
+          <label class="field"><span>Notities (optioneel)</span><textarea name="notes" rows="2" placeholder="bijv. voelde sterk, knie licht gevoelig">${editing ? esc(editing.notes || '') : ''}</textarea></label>
+          <button class="primary wide" type="submit">${editing ? 'Wijzigingen opslaan' : 'Training opslaan'}</button>
         </form>`;
 
       bindNav();
@@ -1195,7 +1421,7 @@
           draft[xi].sets[si][f] = f === 'rir' && inp.value.trim() === '' ? undefined : num(inp.value);
         });
       };
-      draft.forEach((ex, xi) => bindPrLive('set', String(xi), clientId, ex.name));
+      draft.forEach((ex, xi) => bindPrLive('set', String(xi), clientId, ex.name, editing && editing.id));
       const repaintKeeping = () => {
         const dateVal = document.querySelector('[name="date"]').value;
         const notesVal = document.querySelector('[name="notes"]').value;
@@ -1256,13 +1482,19 @@
           .map((ex) => ({ name: ex.name, sets: ex.sets.filter((s) => s.weight > 0 || s.reps > 0) }))
           .filter((ex) => ex.sets.length);
         if (!entries.length) { alert('Vul minstens één set in.'); return; }
-        db.workouts.push({
-          id: uid(), clientId,
-          schemaId: isFree ? null : schemaId,
-          date: String(f.get('date')),
-          notes: String(f.get('notes')).trim(),
-          entries,
-        });
+        if (editing) {
+          editing.entries = entries;
+          editing.date = String(f.get('date'));
+          editing.notes = String(f.get('notes')).trim();
+        } else {
+          db.workouts.push({
+            id: uid(), clientId,
+            schemaId: isFree ? null : schemaId,
+            date: String(f.get('date')),
+            notes: String(f.get('notes')).trim(),
+            entries,
+          });
+        }
         save();
         if (isFree) pendingFree = [];
         location.hash = `/klant/${clientId}`;
@@ -1289,7 +1521,7 @@
         const d = JSON.parse(reader.result);
         if (!Array.isArray(d.clients)) throw new Error('ongeldig bestand');
         if (!confirm('Huidige gegevens vervangen door deze back-up?')) return;
-        db = { clients: d.clients, schemas: d.schemas || [], workouts: d.workouts || [], duos: d.duos || [] };
+        db = normalizeDb(d);
         save(); render();
       } catch {
         alert('Dit bestand is geen geldige Coachlog-back-up.');
@@ -1336,6 +1568,7 @@
 
   window.addEventListener('hashchange', render);
   render();
+  if (syncCfg && syncCfg.gistId && navigator.onLine) syncNow();
 
   // offline: alleen op https/localhost (PWA-hosting); op file:// of zonder sw.js gebeurt er niets
   if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
