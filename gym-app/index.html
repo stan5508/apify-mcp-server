@@ -257,7 +257,7 @@
   const $app = document.getElementById('app');
 
   // ---------- data ----------
-  const emptyDb = () => ({ clients: [], schemas: [], workouts: [], duos: [], measurements: [], settings: { unit: 'kg' }, updatedAt: 0 });
+  const emptyDb = () => ({ clients: [], schemas: [], workouts: [], duos: [], duoSchemas: [], measurements: [], settings: { unit: 'kg' }, updatedAt: 0 });
   let db = loadDb();
   function loadDb() {
     try {
@@ -269,7 +269,7 @@
   function normalizeDb(d) {
     const out = {
       clients: d.clients || [], schemas: d.schemas || [], workouts: d.workouts || [], duos: d.duos || [],
-      measurements: d.measurements || [], settings: d.settings || { unit: 'kg' }, updatedAt: d.updatedAt || 0,
+      duoSchemas: d.duoSchemas || [], measurements: d.measurements || [], settings: d.settings || { unit: 'kg' }, updatedAt: d.updatedAt || 0,
     };
     // migrate uniform sets/reps/weight to per-set targets
     for (const s of out.schemas) {
@@ -358,6 +358,8 @@
 
   const clientById = (id) => db.clients.find((c) => c.id === id);
   const duoById = (id) => db.duos.find((d) => d.id === id);
+  const duoSchemaById = (id) => db.duoSchemas.find((s) => s.id === id);
+  const duoSchemasOf = (duoId) => db.duoSchemas.filter((s) => s.duoId === duoId);
   const duoName = (d) => d.name || d.clientIds.map((id) => (clientById(id) || { name: '?' }).name).join(' & ');
   const byName = (a, b) => a.localeCompare(b, 'nl', { sensitivity: 'base' });
   const sortedClients = () => [...db.clients].sort((a, b) => byName(a.name, b.name));
@@ -671,7 +673,8 @@
     if (parts[0] === 'klant' && parts[2] === 'vrij') return viewPickExercises(parts[1]);
     if (parts[0] === 'klant') return viewClient(parts[1]);
     if (parts[0] === 'duo' && parts[2] === 'vrij') return viewDuoPick(parts[1]);
-    if (parts[0] === 'duo' && parts[2] === 'training') return viewDuoWorkout(parts[1]);
+    if (parts[0] === 'duo' && parts[2] === 'schema') return viewDuoSchema(parts[1], parts[3]);
+    if (parts[0] === 'duo' && parts[2] === 'training') return viewDuoWorkout(parts[1], parts[3]);
     if (parts[0] === 'duo') return viewDuo(parts[1]);
     return viewHome();
   }
@@ -870,7 +873,7 @@
         return `<div class="card">
           <div class="row">
             <div class="grow">
-              <div class="title">${esc(fmtDateFull(w.date))} <span class="badge">${schema ? esc(schema.name) : w.duoId ? 'Duo-training' : 'Vrije training'}</span></div>
+              <div class="title">${esc(fmtDateFull(w.date))} <span class="badge">${esc(schema ? schema.name : w.duoId ? (duoSchemaById(w.schemaId) || {}).name || 'Duo-training' : 'Vrije training')}</span></div>
               <div class="sub">${summary}</div>
               ${w.notes ? `<div class="mut">${esc(w.notes)}</div>` : ''}
             </div>
@@ -1086,7 +1089,18 @@
     const dates = [...new Set(duoWorkouts.map((w) => w.date))].sort().reverse();
 
     $app.innerHTML = topbar(duoName(duo), '/') +
-      `<div class="actions"><button class="primary" data-nav="/duo/${duoId}/vrij">Start duo-training</button></div>` +
+      `<div class="actions">` +
+      duoSchemasOf(duoId).map((s) => `<button class="primary" data-nav="/duo/${duoId}/training/${s.id}">Start: ${esc(s.name)}</button>`).join('') +
+      `<button class="primary" data-nav="/duo/${duoId}/vrij">+ Vrije duo-training</button></div>` +
+
+      `<div class="eyebrow">Schema's</div>` +
+      duoSchemasOf(duoId).map((s) => `<div class="card tappable" data-nav="/duo/${duoId}/schema/${s.id}" role="link" tabindex="0">
+        <div class="row"><div class="grow">
+          <div class="title">${esc(s.name)}</div>
+          <div class="sub">${members.map((m) => `${esc(m.name)}: ${(s.plans[m.id] || []).map((e) => esc(e.name)).join(', ') || '—'}`).join(' · ')}</div>
+        </div><span class="mut">›</span></div>
+      </div>`).join('') +
+      `<button class="wide" data-nav="/duo/${duoId}/schema/nieuw">+ Nieuw duo-schema</button>` +
 
       `<div class="eyebrow">Leden</div>` +
       members.map((m) => {
@@ -1116,8 +1130,117 @@
     document.getElementById('del-duo').addEventListener('click', () => {
       if (!confirm('Dit duo verwijderen? De klanten en hun trainingen blijven bewaard.')) return;
       db.duos = db.duos.filter((d) => d.id !== duoId);
+      db.duoSchemas = db.duoSchemas.filter((s) => s.duoId !== duoId);
       save(); location.hash = '/';
     });
+  }
+
+  // --- duo schema editor: per member, per-set targets ---
+  function viewDuoSchema(duoId, sid) {
+    const duo = duoById(duoId);
+    const members = duo ? duo.clientIds.map(clientById) : [];
+    if (!duo || members.some((m) => !m)) { location.hash = '/'; return; }
+    const isNew = sid === 'nieuw';
+    const schema = isNew ? { id: uid(), duoId, name: '', plans: {} } : duoSchemaById(sid);
+    if (!schema || schema.duoId !== duoId) { location.hash = `/duo/${duoId}`; return; }
+    const newTarget = () => ({ reps: 10, weight: 0 });
+    const newExercise = () => ({ id: uid(), name: '', targets: [newTarget(), newTarget(), newTarget()] });
+    const draft = JSON.parse(JSON.stringify(schema));
+    for (const m of members) {
+      draft.plans[m.id] = (draft.plans[m.id] || []).map((e) => ({ ...e, targets: e.targets && e.targets.length ? e.targets : [newTarget(), newTarget(), newTarget()] }));
+      if (!draft.plans[m.id].length) draft.plans[m.id].push(newExercise());
+    }
+
+    const paint = () => {
+      $app.innerHTML = topbar(isNew ? 'Nieuw duo-schema' : 'Duo-schema bewerken', `/duo/${duoId}`) +
+        `<form id="dschema-form">
+          <label class="field"><span>Naam schema</span><input name="name" required placeholder="bijv. Duo full body" value="${esc(draft.name)}"></label>` +
+          members.map((m, mi) =>
+            `<div class="eyebrow">${esc(m.name)} — elke set apart</div>` +
+            draft.plans[m.id].map((e, i) => `<div class="card">
+              <div class="row" style="margin-bottom:8px">
+                <input data-dexname="${mi}.${i}" class="grow" required placeholder="bijv. Squat" value="${esc(e.name)}">
+                <button type="button" class="small danger ghost" data-drm-ex="${mi}.${i}" aria-label="Verwijder oefening">✕</button>
+              </div>
+              <div class="tgt-row"><span></span><span class="col-head">Gewicht (${unitLbl()})</span><span class="col-head">Herh.</span><span></span></div>
+              ${e.targets.map((t, si) => `<div class="tgt-row">
+                <span class="n">${si + 1}</span>
+                <input data-tgt="${mi}.${i}.${si}" data-f="weight" type="text" inputmode="decimal" value="${t.weight || ''}" placeholder="${unitLbl()}">
+                <input data-tgt="${mi}.${i}.${si}" data-f="reps" type="number" min="0" inputmode="numeric" value="${t.reps || ''}" placeholder="herh.">
+                <button type="button" class="small danger ghost" data-drm-tgt="${mi}.${i}.${si}" aria-label="Verwijder set">✕</button>
+              </div>`).join('')}
+              <button type="button" class="small" data-dadd-tgt="${mi}.${i}">+ Set</button>
+            </div>`).join('') +
+            `<button type="button" class="small" data-dadd-ex="${mi}" style="margin:4px 0 16px">+ Oefening voor ${esc(m.name)}</button>`
+          ).join('') +
+          `<button class="primary wide" type="submit">Duo-schema opslaan</button>
+        </form>` +
+        (!isNew ? `<hr class="divider"><button class="danger ghost" id="del-dschema">Duo-schema verwijderen</button>` : '');
+
+      bindNav();
+      const planOf = (mi) => draft.plans[members[mi].id];
+      const syncDraft = () => {
+        draft.name = document.querySelector('[name="name"]').value;
+        document.querySelectorAll('[data-dexname]').forEach((inp) => {
+          const [mi, i] = inp.dataset.dexname.split('.').map(Number);
+          planOf(mi)[i].name = inp.value;
+        });
+        document.querySelectorAll('[data-tgt]').forEach((inp) => {
+          const [mi, i, si] = inp.dataset.tgt.split('.').map(Number);
+          planOf(mi)[i].targets[si][inp.dataset.f] = num(inp.value);
+        });
+      };
+      document.querySelectorAll('[data-dadd-ex]').forEach((b) => b.addEventListener('click', () => {
+        syncDraft();
+        planOf(+b.dataset.daddEx).push(newExercise());
+        paint();
+      }));
+      document.querySelectorAll('[data-drm-ex]').forEach((b) => b.addEventListener('click', () => {
+        syncDraft();
+        const [mi, i] = b.dataset.drmEx.split('.').map(Number);
+        planOf(mi).splice(i, 1);
+        if (!planOf(mi).length) planOf(mi).push(newExercise());
+        paint();
+      }));
+      document.querySelectorAll('[data-dadd-tgt]').forEach((b) => b.addEventListener('click', () => {
+        syncDraft();
+        const [mi, i] = b.dataset.daddTgt.split('.').map(Number);
+        const targets = planOf(mi)[i].targets;
+        targets.push(targets.length ? { ...targets[targets.length - 1] } : newTarget());
+        paint();
+      }));
+      document.querySelectorAll('[data-drm-tgt]').forEach((b) => b.addEventListener('click', () => {
+        syncDraft();
+        const [mi, i, si] = b.dataset.drmTgt.split('.').map(Number);
+        planOf(mi)[i].targets.splice(si, 1);
+        if (!planOf(mi)[i].targets.length) planOf(mi)[i].targets.push(newTarget());
+        paint();
+      }));
+      document.getElementById('dschema-form').addEventListener('submit', (ev) => {
+        ev.preventDefault();
+        syncDraft();
+        draft.name = draft.name.trim();
+        for (const m of members) {
+          draft.plans[m.id] = draft.plans[m.id]
+            .filter((e) => e.name.trim())
+            .map((e) => ({ id: e.id, name: e.name.trim(), targets: e.targets }));
+        }
+        if (!draft.name || members.some((m) => !draft.plans[m.id].length)) {
+          alert('Geef het schema een naam en minstens één oefening per persoon.');
+          return;
+        }
+        if (isNew) db.duoSchemas.push(draft);
+        else db.duoSchemas[db.duoSchemas.findIndex((s) => s.id === sid)] = draft;
+        save(); location.hash = `/duo/${duoId}`;
+      });
+      const del = document.getElementById('del-dschema');
+      if (del) del.addEventListener('click', () => {
+        if (!confirm('Dit duo-schema verwijderen? Gelogde trainingen blijven bewaard.')) return;
+        db.duoSchemas = db.duoSchemas.filter((s) => s.id !== sid);
+        save(); location.hash = `/duo/${duoId}`;
+      });
+    };
+    paint();
   }
 
   // --- duo free workout: pick exercises per member ---
@@ -1185,28 +1308,33 @@
   }
 
   // --- duo workout logging: both members on one screen ---
-  function viewDuoWorkout(duoId) {
+  function viewDuoWorkout(duoId, duoSchemaId) {
     const duo = duoById(duoId);
     const members = duo ? duo.clientIds.map(clientById) : [];
     if (!duo || members.some((m) => !m)) { location.hash = '/'; return; }
-    if (!pendingDuo || pendingDuo.duoId !== duoId) { location.hash = `/duo/${duoId}/vrij`; return; }
+    const duoSchema = duoSchemaId ? duoSchemaById(duoSchemaId) : null;
+    if (duoSchemaId && (!duoSchema || duoSchema.duoId !== duoId)) { location.hash = `/duo/${duoId}`; return; }
+    if (!duoSchema && (!pendingDuo || pendingDuo.duoId !== duoId)) { location.hash = `/duo/${duoId}/vrij`; return; }
 
-    const prefill = (clientId, name) => {
+    const prefill = (clientId, name, targets) => {
       const prev = lastEntryFor(clientId, name);
       if (prev) return prev.entry.sets.map((s) => ({ reps: s.reps, weight: s.weight }));
-      const targets = targetsFor(clientId, name);
-      return targets
-        ? targets.map((t) => ({ reps: t.reps, weight: t.weight }))
+      const t = (targets && targets.length ? targets : null) || targetsFor(clientId, name);
+      return t
+        ? t.map((x) => ({ reps: x.reps, weight: x.weight }))
         : Array.from({ length: 3 }, () => ({ reps: 10, weight: 0 }));
     };
     const draft = members.map((m) => ({
       client: m,
-      exercises: (pendingDuo.picks[m.id] || []).map((n) => ({ name: n, sets: prefill(m.id, n) })),
+      exercises: duoSchema
+        ? (duoSchema.plans[m.id] || []).map((ex) => ({ name: ex.name, sets: prefill(m.id, ex.name, ex.targets) }))
+        : (pendingDuo.picks[m.id] || []).map((n) => ({ name: n, sets: prefill(m.id, n) })),
     }));
     let swapping = null; // "mi.xi" of exercise currently in swap mode
 
     const paint = () => {
       $app.innerHTML = topbar(`Duo-training — ${duoName(duo)}`, `/duo/${duoId}`) +
+        `<p style="margin:0 0 12px"><span class="badge">${duoSchema ? esc(duoSchema.name) : 'Vrije training'}</span></p>` +
         `<form id="duo-form">
           <label class="field"><span>Datum</span><input type="date" name="date" value="${todayIso()}" required></label>
           ${draft.map((mem, mi) =>
@@ -1310,7 +1438,7 @@
             .map((ex) => ({ name: ex.name, sets: ex.sets.filter((s) => s.weight > 0 || s.reps > 0) }))
             .filter((ex) => ex.sets.length);
           if (!entries.length) continue;
-          db.workouts.push({ id: uid(), clientId: mem.client.id, schemaId: null, duoId, date, notes, entries });
+          db.workouts.push({ id: uid(), clientId: mem.client.id, schemaId: duoSchema ? duoSchema.id : null, duoId, date, notes, entries });
           saved++;
         }
         if (!saved) { alert('Vul minstens één set in.'); return; }
@@ -1446,7 +1574,7 @@
       const extraOptions = knownExercises(clientId)
         .filter((n) => !draft.some((d) => d.name.toLowerCase() === n.toLowerCase()));
       $app.innerHTML = topbar(editing ? `Bewerken — ${c.name}` : `Training — ${c.name}`, `/klant/${clientId}`) +
-        `<p style="margin:0 0 12px"><span class="badge">${schema ? esc(schema.name) : (editing && editing.duoId) ? 'Duo-training' : 'Vrije training'}</span></p>` +
+        `<p style="margin:0 0 12px"><span class="badge">${esc(schema ? schema.name : editing && editing.duoId ? (duoSchemaById(editing.schemaId) || {}).name || 'Duo-training' : 'Vrije training')}</span></p>` +
         `<form id="wo-form">
           <label class="field"><span>Datum</span><input type="date" name="date" value="${editing ? esc(editing.date) : todayIso()}" required></label>
           ${draft.map((ex, xi) => {
