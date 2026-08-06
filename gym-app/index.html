@@ -89,7 +89,41 @@
     font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
     -webkit-font-smoothing: antialiased;
   }
-  #app { max-width: 640px; margin: 0 auto; padding: 0 16px 96px; }
+  .layout {
+    max-width: 980px; margin: 0 auto; padding: 0 16px;
+    display: grid; grid-template-columns: 230px minmax(0, 1fr);
+    gap: 28px; align-items: start;
+  }
+  #side { position: sticky; top: 0; max-height: 100vh; overflow-y: auto; padding-bottom: 24px; }
+  #app { max-width: 640px; padding-bottom: 96px; min-width: 0; }
+  @media (max-width: 759px) {
+    .layout { display: block; }
+    #side { position: static; max-height: none; border-bottom: 1px solid var(--grid); padding-bottom: 4px; margin-bottom: 4px; }
+  }
+
+  .brand-row { padding: 14px 0 10px; border-bottom: 1px solid var(--grid); margin-bottom: 10px; }
+  .brand-row a { text-decoration: none; }
+  .navgrp { margin-bottom: 6px; }
+  .navgrp summary {
+    cursor: pointer; list-style: none; user-select: none;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 8px; border-radius: 8px;
+    font-size: 12px; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase;
+    color: var(--muted);
+  }
+  .navgrp summary::-webkit-details-marker { display: none; }
+  .navgrp summary:hover { background: var(--wash); }
+  .navgrp summary .count { font-weight: 600; font-variant-numeric: tabular-nums; }
+  .navgrp summary .chev { transition: transform 120ms ease; }
+  .navgrp[open] summary .chev { transform: rotate(180deg); }
+  .navlink {
+    display: block; padding: 8px 10px; border-radius: 8px;
+    color: var(--ink); text-decoration: none; font-size: 15px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .navlink:hover { background: var(--wash); }
+  .navlink.active { background: var(--wash); color: var(--accent-strong); font-weight: 600; }
+  .navlink.add { color: var(--accent-strong); font-size: 14px; }
 
   .topbar {
     display: flex; align-items: center; gap: 12px;
@@ -198,7 +232,10 @@
   }
 </style>
 
-<div id="app"></div>
+<div class="layout">
+  <aside id="side"></aside>
+  <main id="app"></main>
+</div>
 
 <script>
 (() => {
@@ -223,6 +260,9 @@
   const clientById = (id) => db.clients.find((c) => c.id === id);
   const duoById = (id) => db.duos.find((d) => d.id === id);
   const duoName = (d) => d.name || d.clientIds.map((id) => (clientById(id) || { name: '?' }).name).join(' & ');
+  const byName = (a, b) => a.localeCompare(b, 'nl', { sensitivity: 'base' });
+  const sortedClients = () => [...db.clients].sort((a, b) => byName(a.name, b.name));
+  const sortedDuos = () => db.duos.filter((d) => d.clientIds.every(clientById)).sort((a, b) => byName(duoName(a), duoName(b)));
   const schemaById = (id) => db.schemas.find((s) => s.id === id);
   const schemasOf = (clientId) => db.schemas.filter((s) => s.clientId === clientId);
   const workoutsOf = (clientId) => db.workouts.filter((w) => w.clientId === clientId).sort((a, b) => a.date.localeCompare(b.date));
@@ -440,10 +480,35 @@
   }
 
   // ---------- views ----------
+  const $side = document.getElementById('side');
+  function renderSidebar() {
+    const hash = location.hash.slice(1) || '/';
+    const activeClient = (hash.match(/^\/klant\/([^/]+)/) || [])[1];
+    const activeDuo = (hash.match(/^\/duo\/([^/]+)/) || [])[1];
+    const clients = sortedClients();
+    const duos = sortedDuos();
+    $side.innerHTML = `
+      <div class="brand-row"><a class="brand" href="#/">Coachlog</a></div>
+      <details class="navgrp" data-key="Clients" ${uiState.navClients ? 'open' : ''}>
+        <summary>Klanten <span class="chev">▾</span></summary>
+        ${clients.map((c) => `<a class="navlink${c.id === activeClient ? ' active' : ''}" href="#/klant/${c.id}">${esc(c.name)}</a>`).join('')}
+        <a class="navlink add" href="#/">+ Nieuwe klant</a>
+      </details>
+      <details class="navgrp" data-key="Duos" ${uiState.navDuos ? 'open' : ''}>
+        <summary>Duo klanten <span class="chev">▾</span></summary>
+        ${duos.map((d) => `<a class="navlink${d.id === activeDuo ? ' active' : ''}" href="#/duo/${d.id}">${esc(duoName(d))}</a>`).join('')}
+        <a class="navlink add" href="#/">+ Nieuw duo</a>
+      </details>`;
+    $side.querySelectorAll('details').forEach((d) => d.addEventListener('toggle', () => {
+      uiState['nav' + d.dataset.key] = d.open;
+    }));
+  }
+
   function render() {
     const hash = location.hash.slice(1) || '/';
     const parts = hash.split('/').filter(Boolean);
     window.scrollTo(0, 0);
+    renderSidebar();
     if (parts[0] === 'klant' && parts[2] === 'schema') return viewSchema(parts[1], parts[3]);
     if (parts[0] === 'klant' && parts[2] === 'training') return viewWorkout(parts[1], parts[3]);
     if (parts[0] === 'klant' && parts[2] === 'oefening') return viewExercise(parts[1], parts[3]);
@@ -458,48 +523,30 @@
   function topbar(title, backHash) {
     return `<div class="topbar">` +
       (backHash != null ? `<button class="back" data-nav="${esc(backHash)}" aria-label="Terug">←</button>` : '') +
-      (backHash != null ? `<h1>${esc(title)}</h1>` : `<h1><span class="brand">Coachlog</span></h1>`) +
+      `<h1>${esc(title)}</h1>` +
       `</div>`;
   }
 
   // --- home: client list ---
   function viewHome() {
-    const cards = db.clients.map((c) => {
-      const ws = workoutsOf(c.id);
-      const last = ws[ws.length - 1];
-      return `<div class="card tappable" data-nav="/klant/${c.id}" role="link" tabindex="0">
-        <div class="row">
-          <div class="grow">
-            <div class="title">${esc(c.name)}</div>
-            <div class="sub">${ws.length} training${ws.length === 1 ? '' : 'en'}${last ? ' · laatste: ' + esc(fmtDate(last.date)) : ''}</div>
-            ${c.goal ? `<div class="mut">Doel: ${esc(c.goal)}</div>` : ''}
-          </div>
-          <span class="mut">›</span>
-        </div>
-      </div>`;
-    }).join('');
-
-    $app.innerHTML = topbar('Coachlog') +
-      `<div class="eyebrow">Klanten</div>` +
-      (cards || `<div class="empty"><p>Nog geen klanten. Voeg je eerste klant toe, of bekijk de app met voorbeelddata.</p><button class="primary" id="demo-btn">Voorbeelddata laden</button></div>`) +
-      `<form class="card" id="add-client">
+    const clients = sortedClients();
+    $app.innerHTML = topbar('Overzicht') +
+      `<div class="stat-grid">
+        <div class="stat"><div class="lbl">Klanten</div><div class="val">${clients.length}</div></div>
+        <div class="stat"><div class="lbl">Duo's</div><div class="val">${sortedDuos().length}</div></div>
+        <div class="stat"><div class="lbl">Trainingen</div><div class="val">${db.workouts.length}</div></div>
+      </div>` +
+      (clients.length ? '' : `<div class="empty"><p>Nog geen klanten. Voeg je eerste klant toe, of bekijk de app met voorbeelddata.</p><button class="primary" id="demo-btn">Voorbeelddata laden</button></div>`) +
+      `<div class="eyebrow">Nieuwe klant</div>
+      <form class="card" id="add-client">
         <label class="field"><span>Naam nieuwe klant</span><input name="name" required placeholder="bijv. Sanne de Vries"></label>
         <label class="field"><span>Doel (optioneel)</span><input name="goal" placeholder="bijv. kracht opbouwen, 5 kg afvallen"></label>
         <button class="primary wide" type="submit">Klant toevoegen</button>
       </form>
-      <div class="eyebrow">Duo's</div>` +
-      db.duos.filter((d) => d.clientIds.every(clientById)).map((d) => {
-        const sessions = new Set(db.workouts.filter((w) => w.duoId === d.id).map((w) => w.date)).size;
-        return `<div class="card tappable" data-nav="/duo/${d.id}" role="link" tabindex="0">
-          <div class="row"><div class="grow">
-            <div class="title">${esc(duoName(d))}</div>
-            <div class="sub">${d.clientIds.map((id) => esc(clientById(id).name)).join(' + ')} · ${sessions} duo-training${sessions === 1 ? '' : 'en'}</div>
-          </div><span class="mut">›</span></div>
-        </div>`;
-      }).join('') +
-      (db.clients.length >= 2 ? `<form class="card" id="add-duo">
-        <label class="field"><span>Klant 1</span><select name="a">${db.clients.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select></label>
-        <label class="field"><span>Klant 2</span><select name="b">${db.clients.map((c, i) => `<option value="${c.id}" ${i === 1 ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>
+      <div class="eyebrow">Nieuw duo</div>` +
+      (clients.length >= 2 ? `<form class="card" id="add-duo">
+        <label class="field"><span>Klant 1</span><select name="a">${clients.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select></label>
+        <label class="field"><span>Klant 2</span><select name="b">${clients.map((c, i) => `<option value="${c.id}" ${i === 1 ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</select></label>
         <label class="field"><span>Naam duo (optioneel)</span><input name="name" placeholder="bijv. Sanne & Piet"></label>
         <button class="primary wide" type="submit">Duo toevoegen</button>
       </form>` : `<p class="mut">Voeg minstens twee klanten toe om een duo te maken.</p>`) +
@@ -541,7 +588,7 @@
   }
 
   // --- client detail ---
-  const uiState = { metric: 'top' };
+  const uiState = { metric: 'top', navClients: true, navDuos: true };
   let pendingFree = []; // exercises picked for a free session, set by viewPickExercises
   let pendingDuo = null; // { duoId, picks: { [clientId]: [names] } }, set by viewDuoPick
   function viewClient(id) {
