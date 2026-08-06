@@ -209,8 +209,20 @@
   }
   .tooltip .tv { font-weight: 650; font-variant-numeric: tabular-nums; }
 
-  .set-row { display: grid; grid-template-columns: 28px 1fr 1fr 34px; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .set-row { display: grid; grid-template-columns: 24px 1fr 1fr 58px 34px; gap: 8px; align-items: center; margin-bottom: 8px; }
   .set-row .n { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .prev-hint { margin: -4px 0 8px 32px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .pr-live {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 13px; font-weight: 650; color: var(--good);
+    border: 1px solid var(--good); background: rgba(12, 163, 12, 0.10);
+    border-radius: 99px; padding: 3px 12px; margin-bottom: 10px;
+  }
+  .pr-live[hidden] { display: none; }
+  @media (prefers-reduced-motion: no-preference) {
+    .pr-live { animation: pr-pop 300ms cubic-bezier(0.2, 1.4, 0.4, 1); }
+    @keyframes pr-pop { from { transform: scale(0.7); opacity: 0; } }
+  }
   .ex-row { display: grid; grid-template-columns: 1fr 62px 62px 76px 34px; gap: 6px; align-items: center; margin-bottom: 8px; }
   .col-head { font-size: 12px; color: var(--muted); }
 
@@ -220,7 +232,7 @@
   .divider { border: none; border-top: 1px solid var(--grid); margin: 24px 0; }
   .actions { display: flex; gap: 8px; flex-wrap: wrap; }
   .badge { display: inline-block; font-size: 12px; color: var(--accent-strong); background: var(--wash); border-radius: 99px; padding: 2px 9px; font-weight: 600; }
-  .badge.pr { color: var(--good); background: transparent; border: 1px solid var(--good); }
+  .badge.pr { color: var(--good); background: rgba(12, 163, 12, 0.10); border: 1px solid var(--good); }
 
   .chips { display: flex; flex-wrap: wrap; gap: 8px; }
   .chip { border-radius: 99px; padding: 8px 14px; font-size: 14px; }
@@ -321,6 +333,48 @@
       if (entry) return { entry, date: ws[i].date };
     }
     return null;
+  }
+
+  // best logged top weight for an exercise, null if never done
+  function bestTopFor(clientId, name) {
+    const sessions = exerciseSessions(clientId, name);
+    return sessions.length ? Math.max(...sessions.map((s) => s.top)) : null;
+  }
+
+  // set input rows for workout logging, incl. RIR column and previous-session hints
+  function setRowsHtml(attr, idx, sets, prevSets) {
+    const header = `<div class="set-row"><span></span><span class="col-head">Gewicht (kg)</span><span class="col-head">Herh.</span><span class="col-head">RIR</span><span></span></div>`;
+    return header + sets.map((s, si) => {
+      const p = prevSets && prevSets[si];
+      return `<div class="set-row">
+        <span class="n">${si + 1}</span>
+        <input data-${attr}="${idx}.${si}" data-f="weight" type="text" inputmode="decimal" value="${s.weight || ''}" placeholder="kg">
+        <input data-${attr}="${idx}.${si}" data-f="reps" type="number" min="0" inputmode="numeric" value="${s.reps || ''}" placeholder="herh.">
+        <input data-${attr}="${idx}.${si}" data-f="rir" type="number" min="0" max="10" inputmode="numeric" value="${s.rir ?? ''}" placeholder="–" aria-label="Reps in reserve">
+        <button type="button" class="small danger ghost" data-rm-${attr}="${idx}.${si}" aria-label="Verwijder set">✕</button>
+      </div>` +
+      (p ? `<div class="prev-hint">vorige keer: ${esc(fmtKg(p.weight))} × ${p.reps}${p.rir != null ? ' · RIR ' + p.rir : ''}</div>` : '');
+    }).join('');
+  }
+
+  // live PR badge: show while typed weight beats the client's best for that exercise
+  function bindPrLive(attr, key, clientId, exName) {
+    const badge = document.querySelector(`[data-pr-live="${key}"]`);
+    if (!badge) return;
+    const best = bestTopFor(clientId, exName);
+    if (best == null) return;
+    const inputs = [...document.querySelectorAll(`[data-${attr}^="${key}."][data-f="weight"]`)];
+    const update = () => {
+      const cur = Math.max(0, ...inputs.map((i) => num(i.value)));
+      if (cur > best) {
+        badge.hidden = false;
+        badge.innerHTML = `🏆 Nieuw PR! ${esc(fmtKg(cur))} <span style="font-weight:400">(was ${esc(fmtKg(best))})</span>`;
+      } else {
+        badge.hidden = true;
+      }
+    };
+    inputs.forEach((i) => i.addEventListener('input', update));
+    update();
   }
 
   // all sessions of one exercise, chronological, with metrics and PR markers
@@ -725,7 +779,7 @@
       [...sessions].reverse().map((s) => `<div class="card">
         <div class="row"><div class="grow">
           <div class="title">${esc(fmtDateFull(s.date))} ${s.isPr ? '<span class="badge pr">🏆 PR</span>' : ''}</div>
-          <div class="sub">${s.sets.map((st) => `${esc(fmtKg(st.weight))} × ${st.reps}`).join(' · ')}</div>
+          <div class="sub">${s.sets.map((st) => `${esc(fmtKg(st.weight))} × ${st.reps}${st.rir != null ? ' <span class="mut">RIR ' + st.rir + '</span>' : ''}`).join(' · ')}</div>
         </div>
         <div class="mut" style="font-variant-numeric:tabular-nums">${esc(fmtKg(s.top))}</div></div>
       </div>`).join('');
@@ -896,17 +950,16 @@
           <label class="field"><span>Datum</span><input type="date" name="date" value="${todayIso()}" required></label>
           ${draft.map((mem, mi) =>
             `<div class="eyebrow">${esc(mem.client.name)}</div>` +
-            mem.exercises.map((ex, xi) => `<div class="card">
-              <div class="title" style="margin-bottom:8px">${esc(ex.name)}</div>
-              <div class="set-row"><span></span><span class="col-head">Gewicht (kg)</span><span class="col-head">Herhalingen</span><span></span></div>
-              ${ex.sets.map((s, si) => `<div class="set-row">
-                <span class="n">${si + 1}</span>
-                <input data-dset="${mi}.${xi}.${si}" data-f="weight" type="text" inputmode="decimal" value="${s.weight || ''}" placeholder="kg">
-                <input data-dset="${mi}.${xi}.${si}" data-f="reps" type="number" min="0" inputmode="numeric" value="${s.reps || ''}" placeholder="herh.">
-                <button type="button" class="small danger ghost" data-drm-set="${mi}.${xi}.${si}" aria-label="Verwijder set">✕</button>
-              </div>`).join('')}
+            mem.exercises.map((ex, xi) => {
+              const prev = lastEntryFor(mem.client.id, ex.name);
+              return `<div class="card">
+              <div class="title" style="margin-bottom:2px">${esc(ex.name)}</div>
+              ${prev ? `<div class="mut" style="margin-bottom:8px">vorige sessie: ${esc(fmtDate(prev.date))}</div>` : `<div class="mut" style="margin-bottom:8px">eerste keer</div>`}
+              <div class="pr-live" data-pr-live="${mi}.${xi}" hidden></div>
+              ${setRowsHtml('dset', `${mi}.${xi}`, ex.sets, prev && prev.entry.sets)}
               <button type="button" class="small" data-dadd-set="${mi}.${xi}">+ Set</button>
-            </div>`).join('') +
+            </div>`;
+            }).join('') +
             `<div class="card">
               <label class="field"><span>Oefening toevoegen voor ${esc(mem.client.name)}</span>
                 <input data-extra-input="${mi}" list="dex-list-${mi}" placeholder="bijv. Lat pulldown"></label>
@@ -924,9 +977,11 @@
       const syncDraft = () => {
         document.querySelectorAll('[data-dset]').forEach((inp) => {
           const [mi, xi, si] = inp.dataset.dset.split('.').map(Number);
-          draft[mi].exercises[xi].sets[si][inp.dataset.f] = num(inp.value);
+          const f = inp.dataset.f;
+          draft[mi].exercises[xi].sets[si][f] = f === 'rir' && inp.value.trim() === '' ? undefined : num(inp.value);
         });
       };
+      draft.forEach((mem, mi) => mem.exercises.forEach((ex, xi) => bindPrLive('dset', `${mi}.${xi}`, mem.client.id, ex.name)));
       const repaintKeeping = () => {
         const dateVal = document.querySelector('[name="date"]').value;
         const notesVal = document.querySelector('[name="notes"]').value;
@@ -942,9 +997,9 @@
         sets.push(lastSet ? { ...lastSet } : { reps: 10, weight: 0 });
         repaintKeeping();
       }));
-      document.querySelectorAll('[data-drm-set]').forEach((b) => b.addEventListener('click', () => {
+      document.querySelectorAll('[data-rm-dset]').forEach((b) => b.addEventListener('click', () => {
         syncDraft();
-        const [mi, xi, si] = b.dataset.drmSet.split('.').map(Number);
+        const [mi, xi, si] = b.dataset.rmDset.split('.').map(Number);
         draft[mi].exercises[xi].sets.splice(si, 1);
         repaintKeeping();
       }));
@@ -1078,17 +1133,16 @@
         `<p style="margin:0 0 12px"><span class="badge">${schema ? esc(schema.name) : 'Vrije training'}</span></p>` +
         `<form id="wo-form">
           <label class="field"><span>Datum</span><input type="date" name="date" value="${todayIso()}" required></label>
-          ${draft.map((ex, xi) => `<div class="card">
-            <div class="title" style="margin-bottom:8px">${esc(ex.name)}</div>
-            <div class="set-row"><span></span><span class="col-head">Gewicht (kg)</span><span class="col-head">Herhalingen</span><span></span></div>
-            ${ex.sets.map((s, si) => `<div class="set-row">
-              <span class="n">${si + 1}</span>
-              <input data-set="${xi}.${si}" data-f="weight" type="text" inputmode="decimal" value="${s.weight || ''}" placeholder="kg">
-              <input data-set="${xi}.${si}" data-f="reps" type="number" min="0" inputmode="numeric" value="${s.reps || ''}" placeholder="herh.">
-              <button type="button" class="small danger ghost" data-rm-set="${xi}.${si}" aria-label="Verwijder set">✕</button>
-            </div>`).join('')}
+          ${draft.map((ex, xi) => {
+            const prev = lastEntryFor(clientId, ex.name);
+            return `<div class="card">
+            <div class="title" style="margin-bottom:2px">${esc(ex.name)}</div>
+            ${prev ? `<div class="mut" style="margin-bottom:8px">vorige sessie: ${esc(fmtDate(prev.date))}</div>` : `<div class="mut" style="margin-bottom:8px">eerste keer</div>`}
+            <div class="pr-live" data-pr-live="${xi}" hidden></div>
+            ${setRowsHtml('set', xi, ex.sets, prev && prev.entry.sets)}
             <button type="button" class="small" data-add-set="${xi}">+ Set</button>
-          </div>`).join('')}
+          </div>`;
+          }).join('')}
           <div class="card">
             <label class="field"><span>Oefening toevoegen aan deze sessie</span>
               <input id="extra-ex" list="ex-list" placeholder="bijv. Lat pulldown"></label>
@@ -1103,9 +1157,11 @@
       const syncDraft = () => {
         document.querySelectorAll('[data-set]').forEach((inp) => {
           const [xi, si] = inp.dataset.set.split('.').map(Number);
-          draft[xi].sets[si][inp.dataset.f] = num(inp.value);
+          const f = inp.dataset.f;
+          draft[xi].sets[si][f] = f === 'rir' && inp.value.trim() === '' ? undefined : num(inp.value);
         });
       };
+      draft.forEach((ex, xi) => bindPrLive('set', String(xi), clientId, ex.name));
       document.querySelectorAll('[data-add-set]').forEach((b) => b.addEventListener('click', () => {
         syncDraft();
         const sets = draft[+b.dataset.addSet].sets;
