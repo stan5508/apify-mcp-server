@@ -236,7 +236,12 @@
   .badge.pr { color: var(--good); background: rgba(12, 163, 12, 0.10); border: 1px solid var(--good); }
 
   #app.wide { max-width: none; }
-  .duo-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 0 20px; align-items: start; }
+  .duo-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 0 20px; align-items: start; }
+  /* on narrower screens (e.g. tablet portrait) hide the sidebar during duo screens so both columns fit */
+  @media (max-width: 999px) {
+    body.wide-page .layout { display: block; }
+    body.wide-page #side { display: none; }
+  }
 
   .chips { display: flex; flex-wrap: wrap; gap: 8px; }
   .chip { border-radius: 99px; padding: 8px 14px; font-size: 14px; }
@@ -260,7 +265,7 @@
   const $app = document.getElementById('app');
 
   // ---------- data ----------
-  const emptyDb = () => ({ clients: [], schemas: [], workouts: [], duos: [], duoSchemas: [], measurements: [], settings: { unit: 'kg' }, updatedAt: 0 });
+  const emptyDb = () => ({ clients: [], schemas: [], workouts: [], duos: [], duoSchemas: [], templates: [], measurements: [], settings: { unit: 'kg' }, updatedAt: 0 });
   let db = loadDb();
   function loadDb() {
     try {
@@ -272,7 +277,7 @@
   function normalizeDb(d) {
     const out = {
       clients: d.clients || [], schemas: d.schemas || [], workouts: d.workouts || [], duos: d.duos || [],
-      duoSchemas: d.duoSchemas || [], measurements: d.measurements || [], settings: d.settings || { unit: 'kg' }, updatedAt: d.updatedAt || 0,
+      duoSchemas: d.duoSchemas || [], templates: d.templates || [], measurements: d.measurements || [], settings: d.settings || { unit: 'kg' }, updatedAt: d.updatedAt || 0,
     };
     // migrate uniform sets/reps/weight to per-set targets
     for (const s of out.schemas) {
@@ -363,6 +368,8 @@
   const duoById = (id) => db.duos.find((d) => d.id === id);
   const duoSchemaById = (id) => db.duoSchemas.find((s) => s.id === id);
   const duoSchemasOf = (duoId) => db.duoSchemas.filter((s) => s.duoId === duoId);
+  const templateById = (id) => db.templates.find((t) => t.id === id);
+  const copyExercises = (list) => list.map((e) => ({ id: uid(), name: e.name, targets: (e.targets || []).map((t) => ({ ...t })) }));
   const duoName = (d) => d.name || d.clientIds.map((id) => (clientById(id) || { name: '?' }).name).join(' & ');
   const byName = (a, b) => a.localeCompare(b, 'nl', { sensitivity: 'base' });
   const sortedClients = () => [...db.clients].sort((a, b) => byName(a.name, b.name));
@@ -644,6 +651,7 @@
     const hash = location.hash.slice(1) || '/';
     const activeClient = (hash.match(/^\/klant\/([^/]+)/) || [])[1];
     const activeDuo = (hash.match(/^\/duo\/([^/]+)/) || [])[1];
+    const activeTemplate = (hash.match(/^\/sjabloon\/([^/]+)/) || [])[1];
     const clients = sortedClients();
     const duos = sortedDuos();
     $side.innerHTML = `
@@ -657,6 +665,11 @@
         <summary>Duo klanten <span class="chev">▾</span></summary>
         ${duos.map((d) => `<a class="navlink${d.id === activeDuo ? ' active' : ''}" href="#/duo/${d.id}">${esc(duoName(d))}</a>`).join('')}
         <a class="navlink add" href="#/">+ Nieuw duo</a>
+      </details>
+      <details class="navgrp" data-key="Templates" ${uiState.navTemplates ? 'open' : ''}>
+        <summary>Sjablonen <span class="chev">▾</span></summary>
+        ${[...db.templates].sort((a, b) => byName(a.name, b.name)).map((t) => `<a class="navlink${t.id === activeTemplate ? ' active' : ''}" href="#/sjabloon/${t.id}">${esc(t.name)}</a>`).join('')}
+        <a class="navlink add" href="#/sjabloon/nieuw">+ Nieuw sjabloon</a>
       </details>`;
     $side.querySelectorAll('details').forEach((d) => d.addEventListener('toggle', () => {
       uiState['nav' + d.dataset.key] = d.open;
@@ -667,7 +680,9 @@
     const hash = location.hash.slice(1) || '/';
     const parts = hash.split('/').filter(Boolean);
     window.scrollTo(0, 0);
-    $app.classList.toggle('wide', parts[0] === 'duo' && (parts[2] === 'training' || parts[2] === 'schema' || parts[2] === 'vrij'));
+    const widePage = parts[0] === 'duo' && (parts[2] === 'training' || parts[2] === 'schema' || parts[2] === 'vrij');
+    $app.classList.toggle('wide', widePage);
+    document.body.classList.toggle('wide-page', widePage);
     renderSidebar();
     if (parts[0] === 'klant' && parts[2] === 'schema') return viewSchema(parts[1], parts[3]);
     if (parts[0] === 'klant' && parts[2] === 'training') return viewWorkout(parts[1], parts[3]);
@@ -675,8 +690,11 @@
     if (parts[0] === 'klant' && parts[2] === 'metingen') return viewMeasurements(parts[1]);
     if (parts[0] === 'klant' && parts[2] === 'oefening') return viewExercise(parts[1], parts[3]);
     if (parts[0] === 'klant' && parts[2] === 'vrij') return viewPickExercises(parts[1]);
+    if (parts[0] === 'klant' && parts[2] === 'sjabloon') return viewTemplatePick('klant', parts[1]);
     if (parts[0] === 'klant') return viewClient(parts[1]);
+    if (parts[0] === 'sjabloon') return viewTemplate(parts[1]);
     if (parts[0] === 'duo' && parts[2] === 'vrij') return viewDuoPick(parts[1]);
+    if (parts[0] === 'duo' && parts[2] === 'sjabloon') return viewTemplatePick('duo', parts[1]);
     if (parts[0] === 'duo' && parts[2] === 'schema') return viewDuoSchema(parts[1], parts[3]);
     if (parts[0] === 'duo' && parts[2] === 'training') return viewDuoWorkout(parts[1], parts[3]);
     if (parts[0] === 'duo') return viewDuo(parts[1]);
@@ -804,7 +822,7 @@
   }
 
   // --- client detail ---
-  const uiState = { metric: 'top', navClients: true, navDuos: true, measMetric: 'weight' };
+  const uiState = { metric: 'top', navClients: true, navDuos: true, navTemplates: true, measMetric: 'weight' };
   let pendingFree = []; // exercises picked for a free session, set by viewPickExercises
   let pendingDuo = null; // { duoId, picks: { [clientId]: [names] } }, set by viewDuoPick
   function viewClient(id) {
@@ -865,7 +883,7 @@
             <div class="sub">${s.exercises.map((e) => esc(e.name)).join(' · ') || 'nog geen oefeningen'}</div>
           </div><span class="mut">›</span></div>
         </div>`).join('') +
-      `<button class="wide" data-nav="/klant/${id}/schema/nieuw">+ Nieuw schema</button>` +
+      `<div class="actions" style="margin-top:2px"><button data-nav="/klant/${id}/schema/nieuw">+ Nieuw schema</button><button data-nav="/klant/${id}/sjabloon">+ Schema uit sjabloon</button></div>` +
 
       `<div class="eyebrow">Logboek</div>` +
       (workouts.length ? [...workouts].reverse().slice(0, 20).map((w) => {
@@ -1083,6 +1101,135 @@
     paint();
   }
 
+  // --- schema template editor (global, linkable to clients and duos) ---
+  function viewTemplate(tid) {
+    const isNew = tid === 'nieuw';
+    const tpl = isNew ? { id: uid(), name: '', exercises: [] } : templateById(tid);
+    if (!tpl) { location.hash = '/'; return; }
+    const newTarget = () => ({ reps: 10, weight: 0 });
+    const newExercise = () => ({ id: uid(), name: '', targets: [newTarget(), newTarget(), newTarget()] });
+    const draft = JSON.parse(JSON.stringify(tpl));
+    draft.exercises.forEach((e) => { if (!e.targets || !e.targets.length) e.targets = [newTarget(), newTarget(), newTarget()]; });
+    if (!draft.exercises.length) draft.exercises.push(newExercise());
+
+    const paint = () => {
+      $app.innerHTML = topbar(isNew ? 'Nieuw sjabloon' : 'Sjabloon bewerken', '/') +
+        `<p class="sub" style="margin:0 0 12px">Een sjabloon koppel je via de klant- of duo-pagina ("+ Schema uit sjabloon"); daar wordt het een eigen kopie die je per klant kunt aanpassen.</p>
+        <form id="schema-form">
+          <label class="field"><span>Naam sjabloon</span><input name="name" required placeholder="bijv. Full body beginner" value="${esc(draft.name)}"></label>
+          <div class="eyebrow">Oefeningen — elke set apart</div>
+          ${draft.exercises.map((e, i) => `<div class="card">
+            <div class="row" style="margin-bottom:8px">
+              <input data-exname="${i}" class="grow" required placeholder="bijv. Squat" value="${esc(e.name)}">
+              <button type="button" class="small danger ghost" data-rm-ex="${i}" aria-label="Verwijder oefening">✕</button>
+            </div>
+            <div class="tgt-row"><span></span><span class="col-head">Gewicht (${unitLbl()})</span><span class="col-head">Herh.</span><span></span></div>
+            ${e.targets.map((t, si) => `<div class="tgt-row">
+              <span class="n">${si + 1}</span>
+              <input data-tgt="${i}.${si}" data-f="weight" type="text" inputmode="decimal" value="${t.weight || ''}" placeholder="${unitLbl()}">
+              <input data-tgt="${i}.${si}" data-f="reps" type="number" min="0" inputmode="numeric" value="${t.reps || ''}" placeholder="herh.">
+              <button type="button" class="small danger ghost" data-rm-tgt="${i}.${si}" aria-label="Verwijder set">✕</button>
+            </div>`).join('')}
+            <button type="button" class="small" data-add-tgt="${i}">+ Set</button>
+          </div>`).join('')}
+          <button type="button" id="add-ex" class="small" style="margin:4px 0 16px">+ Oefening</button>
+          <button class="primary wide" type="submit">Sjabloon opslaan</button>
+        </form>` +
+        (!isNew ? `<hr class="divider"><button class="danger ghost" id="del-template">Sjabloon verwijderen</button>` : '');
+
+      bindNav();
+      const syncDraft = () => {
+        draft.name = document.querySelector('[name="name"]').value;
+        document.querySelectorAll('[data-exname]').forEach((inp) => {
+          draft.exercises[+inp.dataset.exname].name = inp.value;
+        });
+        document.querySelectorAll('[data-tgt]').forEach((inp) => {
+          const [i, si] = inp.dataset.tgt.split('.').map(Number);
+          draft.exercises[i].targets[si][inp.dataset.f] = num(inp.value);
+        });
+      };
+      document.getElementById('add-ex').addEventListener('click', () => {
+        syncDraft();
+        draft.exercises.push(newExercise());
+        paint();
+      });
+      document.querySelectorAll('[data-rm-ex]').forEach((b) => b.addEventListener('click', () => {
+        syncDraft();
+        draft.exercises.splice(+b.dataset.rmEx, 1);
+        if (!draft.exercises.length) draft.exercises.push(newExercise());
+        paint();
+      }));
+      document.querySelectorAll('[data-add-tgt]').forEach((b) => b.addEventListener('click', () => {
+        syncDraft();
+        const targets = draft.exercises[+b.dataset.addTgt].targets;
+        targets.push(targets.length ? { ...targets[targets.length - 1] } : newTarget());
+        paint();
+      }));
+      document.querySelectorAll('[data-rm-tgt]').forEach((b) => b.addEventListener('click', () => {
+        syncDraft();
+        const [i, si] = b.dataset.rmTgt.split('.').map(Number);
+        draft.exercises[i].targets.splice(si, 1);
+        if (!draft.exercises[i].targets.length) draft.exercises[i].targets.push(newTarget());
+        paint();
+      }));
+      document.getElementById('schema-form').addEventListener('submit', (ev) => {
+        ev.preventDefault();
+        syncDraft();
+        draft.name = draft.name.trim();
+        draft.exercises = draft.exercises
+          .filter((e) => e.name.trim())
+          .map((e) => ({ id: e.id, name: e.name.trim(), targets: e.targets }));
+        if (!draft.name || !draft.exercises.length) return;
+        if (isNew) db.templates.push(draft);
+        else db.templates[db.templates.findIndex((t) => t.id === tid)] = draft;
+        save(); location.hash = `/sjabloon/${draft.id}`; render();
+      });
+      const del = document.getElementById('del-template');
+      if (del) del.addEventListener('click', () => {
+        if (!confirm('Dit sjabloon verwijderen? Reeds gekoppelde schema\'s blijven bestaan.')) return;
+        db.templates = db.templates.filter((t) => t.id !== tid);
+        save(); location.hash = '/';
+      });
+    };
+    paint();
+  }
+
+  // --- pick a template to link as a schema for a client or duo ---
+  function viewTemplatePick(kind, id) {
+    const target = kind === 'klant' ? clientById(id) : duoById(id);
+    if (!target) { location.hash = '/'; return; }
+    const backHash = `/${kind}/${id}`;
+    const title = kind === 'klant' ? `Schema uit sjabloon — ${target.name}` : `Duo-schema uit sjabloon — ${duoName(target)}`;
+
+    $app.innerHTML = topbar(title, backHash) +
+      (db.templates.length
+        ? `<p class="sub" style="margin:0 0 12px">Kies een sjabloon; het wordt een eigen kopie die je daarna kunt aanpassen.</p>` +
+          [...db.templates].sort((a, b) => byName(a.name, b.name)).map((t) => `<div class="card tappable" data-apply-tpl="${t.id}" role="button" tabindex="0">
+            <div class="row"><div class="grow">
+              <div class="title">${esc(t.name)}</div>
+              <div class="sub">${t.exercises.map((e) => `${esc(e.name)} (${e.targets.length})`).join(' · ')}</div>
+            </div><span class="mut">›</span></div>
+          </div>`).join('')
+        : `<div class="empty"><p>Nog geen sjablonen. Maak er eerst één via de zijbalk: Sjablonen → + Nieuw sjabloon.</p><button class="primary" data-nav="/sjabloon/nieuw">+ Nieuw sjabloon</button></div>`);
+
+    bindNav();
+    document.querySelectorAll('[data-apply-tpl]').forEach((el) => el.addEventListener('click', () => {
+      const tpl = templateById(el.dataset.applyTpl);
+      if (!tpl) return;
+      if (kind === 'klant') {
+        const schema = { id: uid(), clientId: id, name: tpl.name, exercises: copyExercises(tpl.exercises) };
+        db.schemas.push(schema);
+        save(); location.hash = `/klant/${id}/schema/${schema.id}`;
+      } else {
+        const plans = {};
+        for (const cid of target.clientIds) plans[cid] = copyExercises(tpl.exercises);
+        const schema = { id: uid(), duoId: id, name: tpl.name, plans };
+        db.duoSchemas.push(schema);
+        save(); location.hash = `/duo/${id}/schema/${schema.id}`;
+      }
+    }));
+  }
+
   // --- duo page: members + duo session history ---
   function viewDuo(duoId) {
     const duo = duoById(duoId);
@@ -1104,7 +1251,7 @@
           <div class="sub">${members.map((m) => `${esc(m.name)}: ${(s.plans[m.id] || []).map((e) => esc(e.name)).join(', ') || '—'}`).join(' · ')}</div>
         </div><span class="mut">›</span></div>
       </div>`).join('') +
-      `<button class="wide" data-nav="/duo/${duoId}/schema/nieuw">+ Nieuw duo-schema</button>` +
+      `<div class="actions" style="margin-top:2px"><button data-nav="/duo/${duoId}/schema/nieuw">+ Nieuw duo-schema</button><button data-nav="/duo/${duoId}/sjabloon">+ Schema uit sjabloon</button></div>` +
 
       `<div class="eyebrow">Leden</div>` +
       members.map((m) => {
