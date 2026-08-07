@@ -38,15 +38,11 @@ Rusttimer, set-types, supersets, sessieduur, schijvenrekenmachine, notitie per s
 oefeningen herschikken, cardio-logging, lichaamsgewicht-oefeningen, per zijde loggen,
 intervaltimer.
 
-### Analyse & rapportage
-12. Periodefilter op grafieken (3m/6m/jaar/alles)
-13. Meerdere oefeningen in één grafiek vergelijken
-14. Maandoverzicht (volume, sessies, PR's)
-15. Aanwezigheid & streaks (kalender met stipjes)
-16. Spiergroepverdeling (licht label per oefening, geen volledige bibliotheek)
-17. PDF-/printrapport per klant
-18. Export naar Excel/CSV
-19. Duo-ranglijstje (PR's per maand)
+### Analyse & rapportage — allemaal gebouwd (12 t/m 19)
+Periodefilter, oefeningen vergelijken, maandoverzicht, aanwezigheid & streaks,
+spiergroepverdeling, print-/PDF-rapport, CSV-export, duo-maandvergelijking.
+Bereikbaar via het submenu op de klantpagina (Training · Overzicht · Vergelijken ·
+Metingen · Rapport).
 
 ### Klantbeheer
 20. Intake & aandachtspunten (blessures, medisch, doelen)
