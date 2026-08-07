@@ -261,6 +261,7 @@
 <script>
 (() => {
   'use strict';
+  const APP_VERSION = 12; // bump when publishing; shown on the home screen
   const KEY = 'coachlog-v1';
   const $app = document.getElementById('app');
 
@@ -758,7 +759,8 @@
         <button id="import-btn">Importeer back-up</button>
         <input type="file" id="import-file" accept="application/json" hidden>
       </div>
-      <p class="mut">Alles wordt lokaal op dit apparaat bewaard. Maak regelmatig een back-up.</p>`;
+      <p class="mut">Alles wordt lokaal op dit apparaat bewaard. Maak regelmatig een back-up.</p>
+      <p class="mut" style="margin-top:16px">Coachlog versie ${APP_VERSION}</p>`;
 
     bindNav();
     document.getElementById('add-client').addEventListener('submit', (ev) => {
