@@ -33,18 +33,10 @@ Niet afgewezen, alleen nu niet van toepassing:
 
 ## Backlog
 
-### Tijdens de training
-1. Rusttimer (auto-start na set, geluid/trilling)
-2. Set-types (warming-up, dropset, falen; warming-up telt niet mee in PR/volume)
-3. Supersets
-4. Sessieduur (start/eind, totale tijd)
-5. Schijvenrekenmachine
-6. Notitie per set
-7. Oefeningen herschikken (slepen)
-8. Cardio-logging (afstand, tijd, tempo)
-9. Lichaamsgewicht-oefeningen (evt. met extra gewicht)
-10. Per zijde loggen (unilateraal)
-11. Intervaltimer (circuits, HIIT)
+### Tijdens de training — allemaal gebouwd (1 t/m 11)
+Rusttimer, set-types, supersets, sessieduur, schijvenrekenmachine, notitie per set,
+oefeningen herschikken, cardio-logging, lichaamsgewicht-oefeningen, per zijde loggen,
+intervaltimer.
 
 ### Analyse & rapportage
 12. Periodefilter op grafieken (3m/6m/jaar/alles)
