@@ -43,9 +43,11 @@ spiergroepverdeling, print-/PDF-rapport, CSV-export, duo-maandvergelijking.
 Bereikbaar via het submenu op de klantpagina (Training · Overzicht · Vergelijken ·
 Metingen · Rapport).
 
-### Bibliotheek — volgende stap
-Stap 2: hernoemen met historie-herschrijving, dubbelen samenvoegen, en meer
-gebruiksstatistieken. Stap 3: instructies/media (zie geparkeerd).
+### Bibliotheek — stap 1 en 2 gebouwd
+Register met id's, bibliotheekpagina met zoeken/filteren/sorteren, per-oefening
+instellingen (soort, spiergroep, materiaal, rusttijd, synoniemen), archiveren,
+hernoemen met historie-herschrijving, dubbelen samenvoegen en gebruiksstatistieken.
+Stap 3: instructies/media (zie geparkeerd).
 
 ### Klantbeheer
 20. Intake & aandachtspunten (blessures, medisch, doelen)
