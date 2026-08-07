@@ -25,8 +25,6 @@ sync via privé GitHub Gist, offline PWA, publicatie via `gh-pages` (zie `publis
 
 Niet afgewezen, alleen nu niet van toepassing:
 
-- **Instructies/media in de bibliotheek** — het register en de notitievelden staan er (stap 1
-  gebouwd); teksten en video's invullen wordt pas relevant zodra mede-coach of klanten meekijken.
 - **Progressieregels** — automatisch gewichtsverhoging voorstellen bij alle reps gehaald.
 - **Weekprogramma's / mesocycli** — relevant zodra klanten 2×/week komen.
 
@@ -43,11 +41,12 @@ spiergroepverdeling, print-/PDF-rapport, CSV-export, duo-maandvergelijking.
 Bereikbaar via het submenu op de klantpagina (Training · Overzicht · Vergelijken ·
 Metingen · Rapport).
 
-### Bibliotheek — stap 1 en 2 gebouwd
+### Bibliotheek — volledig gebouwd (stap 1 t/m 3)
 Register met id's, bibliotheekpagina met zoeken/filteren/sorteren, per-oefening
 instellingen (soort, spiergroep, materiaal, rusttijd, synoniemen), archiveren,
-hernoemen met historie-herschrijving, dubbelen samenvoegen en gebruiksstatistieken.
-Stap 3: instructies/media (zie geparkeerd).
+hernoemen met historie-herschrijving, dubbelen samenvoegen, gebruiksstatistieken,
+en uitleg: uitvoering, aandachtspunten, video- en afbeeldingslink, plus
+technieknotities per klant die tijdens de training zichtbaar zijn.
 
 ### Klantbeheer
 20. Intake & aandachtspunten (blessures, medisch, doelen)

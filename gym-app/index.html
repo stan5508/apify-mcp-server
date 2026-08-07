@@ -253,6 +253,9 @@
   .tool-panel .row + .row { margin-top: 8px; }
   .tool-out { font-weight: 650; margin-top: 8px; }
   .ss-mark { border-left: 3px solid var(--accent); padding-left: 9px; }
+  .note-box { background: var(--wash); border-radius: 8px; padding: 8px 10px; font-size: 14px; color: var(--ink-2); margin-bottom: 8px; }
+  .note-box strong { color: var(--accent-strong); }
+  .info-panel { border: 1px solid var(--grid); border-radius: 8px; padding: 10px; margin-bottom: 10px; }
 
   .legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px; }
   .legend span { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-2); }
@@ -338,14 +341,14 @@
 <script>
 (() => {
   'use strict';
-  const APP_VERSION = 16; // bump when publishing; shown on the home screen
+  const APP_VERSION = 17; // bump when publishing; shown on the home screen
   const KEY = 'coachlog-v1';
   const $app = document.getElementById('app');
 
   // ---------- data ----------
   const emptyDb = () => ({
     clients: [], schemas: [], workouts: [], duos: [], duoSchemas: [], templates: [], measurements: [],
-    exercises: [], muscleGroups: {}, settings: { unit: 'kg', restSeconds: 90, autoRest: true, sound: true, barWeight: 20 }, updatedAt: 0,
+    exercises: [], clientNotes: {}, muscleGroups: {}, settings: { unit: 'kg', restSeconds: 90, autoRest: true, sound: true, barWeight: 20 }, updatedAt: 0,
   });
   let db = loadDb();
   function loadDb() {
@@ -359,7 +362,7 @@
     const out = {
       clients: d.clients || [], schemas: d.schemas || [], workouts: d.workouts || [], duos: d.duos || [],
       duoSchemas: d.duoSchemas || [], templates: d.templates || [], measurements: d.measurements || [],
-      exercises: d.exercises || [], muscleGroups: d.muscleGroups || {},
+      exercises: d.exercises || [], clientNotes: d.clientNotes || {}, muscleGroups: d.muscleGroups || {},
       settings: { unit: 'kg', restSeconds: 90, autoRest: true, sound: true, barWeight: 20, ...(d.settings || {}) },
       updatedAt: d.updatedAt || 0,
     };
@@ -413,7 +416,16 @@
       e.equipment = e.equipment || 'Onbekend';
       e.group = e.group || 'Overig';
       e.kind = e.kind || 'kracht';
-      e.notes = e.notes || '';
+      // older records kept one free-text field; it becomes the execution description
+      if (e.notes !== undefined) {
+        if (e.notes && !e.instructions) e.instructions = e.notes;
+        delete e.notes;
+        d._needsSave = true;
+      }
+      e.instructions = e.instructions || '';
+      e.cues = e.cues || '';
+      e.videoUrl = e.videoUrl || '';
+      e.imageUrl = e.imageUrl || '';
     }
   }
 
@@ -429,7 +441,7 @@
     const rec = {
       id: uid(), name: String(name).trim(), kind: kind || 'kracht',
       group: kind === 'cardio' ? 'Cardio' : 'Overig', equipment: 'Onbekend',
-      restSeconds: null, notes: '', aliases: [], archived: false,
+      restSeconds: null, instructions: '', cues: '', videoUrl: '', imageUrl: '', aliases: [], archived: false,
     };
     db.exercises.push(rec);
     return rec;
@@ -532,6 +544,30 @@
       .sort((a, b) => (b.uses - a.uses) || byName(a.name, b.name))
       .map((e) => e.name);
   }
+  const hasInfo = (rec) => !!(rec && (rec.instructions || rec.cues || rec.videoUrl || rec.imageUrl));
+  const clientNote = (clientId, name) => ((db.clientNotes[clientId] || {})[exKey(name)] || '');
+  function setClientNote(clientId, name, text) {
+    const notes = db.clientNotes[clientId] || (db.clientNotes[clientId] = {});
+    if (text.trim()) notes[exKey(name)] = text.trim();
+    else delete notes[exKey(name)];
+    save();
+  }
+  const safeUrl = (u) => /^https?:\/\//i.test(String(u || '').trim()) ? String(u).trim() : '';
+
+  // read-only info block: library instructions plus this client's technique note
+  function exerciseInfoHtml(name, clientId) {
+    const rec = exerciseByName(name);
+    const note = clientId ? clientNote(clientId, name) : '';
+    if (!hasInfo(rec) && !note) return '<p class="mut">Nog geen uitleg. Vul die in via de bibliotheek.</p>';
+    const img = safeUrl(rec && rec.imageUrl);
+    const vid = safeUrl(rec && rec.videoUrl);
+    return (note ? `<div class="note-box"><strong>Voor deze klant:</strong> ${esc(note)}</div>` : '') +
+      (rec && rec.instructions ? `<p class="sub" style="white-space:pre-wrap;margin:0 0 8px">${esc(rec.instructions)}</p>` : '') +
+      (rec && rec.cues ? `<div class="note-box"><strong>Aandachtspunten:</strong> ${esc(rec.cues)}</div>` : '') +
+      (img ? `<img src="${esc(img)}" alt="" loading="lazy" style="max-width:100%;border-radius:8px;margin-top:8px">` : '') +
+      (vid ? `<p style="margin:8px 0 0"><a href="${esc(vid)}" target="_blank" rel="noopener">Video bekijken ↗</a></p>` : '');
+  }
+
   const restFor = (name) => {
     const rec = exerciseByName(name);
     return (rec && rec.restSeconds) || db.settings.restSeconds || 90;
@@ -570,7 +606,7 @@
       if (exerciseByName(name)) continue;
       db.exercises.push({
         id: uid(), name, kind, group, equipment,
-        restSeconds: null, notes: '', aliases: [], archived: false,
+        restSeconds: null, instructions: '', cues: '', videoUrl: '', imageUrl: '', aliases: [], archived: false,
       });
       added++;
     }
@@ -1809,8 +1845,15 @@
               <label class="field grow"><span>Synoniemen (komma-gescheiden)</span>
                 <input name="aliases" value="${esc((rec.aliases || []).join(', '))}" placeholder="bijv. bench press"></label>
             </div>
-            <label class="field"><span>Notities (voor later — uitvoering, aandachtspunten)</span>
-              <textarea name="notes" rows="2">${esc(rec.notes || '')}</textarea></label>
+            <label class="field"><span>Uitvoering</span>
+              <textarea name="instructions" rows="3" placeholder="bijv. voeten op schouderbreedte, borst omhoog, tot parallel zakken">${esc(rec.instructions || '')}</textarea></label>
+            <label class="field"><span>Aandachtspunten</span>
+              <textarea name="cues" rows="2" placeholder="bijv. knieën naar buiten, onderrug neutraal">${esc(rec.cues || '')}</textarea></label>
+            <div class="row">
+              <label class="field grow"><span>Video-link</span><input name="videoUrl" type="url" value="${esc(rec.videoUrl || '')}" placeholder="https://…"></label>
+              <label class="field grow"><span>Afbeelding-link</span><input name="imageUrl" type="url" value="${esc(rec.imageUrl || '')}" placeholder="https://…"></label>
+            </div>
+            ${hasInfo(rec) ? `<div class="info-panel">${exerciseInfoHtml(rec.name, null)}</div>` : ''}
             <div class="actions">
               <button class="primary" type="submit">Opslaan</button>
               <button type="button" class="ghost" data-cancel-edit="1">Annuleren</button>
@@ -1838,7 +1881,7 @@
         : `<div class="card">
             <div class="row">
               <div class="grow">
-                <div class="title">${esc(rec.name)}${rec.archived ? ' <span class="badge">gearchiveerd</span>' : ''}</div>
+                <div class="title">${esc(rec.name)}${rec.archived ? ' <span class="badge">gearchiveerd</span>' : ''}${hasInfo(rec) ? ' <span class="badge">uitleg</span>' : ''}</div>
                 <div class="sub">${esc(rec.group)} · ${esc(rec.equipment)}${rec.kind !== 'kracht' ? ' · ' + KIND_LABELS[rec.kind] : ''}${rec.restSeconds ? ' · rust ' + rec.restSeconds + 's' : ''}</div>
                 <div class="mut">${usage.sessions ? `${usage.sessions} sessie${usage.sessions === 1 ? '' : 's'} · ${usage.sets} sets · ${usage.clients.size} klant${usage.clients.size === 1 ? '' : 'en'} · laatst ${esc(fmtDate(usage.lastDate))}` : 'nog niet gebruikt'}</div>
               </div>
@@ -1909,7 +1952,10 @@
       rec.group = String(f.get('group'));
       rec.equipment = String(f.get('equipment'));
       rec.restSeconds = num(f.get('rest')) > 0 ? num(f.get('rest')) : null;
-      rec.notes = String(f.get('notes')).trim();
+      rec.instructions = String(f.get('instructions')).trim();
+      rec.cues = String(f.get('cues')).trim();
+      rec.videoUrl = safeUrl(f.get('videoUrl'));
+      rec.imageUrl = safeUrl(f.get('imageUrl'));
       rec.aliases = String(f.get('aliases')).split(',').map((a) => a.trim()).filter(Boolean);
       db.muscleGroups[exKey(rec.name)] = rec.group;
       uiState.libEditing = null;
@@ -1965,6 +2011,14 @@
     $app.innerHTML = topbar(`Overzicht — ${c.name}`, `/klant/${clientId}`) +
       clientTabs(clientId, 'overzicht') +
       periodBar() +
+      `<div class="card">
+        <div class="row" style="margin-bottom:8px"><div class="title grow">Uitleg</div>
+          <button class="small ghost no-print" data-nav="/bibliotheek">Bibliotheek ›</button></div>
+        ${exerciseInfoHtml(name, clientId)}
+        <label class="field no-print" style="margin:10px 0 0"><span>Technieknotitie voor ${esc(c.name)}</span>
+          <textarea id="client-note" rows="2" placeholder="bijv. let op onderrug bij de laatste herhalingen">${esc(clientNote(clientId, name))}</textarea></label>
+        <button type="button" class="small no-print" id="save-note">Notitie opslaan</button>
+      </div>` +
       `<div class="stat-grid cols2">
         <div class="stat"><div class="lbl">Trainingen</div><div class="val">${totals.sessions}</div><div class="mut">${totals.minutes ? Math.round(totals.minutes / 60) + ' uur totaal' : 'geen tijd gelogd'}</div></div>
         <div class="stat"><div class="lbl">Totaal volume</div><div class="val">${esc(fmtKg(totals.volume))}</div><div class="mut">krachtoefeningen</div></div>
@@ -2262,6 +2316,14 @@
         ${kind !== 'kracht' ? `<span class="badge">${KIND_LABELS[kind]}</span>` : ''}
       </div>` +
       periodBar() +
+      `<div class="card">
+        <div class="row" style="margin-bottom:8px"><div class="title grow">Uitleg</div>
+          <button class="small ghost no-print" data-nav="/bibliotheek">Bibliotheek ›</button></div>
+        ${exerciseInfoHtml(name, clientId)}
+        <label class="field no-print" style="margin:10px 0 0"><span>Technieknotitie voor ${esc(c.name)}</span>
+          <textarea id="client-note" rows="2" placeholder="bijv. let op onderrug bij de laatste herhalingen">${esc(clientNote(clientId, name))}</textarea></label>
+        <button type="button" class="small no-print" id="save-note">Notitie opslaan</button>
+      </div>` +
       `<div class="stat-grid cols2">
         <div class="stat"><div class="lbl">${cfg.prLabel}</div><div class="val">${esc(cfg.fmt(prTop))}</div><div class="mut">op ${esc(fmtDateFull(prDate))}</div></div>
         <div class="stat"><div class="lbl">${cfg.pr2Label}</div><div class="val">${esc(cfg.pr2(sessions))}</div><div class="mut">${cfg.pr2Note}</div></div>
@@ -2296,6 +2358,10 @@
     bindNav();
     bindPeriodBar();
     document.getElementById('mg-select').addEventListener('change', (ev) => { setGroup(name, ev.target.value); render(); });
+    document.getElementById('save-note').addEventListener('click', () => {
+      setClientNote(clientId, name, document.getElementById('client-note').value);
+      render();
+    });
     const linePts = sessions
       .map((s) => ({ date: s.date, value: s[uiState.metric] }))
       .filter((p) => Number.isFinite(p.value) && p.value > 0);
@@ -2794,6 +2860,7 @@
         : (pendingDuo.picks[m.id] || []).map((n) => mkExercise(m.id, { name: n })),
     }));
     let swapping = null; // "mi.xi" of exercise currently in swap mode
+    let infoOpen = null; // "mi.xi" of the exercise whose explanation is open
     let openMore = null; // "mi.xi.si" of the set whose options are open
     let tool = null;
     const startedAt = Date.now();
@@ -2823,8 +2890,10 @@
                 <button type="button" class="small ghost" data-ddown="${key}" aria-label="Omlaag" ${xi === mem.exercises.length - 1 ? 'disabled' : ''}>↓</button>
                 <button type="button" class="small ghost" data-dlink="${key}" aria-label="Superset met vorige" ${xi === 0 ? 'disabled' : ''}>⛓</button>
                 <button type="button" class="small ghost" data-rest-dset="${key}" aria-label="Start rusttimer">⏱</button>
+                <button type="button" class="small ghost" data-dinfo="${key}" aria-label="Uitleg">${hasInfo(exerciseByName(ex.name)) || clientNote(mem.client.id, ex.name) ? 'ℹ️' : 'ℹ'}</button>
                 <button type="button" class="small ghost" data-dswap="${key}">⇄</button>
               </div>
+              ${infoOpen === key ? `<div class="info-panel">${exerciseInfoHtml(ex.name, mem.client.id)}</div>` : ''}
               ${prev ? `<div class="mut" style="margin-bottom:8px">vorige sessie: ${esc(fmtDate(prev.date))}</div>` : `<div class="mut" style="margin-bottom:8px">eerste keer</div>`}
               ${swapping === key ? `<div class="row" style="margin-bottom:10px">
                 <input id="swap-input" class="grow" list="swap-list" placeholder="Vervangende oefening">
@@ -2909,6 +2978,11 @@
           prevEx.superset = group;
           list[xi].superset = group;
         }
+        repaintKeeping();
+      }));
+      document.querySelectorAll('[data-dinfo]').forEach((b) => b.addEventListener('click', () => {
+        syncDraft();
+        infoOpen = infoOpen === b.dataset.dinfo ? null : b.dataset.dinfo;
         repaintKeeping();
       }));
       document.querySelectorAll('[data-dswap]').forEach((b) => b.addEventListener('click', () => {
@@ -3122,6 +3196,7 @@
       ? editing.entries.map((e) => ({ name: e.name, kind: entryKind(e), superset: e.superset || null, sets: e.sets.map((s) => ({ ...s })) }))
       : (isFree ? pendingFree.map((n) => ({ name: n })) : schema.exercises).map(mkExercise);
     let swapping = null; // exercise index currently in swap mode
+    let infoOpen = null; // exercise index whose explanation is open
     let openMore = null; // "xi.si" of the set whose options are open
     let tool = null; // 'plates' | 'interval'
     const startedAt = Date.now();
@@ -3150,8 +3225,10 @@
               <button type="button" class="small ghost" data-down="${xi}" aria-label="Omlaag" ${xi === draft.length - 1 ? 'disabled' : ''}>↓</button>
               <button type="button" class="small ghost" data-link="${xi}" aria-label="Superset met vorige" ${xi === 0 ? 'disabled' : ''}>⛓</button>
               <button type="button" class="small ghost" data-rest-set="${xi}" aria-label="Start rusttimer">⏱</button>
+              <button type="button" class="small ghost" data-info="${xi}" aria-label="Uitleg">${hasInfo(exerciseByName(ex.name)) || clientNote(clientId, ex.name) ? 'ℹ️' : 'ℹ'}</button>
               <button type="button" class="small ghost" data-swap="${xi}">⇄</button>
             </div>
+            ${infoOpen === xi ? `<div class="info-panel">${exerciseInfoHtml(ex.name, clientId)}</div>` : ''}
             ${prev ? `<div class="mut" style="margin-bottom:8px">vorige sessie: ${esc(fmtDate(prev.date))}</div>` : `<div class="mut" style="margin-bottom:8px">eerste keer</div>`}
             ${swapping === xi ? `<div class="row" style="margin-bottom:10px">
               <input id="swap-input" class="grow" list="swap-list" placeholder="Vervangende oefening">
@@ -3235,6 +3312,11 @@
           prevEx.superset = group;
           draft[xi].superset = group;
         }
+        repaintKeeping();
+      }));
+      document.querySelectorAll('[data-info]').forEach((b) => b.addEventListener('click', () => {
+        syncDraft();
+        infoOpen = infoOpen === +b.dataset.info ? null : +b.dataset.info;
         repaintKeeping();
       }));
       document.querySelectorAll('[data-swap]').forEach((b) => b.addEventListener('click', () => {
