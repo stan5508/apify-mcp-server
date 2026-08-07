@@ -30,6 +30,10 @@
     --good: #006300;
     --danger: #d03b3b;
     --shadow: 0 1px 2px rgba(11, 11, 11, 0.06);
+    --series-1: #2a78d6;
+    --series-2: #1baf7a;
+    --series-3: #eda100;
+    --series-4: #4a3aa7;
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -46,6 +50,10 @@
       --wash: rgba(57, 135, 229, 0.12);
       --good: #0ca30c;
       --shadow: none;
+      --series-1: #3987e5;
+      --series-2: #199e70;
+      --series-3: #c98500;
+      --series-4: #9085e9;
     }
   }
   :root[data-theme="light"] {
@@ -63,6 +71,10 @@
     --good: #006300;
     --danger: #d03b3b;
     --shadow: 0 1px 2px rgba(11, 11, 11, 0.06);
+    --series-1: #2a78d6;
+    --series-2: #1baf7a;
+    --series-3: #eda100;
+    --series-4: #4a3aa7;
   }
   :root[data-theme="dark"] {
     --page: #0d0d0d;
@@ -79,6 +91,10 @@
     --good: #0ca30c;
     --danger: #d03b3b;
     --shadow: none;
+    --series-1: #3987e5;
+    --series-2: #199e70;
+    --series-3: #c98500;
+    --series-4: #9085e9;
   }
 
   * { box-sizing: border-box; }
@@ -237,6 +253,34 @@
   .tool-panel .row + .row { margin-top: 8px; }
   .tool-out { font-weight: 650; margin-top: 8px; }
   .ss-mark { border-left: 3px solid var(--accent); padding-left: 9px; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px; }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-2); }
+  .legend i { width: 14px; height: 3px; border-radius: 2px; display: inline-block; }
+
+  .cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; max-width: 320px; }
+  .cal div { aspect-ratio: 1; border-radius: 4px; background: var(--grid); }
+  .cal div.on { background: var(--accent); }
+  .cal div.head { background: transparent; font-size: 11px; color: var(--muted); text-align: center; aspect-ratio: auto; }
+
+  table.data { width: 100%; border-collapse: collapse; font-size: 14px; }
+  table.data th, table.data td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--grid); }
+  table.data th { font-size: 12px; color: var(--muted); font-weight: 600; }
+  table.data td.num, table.data th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .table-wrap { overflow-x: auto; }
+
+  .bar-row { display: grid; grid-template-columns: 110px 1fr 78px; gap: 10px; align-items: center; margin-bottom: 8px; font-size: 14px; }
+  .bar-row .track { display: block; background: var(--grid); border-radius: 4px; height: 14px; overflow: hidden; }
+  .bar-row .fill { display: block; background: var(--accent); height: 100%; border-radius: 4px; min-width: 2px; }
+  .bar-row .val { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink-2); }
+
+  @media print {
+    #side, #timer-bar, .topbar button, button, .no-print { display: none !important; }
+    .layout { display: block; }
+    #app { max-width: none; padding: 0; }
+    .card { break-inside: avoid; box-shadow: none; }
+    body { background: #fff; }
+  }
   .prev-hint { margin: -4px 0 8px 32px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
   .pr-live {
     display: inline-flex; align-items: center; gap: 6px;
@@ -294,14 +338,14 @@
 <script>
 (() => {
   'use strict';
-  const APP_VERSION = 13; // bump when publishing; shown on the home screen
+  const APP_VERSION = 14; // bump when publishing; shown on the home screen
   const KEY = 'coachlog-v1';
   const $app = document.getElementById('app');
 
   // ---------- data ----------
   const emptyDb = () => ({
     clients: [], schemas: [], workouts: [], duos: [], duoSchemas: [], templates: [], measurements: [],
-    settings: { unit: 'kg', restSeconds: 90, autoRest: true, sound: true, barWeight: 20 }, updatedAt: 0,
+    muscleGroups: {}, settings: { unit: 'kg', restSeconds: 90, autoRest: true, sound: true, barWeight: 20 }, updatedAt: 0,
   });
   let db = loadDb();
   function loadDb() {
@@ -315,6 +359,7 @@
     const out = {
       clients: d.clients || [], schemas: d.schemas || [], workouts: d.workouts || [], duos: d.duos || [],
       duoSchemas: d.duoSchemas || [], templates: d.templates || [], measurements: d.measurements || [],
+      muscleGroups: d.muscleGroups || {},
       settings: { unit: 'kg', restSeconds: 90, autoRest: true, sound: true, barWeight: 20, ...(d.settings || {}) },
       updatedAt: d.updatedAt || 0,
     };
@@ -686,6 +731,127 @@
     return sessions;
   }
 
+  // ---------- analysis helpers ----------
+  const PERIODS = { '3m': '3 mnd', '6m': '6 mnd', '1j': 'Jaar', all: 'Alles' };
+  function periodStart(period) {
+    if (period === 'all') return null;
+    const d = new Date();
+    if (period === '3m') d.setMonth(d.getMonth() - 3);
+    else if (period === '6m') d.setMonth(d.getMonth() - 6);
+    else d.setFullYear(d.getFullYear() - 1);
+    return d.toISOString().slice(0, 10);
+  }
+  const inPeriod = (iso, period) => { const s = periodStart(period); return !s || iso >= s; };
+
+  const MUSCLE_GROUPS = ['Borst', 'Rug', 'Benen', 'Schouders', 'Armen', 'Core', 'Cardio', 'Overig'];
+  const groupKey = (name) => name.trim().toLowerCase();
+  const groupOf = (name, kind) => db.muscleGroups[groupKey(name)] || (kind === 'cardio' ? 'Cardio' : 'Overig');
+  function setGroup(name, group) {
+    if (group) db.muscleGroups[groupKey(name)] = group;
+    else delete db.muscleGroups[groupKey(name)];
+    save();
+  }
+
+  // workload of one entry expressed in kg (cardio and rep-only work contribute 0 kg)
+  const entryVolumeKg = (entry) => {
+    const m = exerciseMetrics(entry);
+    return m && m.kind === 'kracht' ? m.volume : 0;
+  };
+
+  // per-month totals for a client: sessions, volume, PR count
+  function monthlyStats(clientId, period) {
+    const ws = workoutsOf(clientId).filter((w) => inPeriod(w.date, period));
+    const prDates = new Map(); // month -> count
+    for (const name of loggedExercises(clientId)) {
+      for (const s of exerciseSessions(clientId, name)) {
+        if (!s.isPr || !inPeriod(s.date, period)) continue;
+        const m = s.date.slice(0, 7);
+        prDates.set(m, (prDates.get(m) || 0) + 1);
+      }
+    }
+    const months = new Map();
+    for (const w of ws) {
+      const m = w.date.slice(0, 7);
+      const cur = months.get(m) || { month: m, sessions: 0, volume: 0, minutes: 0, prs: 0 };
+      cur.sessions++;
+      cur.minutes += w.durationMin || 0;
+      cur.volume += w.entries.reduce((t, e) => t + entryVolumeKg(e), 0);
+      months.set(m, cur);
+    }
+    for (const [m, n] of prDates) {
+      const cur = months.get(m) || { month: m, sessions: 0, volume: 0, minutes: 0, prs: 0 };
+      cur.prs = n;
+      months.set(m, cur);
+    }
+    return [...months.values()].sort((a, b) => a.month.localeCompare(b.month));
+  }
+  const monthLabel = (m) => new Date(m + '-01T12:00:00').toLocaleDateString('nl-NL', { month: 'long', year: 'numeric' });
+
+  // training weeks in a row, counting back from this week
+  function weekStreak(clientId) {
+    const weeks = new Set(workoutsOf(clientId).map((w) => isoWeek(w.date)));
+    let streak = 0;
+    const d = new Date();
+    for (let i = 0; i < 260; i++) {
+      const key = isoWeek(d.toISOString().slice(0, 10));
+      if (weeks.has(key)) streak++;
+      else if (i > 0) break; // the current week may still be empty
+      d.setDate(d.getDate() - 7);
+    }
+    return streak;
+  }
+  function isoWeek(iso) {
+    const d = new Date(iso + 'T12:00:00');
+    const day = (d.getDay() + 6) % 7; // monday = 0
+    d.setDate(d.getDate() - day);
+    return d.toISOString().slice(0, 10);
+  }
+
+  // volume per muscle group for a client in a period
+  function groupTotals(clientId, period) {
+    const totals = new Map();
+    for (const w of workoutsOf(clientId)) {
+      if (!inPeriod(w.date, period)) continue;
+      for (const e of w.entries) {
+        const m = exerciseMetrics(e);
+        if (!m) continue;
+        const g = groupOf(e.name, m.kind);
+        const cur = totals.get(g) || { group: g, volume: 0, sets: 0, minutes: 0 };
+        cur.sets += e.sets.filter((x) => setType(x) !== 'warmup').length;
+        cur.volume += m.kind === 'kracht' ? m.volume : 0;
+        cur.minutes += m.kind === 'cardio' ? m.minutes : 0;
+        totals.set(g, cur);
+      }
+    }
+    return [...totals.values()].sort((a, b) => (b.volume - a.volume) || (b.sets - a.sets));
+  }
+
+  // ---------- CSV export ----------
+  function workoutsCsv(clientId) {
+    const rows = [['klant', 'datum', 'duur_min', 'oefening', 'soort', 'superset', 'set', 'gewicht', 'herhalingen', 'rir', 'type', 'kant', 'afstand_km', 'tijd_min', 'notitie']];
+    const list = clientId ? workoutsOf(clientId) : [...db.workouts].sort((a, b) => a.date.localeCompare(b.date));
+    for (const w of list) {
+      const client = clientById(w.clientId);
+      w.entries.forEach((e) => e.sets.forEach((s, i) => rows.push([
+        client ? client.name : '', w.date, w.durationMin || '', e.name, entryKind(e), e.superset || '',
+        i + 1, s.weight ?? '', s.reps ?? '', s.rir ?? '', setType(s), setSide(s), s.distance ?? '', s.minutes ?? '', s.note || '',
+      ])));
+    }
+    return rows.map((r) => r.map((v) => {
+      const t = String(v ?? '');
+      return /[";\n]/.test(t) ? '"' + t.replace(/"/g, '""') + '"' : t;
+    }).join(';')).join('\n');
+  }
+  function downloadCsv(clientId) {
+    const name = clientId ? (clientById(clientId) || {}).name : 'alle-klanten';
+    const blob = new Blob(['\ufeff' + workoutsCsv(clientId)], { type: 'text/csv;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `coachlog-${String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${todayIso()}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
   // ---------- timers (rest + interval) ----------
   const timer = { mode: null, endsAt: 0, tick: null, interval: null, paused: false, left: 0 };
   let audioCtx = null;
@@ -936,6 +1102,45 @@
     svg.addEventListener('mouseleave', onLeave);
   }
 
+  // multi-series line chart with legend (used to compare exercises)
+  function renderMultiChart(container, series, unit) {
+    const W = 600, H = 280, padL = 48, padR = 16, padT = 14, padB = 30;
+    const iw = W - padL - padR, ih = H - padT - padB;
+    const dates = [...new Set(series.flatMap((s) => s.points.map((p) => p.date)))].sort();
+    const vals = series.flatMap((s) => s.points.map((p) => p.value));
+    if (!dates.length || !vals.length) { container.innerHTML = '<p class="mut">Geen gegevens in deze periode.</p>'; return; }
+    const ticks = niceTicks(Math.min(...vals), Math.max(...vals), 4);
+    const yMin = ticks[0], yMax = ticks[ticks.length - 1];
+    const x = (iso) => dates.length === 1 ? padL + iw / 2 : padL + (dates.indexOf(iso) / (dates.length - 1)) * iw;
+    const y = (v) => padT + ih - ((v - yMin) / (yMax - yMin || 1)) * ih;
+
+    const grid = ticks.map((t) =>
+      `<line x1="${padL}" y1="${y(t)}" x2="${W - padR}" y2="${y(t)}" stroke="var(--grid)" stroke-width="1"/>` +
+      `<text x="${padL - 8}" y="${y(t) + 4}" text-anchor="end" font-size="11" fill="var(--muted)" style="font-variant-numeric:tabular-nums">${t.toLocaleString('nl-NL')}</text>`
+    ).join('');
+
+    const body = series.map((s, si) => {
+      const col = `var(--series-${(si % 4) + 1})`;
+      const pts = [...s.points].sort((a, b) => a.date.localeCompare(b.date));
+      const d = pts.map((p, i) => `${i ? 'L' : 'M'}${x(p.date).toFixed(1)},${y(p.value).toFixed(1)}`).join(' ');
+      const dots = pts.map((p) => `<circle cx="${x(p.date)}" cy="${y(p.value)}" r="4" fill="${col}" stroke="var(--surface)" stroke-width="2"/>`).join('');
+      return (pts.length > 1 ? `<path d="${d}" fill="none" stroke="${col}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>` : '') + dots;
+    }).join('');
+
+    const xLabels = `<text x="${padL}" y="${H - 8}" text-anchor="start" font-size="11" fill="var(--muted)">${esc(fmtDate(dates[0]))}</text>` +
+      (dates.length > 1 ? `<text x="${W - padR}" y="${H - 8}" text-anchor="end" font-size="11" fill="var(--muted)">${esc(fmtDate(dates[dates.length - 1]))}</text>` : '');
+
+    container.innerHTML =
+      `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Vergelijking van oefeningen">` +
+      grid +
+      `<line x1="${padL}" y1="${padT + ih}" x2="${W - padR}" y2="${padT + ih}" stroke="var(--baseline)" stroke-width="1"/>` +
+      body + xLabels +
+      `</svg>` +
+      `<div class="legend">${series.map((s, si) =>
+        `<span><i style="background:var(--series-${(si % 4) + 1})"></i>${esc(s.label)}</span>`).join('')}</div>` +
+      (unit ? `<p class="mut" style="margin:6px 0 0">Waarden in ${esc(unit)}.</p>` : '');
+  }
+
   function renderBarChart(container, points) {
     const W = 600, H = 240, padL = 48, padR = 16, padT = 14, padB = 30;
     const iw = W - padL - padR, ih = H - padT - padB;
@@ -1033,6 +1238,9 @@
     if (parts[0] === 'klant' && parts[2] === 'training') return viewWorkout(parts[1], parts[3]);
     if (parts[0] === 'klant' && parts[2] === 'bewerk') return viewWorkout(parts[1], null, parts[3]);
     if (parts[0] === 'klant' && parts[2] === 'metingen') return viewMeasurements(parts[1]);
+    if (parts[0] === 'klant' && parts[2] === 'overzicht') return viewOverview(parts[1]);
+    if (parts[0] === 'klant' && parts[2] === 'vergelijk') return viewCompare(parts[1]);
+    if (parts[0] === 'klant' && parts[2] === 'rapport') return viewReport(parts[1]);
     if (parts[0] === 'klant' && parts[2] === 'oefening') return viewExercise(parts[1], parts[3]);
     if (parts[0] === 'klant' && parts[2] === 'vrij') return viewPickExercises(parts[1]);
     if (parts[0] === 'klant' && parts[2] === 'sjabloon') return viewTemplatePick('klant', parts[1]);
@@ -1112,6 +1320,7 @@
       <div class="eyebrow">Gegevens</div>
       <div class="actions">
         <button id="export-btn">Exporteer back-up</button>
+        <button id="csv-all">Exporteer alles (CSV)</button>
         <button id="import-btn">Importeer back-up</button>
         <input type="file" id="import-file" accept="application/json" hidden>
       </div>
@@ -1141,6 +1350,7 @@
       location.hash = `/duo/${d.id}`;
     });
     document.getElementById('export-btn').addEventListener('click', exportJson);
+    document.getElementById('csv-all').addEventListener('click', () => downloadCsv(null));
     const fileInput = document.getElementById('import-file');
     document.getElementById('import-btn').addEventListener('click', () => fileInput.click());
     fileInput.addEventListener('change', importJson);
@@ -1192,7 +1402,10 @@
   }
 
   // --- client detail ---
-  const uiState = { metric: 'top', navClients: true, navDuos: true, navTemplates: true, measMetric: 'weight' };
+  const uiState = {
+    metric: 'top', navClients: true, navDuos: true, navTemplates: true, measMetric: 'weight',
+    period: 'all', comparePicks: [], compareMetric: 'top',
+  };
   let pendingFree = []; // exercises picked for a free session, set by viewPickExercises
   let pendingDuo = null; // { duoId, picks: { [clientId]: [names] } }, set by viewDuoPick
   function viewClient(id) {
@@ -1225,25 +1438,13 @@
     }).join('');
 
     $app.innerHTML = topbar(c.name, '/') +
+      clientTabs(id, '') +
       (c.goal ? `<p class="sub" style="margin:0 0 12px">Doel: ${esc(c.goal)}</p>` : '') +
       statHtml +
       `<div style="margin-top:16px" class="actions">` +
       schemas.map((s) => `<button class="primary" data-nav="/klant/${id}/training/${s.id}">Start: ${esc(s.name)}</button>`).join('') +
       `<button class="primary" data-nav="/klant/${id}/vrij">+ Vrije training</button>` +
       `</div>` +
-
-      `<div class="eyebrow">Metingen</div>` +
-      (() => {
-        const meas = db.measurements.filter((m) => m.clientId === id).sort((a, b) => a.date.localeCompare(b.date));
-        const lastM = meas[meas.length - 1];
-        const summary = lastM
-          ? `laatste (${fmtDate(lastM.date)}): ` + MEAS_FIELDS.filter((f) => lastM[f.key] != null).map((f) => `${(Math.round(lastM[f.key] * 10) / 10).toLocaleString('nl-NL')} ${f.unit()}`).join(' · ')
-          : 'nog geen metingen';
-        return `<div class="card tappable" data-nav="/klant/${id}/metingen" role="link" tabindex="0"><div class="row"><div class="grow">
-          <div class="title">Lichaamsmetingen</div>
-          <div class="sub">${esc(summary)}</div>
-        </div><span class="mut">›</span></div></div>`;
-      })() +
 
       `<div class="eyebrow">Progressie per oefening</div>` +
       (exerciseCards || `<div class="empty"><p>Nog geen trainingen gelogd. Start een training om progressie te zien.</p></div>`) +
@@ -1304,6 +1505,211 @@
     });
   }
 
+  // client sub-navigation
+  function clientTabs(id, active) {
+    const tabs = [
+      ['', 'Training'],
+      ['overzicht', 'Overzicht'],
+      ['vergelijk', 'Vergelijken'],
+      ['metingen', 'Metingen'],
+      ['rapport', 'Rapport'],
+    ];
+    return `<div class="chips no-print" style="margin-bottom:14px">${tabs.map(([slug, label]) =>
+      `<button class="chip" data-nav="/klant/${id}${slug ? '/' + slug : ''}" aria-pressed="${active === slug}">${label}</button>`
+    ).join('')}</div>`;
+  }
+
+  // period filter row
+  function periodBar() {
+    return `<div class="seg no-print" role="group" aria-label="Periode" style="max-width:340px;margin-bottom:12px">${
+      Object.entries(PERIODS).map(([k, l]) => `<button data-period="${k}" aria-pressed="${uiState.period === k}">${l}</button>`).join('')}</div>`;
+  }
+  function bindPeriodBar() {
+    document.querySelectorAll('[data-period]').forEach((b) => b.addEventListener('click', () => {
+      uiState.period = b.dataset.period; render();
+    }));
+  }
+
+  // --- client overview: months, attendance, muscle groups ---
+  function viewOverview(clientId) {
+    const c = clientById(clientId);
+    if (!c) { location.hash = '/'; return; }
+    const period = uiState.period;
+    const months = monthlyStats(clientId, period);
+    const totals = months.reduce((t, m) => ({
+      sessions: t.sessions + m.sessions, volume: t.volume + m.volume, prs: t.prs + m.prs, minutes: t.minutes + m.minutes,
+    }), { sessions: 0, volume: 0, prs: 0, minutes: 0 });
+    const streak = weekStreak(clientId);
+    const groups = groupTotals(clientId, period);
+    const maxVolume = Math.max(1, ...groups.map((g) => g.volume));
+    const maxMinutes = Math.max(1, ...groups.map((g) => g.minutes));
+    const maxSets = Math.max(1, ...groups.map((g) => g.sets));
+    const barPct = (g) => Math.round(100 * (g.volume ? g.volume / maxVolume : g.minutes ? g.minutes / maxMinutes : g.sets / maxSets));
+
+    // attendance: last 12 weeks of days
+    const days = [];
+    const trained = new Set(workoutsOf(clientId).map((w) => w.date));
+    const cursor = new Date();
+    cursor.setDate(cursor.getDate() - ((cursor.getDay() + 6) % 7) + 6); // end of this week (sunday)
+    for (let i = 0; i < 84; i++) {
+      const iso = cursor.toISOString().slice(0, 10);
+      days.unshift({ iso, on: trained.has(iso) });
+      cursor.setDate(cursor.getDate() - 1);
+    }
+
+    $app.innerHTML = topbar(`Overzicht — ${c.name}`, `/klant/${clientId}`) +
+      clientTabs(clientId, 'overzicht') +
+      periodBar() +
+      `<div class="stat-grid cols2">
+        <div class="stat"><div class="lbl">Trainingen</div><div class="val">${totals.sessions}</div><div class="mut">${totals.minutes ? Math.round(totals.minutes / 60) + ' uur totaal' : 'geen tijd gelogd'}</div></div>
+        <div class="stat"><div class="lbl">Totaal volume</div><div class="val">${esc(fmtKg(totals.volume))}</div><div class="mut">krachtoefeningen</div></div>
+        <div class="stat"><div class="lbl">Persoonlijke records</div><div class="val">${totals.prs}</div><div class="mut">in deze periode</div></div>
+        <div class="stat"><div class="lbl">Reeks</div><div class="val">${streak} ${streak === 1 ? 'week' : 'weken'}</div><div class="mut">op rij getraind</div></div>
+      </div>` +
+
+      `<div class="eyebrow">Per maand</div>` +
+      (months.length ? `<div class="card table-wrap"><table class="data">
+        <thead><tr><th>Maand</th><th class="num">Trainingen</th><th class="num">Volume</th><th class="num">PR's</th></tr></thead>
+        <tbody>${[...months].reverse().map((m) => `<tr>
+          <td>${esc(monthLabel(m.month))}</td>
+          <td class="num">${m.sessions}</td>
+          <td class="num">${esc(fmtKg(m.volume))}</td>
+          <td class="num">${m.prs}</td>
+        </tr>`).join('')}</tbody>
+      </table></div>
+      <div class="eyebrow">Volume per maand</div>
+      <div class="card"><div class="chart-wrap" id="month-chart"></div></div>` : `<p class="mut">Nog geen trainingen in deze periode.</p>`) +
+
+      `<div class="eyebrow">Aanwezigheid (12 weken)</div>
+      <div class="card">
+        <div class="cal">${['m', 'd', 'w', 'd', 'v', 'z', 'z'].map((d) => `<div class="head">${d}</div>`).join('')}
+        ${days.map((d) => `<div class="${d.on ? 'on' : ''}" title="${d.iso}"></div>`).join('')}</div>
+        <p class="mut" style="margin:10px 0 0">Elke stip is een dag; blauw = getraind.</p>
+      </div>` +
+
+      `<div class="eyebrow">Spiergroepen</div>
+      <div class="card">
+        ${groups.length ? groups.map((g) => `<div class="bar-row">
+          <span>${esc(g.group)}</span>
+          <span class="track"><span class="fill" style="width:${barPct(g)}%"></span></span>
+          <span class="val">${g.volume ? esc(fmtKg(g.volume)) : g.minutes ? fmtNum(g.minutes) + ' min' : g.sets + ' sets'}</span>
+        </div>`).join('') : '<p class="mut">Nog geen gegevens.</p>'}
+        <p class="mut" style="margin:10px 0 0">Stel de spiergroep per oefening in op de oefeningpagina.</p>
+      </div>` +
+
+      `<div class="eyebrow">Gegevens</div>
+      <div class="actions"><button id="csv-client">Exporteer trainingen (CSV)</button></div>`;
+
+    bindNav();
+    bindPeriodBar();
+    if (months.length) {
+      renderBarChart(document.getElementById('month-chart'), months.map((m) => ({ date: m.month + '-15', value: m.volume })));
+    }
+    document.getElementById('csv-client').addEventListener('click', () => downloadCsv(clientId));
+  }
+
+  // --- compare exercises in one chart ---
+  function viewCompare(clientId) {
+    const c = clientById(clientId);
+    if (!c) { location.hash = '/'; return; }
+    const exercises = loggedExercises(clientId);
+    const picks = uiState.comparePicks.filter((n) => exercises.includes(n));
+    const metricLabels = { top: 'Zwaarste set', volume: 'Volume', e1rm: 'Geschat 1RM' };
+    if (!metricLabels[uiState.compareMetric]) uiState.compareMetric = 'top';
+
+    const series = picks.map((name) => ({
+      label: name,
+      points: exerciseSessions(clientId, name)
+        .filter((s) => inPeriod(s.date, uiState.period))
+        .map((s) => ({ date: s.date, value: s[uiState.compareMetric] || 0 }))
+        .filter((p) => p.value > 0),
+    })).filter((s) => s.points.length);
+
+    $app.innerHTML = topbar(`Vergelijken — ${c.name}`, `/klant/${clientId}`) +
+      clientTabs(clientId, 'vergelijk') +
+      (exercises.length ? `
+        <p class="sub" style="margin:0 0 10px">Kies twee of meer oefeningen (max 4).</p>
+        <div class="chips" style="margin-bottom:12px">${exercises.map((n) =>
+          `<button class="chip" data-cmp="${esc(n)}" aria-pressed="${picks.includes(n)}">${esc(n)}</button>`).join('')}</div>
+        ${periodBar()}
+        <div class="seg" role="group" aria-label="Meetwaarde" style="max-width:340px;margin-bottom:12px">${
+          Object.entries(metricLabels).map(([k, l]) => `<button data-cmp-metric="${k}" aria-pressed="${uiState.compareMetric === k}">${l}</button>`).join('')}</div>
+        <div class="card"><div class="chart-wrap" id="cmp-chart"></div></div>
+        ${picks.length > 4 ? '<p class="mut">Alleen de eerste vier oefeningen worden getekend.</p>' : ''}`
+        : `<div class="empty"><p>Nog geen gelogde oefeningen om te vergelijken.</p></div>`);
+
+    bindNav();
+    bindPeriodBar();
+    document.querySelectorAll('[data-cmp]').forEach((b) => b.addEventListener('click', () => {
+      const n = b.dataset.cmp;
+      const cur = uiState.comparePicks;
+      uiState.comparePicks = cur.includes(n) ? cur.filter((x) => x !== n) : [...cur, n].slice(-4);
+      render();
+    }));
+    document.querySelectorAll('[data-cmp-metric]').forEach((b) => b.addEventListener('click', () => {
+      uiState.compareMetric = b.dataset.cmpMetric; render();
+    }));
+    const box = document.getElementById('cmp-chart');
+    if (box) {
+      if (series.length) renderMultiChart(box, series.slice(0, 4), unitLbl());
+      else box.innerHTML = '<p class="mut">Kies oefeningen om ze te vergelijken.</p>';
+    }
+  }
+
+  // --- printable client report ---
+  function viewReport(clientId) {
+    const c = clientById(clientId);
+    if (!c) { location.hash = '/'; return; }
+    const period = uiState.period;
+    const months = monthlyStats(clientId, period);
+    const totals = months.reduce((t, m) => ({ sessions: t.sessions + m.sessions, volume: t.volume + m.volume, prs: t.prs + m.prs }), { sessions: 0, volume: 0, prs: 0 });
+    const exercises = loggedExercises(clientId).map((name) => {
+      const ss = exerciseSessions(clientId, name).filter((s) => inPeriod(s.date, period));
+      if (!ss.length) return null;
+      const kind = ss[ss.length - 1].kind || 'kracht';
+      const repsOnly = kind === 'lichaamsgewicht' && ss.every((s) => !s.extra);
+      const topOf = (s) => repsOnly ? s.bestReps : s.top;
+      const fmt = kind === 'cardio' ? (v) => fmtNum(v) + ' km' : repsOnly ? (v) => `${Math.round(v)} herh.` : fmtKg;
+      const best = Math.max(...ss.map(topOf));
+      const delta = topOf(ss[ss.length - 1]) - topOf(ss[0]);
+      return { name, kind, sessions: ss.length, best: fmt(best), first: fmt(topOf(ss[0])), last: fmt(topOf(ss[ss.length - 1])), delta: (delta > 0 ? '+' : '') + fmt(delta), up: delta > 0 };
+    }).filter(Boolean);
+    const meas = db.measurements.filter((m) => m.clientId === clientId && inPeriod(m.date, period)).sort((a, b) => a.date.localeCompare(b.date));
+
+    $app.innerHTML = topbar(`Rapport — ${c.name}`, `/klant/${clientId}`) +
+      clientTabs(clientId, 'rapport') +
+      periodBar() +
+      `<div class="actions no-print" style="margin-bottom:14px"><button class="primary" id="print-btn">Print / opslaan als PDF</button></div>
+      <h2 style="margin:0 0 4px">Voortgangsrapport ${esc(c.name)}</h2>
+      <p class="mut" style="margin:0 0 16px">${esc(PERIODS[period])} · opgemaakt ${esc(fmtDateFull(todayIso()))}${c.goal ? ' · doel: ' + esc(c.goal) : ''}</p>
+      <div class="stat-grid">
+        <div class="stat"><div class="lbl">Trainingen</div><div class="val">${totals.sessions}</div></div>
+        <div class="stat"><div class="lbl">Totaal volume</div><div class="val">${esc(fmtKg(totals.volume))}</div></div>
+        <div class="stat"><div class="lbl">Records</div><div class="val">${totals.prs}</div></div>
+      </div>` +
+      `<div class="eyebrow">Progressie per oefening</div>
+      <div class="card table-wrap"><table class="data">
+        <thead><tr><th>Oefening</th><th class="num">Sessies</th><th class="num">Beste</th><th class="num">Verloop</th></tr></thead>
+        <tbody>${exercises.map((e) => `<tr>
+          <td>${esc(e.name)}</td>
+          <td class="num">${e.sessions}</td>
+          <td class="num">${esc(e.best)}</td>
+          <td class="num"><span class="${e.up ? 'delta up' : 'mut'}">${esc(e.first)} → ${esc(e.last)} (${esc(e.delta)})</span></td>
+        </tr>`).join('') || '<tr><td colspan="4">Geen trainingen in deze periode.</td></tr>'}</tbody>
+      </table></div>` +
+      (meas.length ? `<div class="eyebrow">Metingen</div>
+      <div class="card table-wrap"><table class="data">
+        <thead><tr><th>Datum</th>${MEAS_FIELDS.map((f) => `<th class="num">${f.label}</th>`).join('')}</tr></thead>
+        <tbody>${meas.map((m) => `<tr><td>${esc(fmtDate(m.date))}</td>${MEAS_FIELDS.map((f) =>
+          `<td class="num">${m[f.key] != null ? esc(fmtNum(m[f.key]) + ' ' + f.unit()) : '–'}</td>`).join('')}</tr>`).join('')}</tbody>
+      </table></div>` : '') +
+      `<p class="mut" style="margin-top:20px">Coachlog</p>`;
+
+    bindNav();
+    bindPeriodBar();
+    document.getElementById('print-btn').addEventListener('click', () => window.print());
+  }
+
   // --- body measurements ---
   const MEAS_FIELDS = [
     { key: 'weight', label: 'Lichaamsgewicht', unit: () => unitLbl() },
@@ -1323,6 +1729,7 @@
     const fmtM = (v) => (Math.round(v * 10) / 10).toLocaleString('nl-NL');
 
     $app.innerHTML = topbar(`Metingen — ${c.name}`, `/klant/${clientId}`) +
+      clientTabs(clientId, 'metingen') +
       `<form class="card" id="meas-form">
         <label class="field"><span>Datum</span><input type="date" name="date" value="${todayIso()}" required></label>
         <div class="stat-grid cols2" style="gap:10px">
@@ -1381,7 +1788,14 @@
     const wanted = decodeURIComponent(encName).toLowerCase();
     const name = loggedExercises(clientId).find((n) => n.toLowerCase() === wanted);
     if (!name) { location.hash = `/klant/${clientId}`; return; }
-    const sessions = exerciseSessions(clientId, name);
+    const allSessions = exerciseSessions(clientId, name);
+    const sessions = allSessions.filter((s) => inPeriod(s.date, uiState.period));
+    if (!sessions.length) {
+      $app.innerHTML = topbar(name, `/klant/${clientId}`) + periodBar() +
+        `<div class="empty"><p>Geen sessies in deze periode.</p></div>`;
+      bindNav(); bindPeriodBar();
+      return;
+    }
     const first = sessions[0], last = sessions[sessions.length - 1];
 
     const kind = last.kind || 'kracht';
@@ -1435,7 +1849,14 @@
     const lineUnit = uiState.metric === 'pace' ? 'min/km' : uiState.metric === 'bestReps' ? 'herh.' : cfg.unit;
 
     $app.innerHTML = topbar(name, `/klant/${clientId}`) +
-      (kind !== 'kracht' ? `<p style="margin:0 0 12px"><span class="badge">${KIND_LABELS[kind]}</span></p>` : '') +
+      `<div class="row no-print" style="margin-bottom:12px">
+        <span class="mut">Spiergroep</span>
+        <select id="mg-select" style="max-width:200px">
+          ${MUSCLE_GROUPS.map((g) => `<option value="${g}" ${groupOf(name, kind) === g ? 'selected' : ''}>${g}</option>`).join('')}
+        </select>
+        ${kind !== 'kracht' ? `<span class="badge">${KIND_LABELS[kind]}</span>` : ''}
+      </div>` +
+      periodBar() +
       `<div class="stat-grid cols2">
         <div class="stat"><div class="lbl">${cfg.prLabel}</div><div class="val">${esc(cfg.fmt(prTop))}</div><div class="mut">op ${esc(fmtDateFull(prDate))}</div></div>
         <div class="stat"><div class="lbl">${cfg.pr2Label}</div><div class="val">${esc(cfg.pr2(sessions))}</div><div class="mut">${cfg.pr2Note}</div></div>
@@ -1468,6 +1889,8 @@
       </div>`).join('');
 
     bindNav();
+    bindPeriodBar();
+    document.getElementById('mg-select').addEventListener('change', (ev) => { setGroup(name, ev.target.value); render(); });
     const linePts = sessions
       .map((s) => ({ date: s.date, value: s[uiState.metric] }))
       .filter((p) => Number.isFinite(p.value) && p.value > 0);
@@ -1701,7 +2124,30 @@
         </div>`;
       }).join('') +
 
-      `<div class="eyebrow">Duo-trainingen</div>` +
+      `<div class="eyebrow">Deze maand</div>` +
+      (() => {
+        const month = todayIso().slice(0, 7);
+        const rows = members.map((m) => {
+          const ws = workoutsOf(m.id).filter((w) => w.date.slice(0, 7) === month);
+          const volume = ws.reduce((t, w) => t + w.entries.reduce((x, e) => x + entryVolumeKg(e), 0), 0);
+          let prs = 0;
+          for (const name of loggedExercises(m.id)) {
+            prs += exerciseSessions(m.id, name).filter((s) => s.isPr && s.date.slice(0, 7) === month).length;
+          }
+          return { name: m.name, sessions: ws.length, volume, prs };
+        });
+        const best = Math.max(...rows.map((r) => r.prs));
+        return `<div class="card table-wrap"><table class="data">
+          <thead><tr><th></th><th class="num">Trainingen</th><th class="num">Volume</th><th class="num">PR's</th></tr></thead>
+          <tbody>${rows.map((r) => `<tr>
+            <td>${esc(r.name)}${best > 0 && r.prs === best ? ' 🏆' : ''}</td>
+            <td class="num">${r.sessions}</td>
+            <td class="num">${esc(fmtKg(r.volume))}</td>
+            <td class="num">${r.prs}</td>
+          </tr>`).join('')}</tbody>
+        </table></div>` +
+        `<div class="eyebrow">Duo-trainingen</div>`;
+      })() +
       (dates.length ? dates.slice(0, 20).map((date) => {
         const lines = duoWorkouts.filter((w) => w.date === date).map((w) => {
           const m = clientById(w.clientId);
