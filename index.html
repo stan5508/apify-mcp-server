@@ -209,8 +209,34 @@
   }
   .tooltip .tv { font-weight: 650; font-variant-numeric: tabular-nums; }
 
-  .set-row { display: grid; grid-template-columns: 24px 1fr 1fr 58px 34px; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .set-row { display: grid; grid-template-columns: 30px 1fr 1fr 58px 34px; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .set-row.cardio { grid-template-columns: 30px 1fr 1fr 34px; }
   .set-row .n { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .set-row .n b { color: var(--accent-strong); font-weight: 700; }
+  .set-more { display: grid; grid-template-columns: auto 1fr; gap: 8px 10px; align-items: center; margin: -2px 0 10px 30px; padding: 10px; border: 1px solid var(--grid); border-radius: 8px; }
+  .set-more .lbl { font-size: 12px; color: var(--muted); }
+  .pillbar { display: flex; flex-wrap: wrap; gap: 6px; }
+  .pillbar button { padding: 5px 10px; font-size: 13px; border-radius: 99px; }
+  .pillbar button[aria-pressed="true"] { background: var(--wash); border-color: var(--accent); color: var(--accent-strong); font-weight: 600; }
+
+  #timer-bar {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
+    background: var(--ink); color: var(--page);
+    box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.18);
+  }
+  #timer-bar[hidden] { display: none; }
+  body.timer-on #app { padding-bottom: 160px; }
+  #timer-bar .t-label { flex: 1; min-width: 0; font-size: 14px; }
+  #timer-bar .t-time { font-size: 22px; font-weight: 650; font-variant-numeric: tabular-nums; }
+  #timer-bar button { background: transparent; border-color: rgba(255, 255, 255, 0.35); color: var(--page); padding: 6px 10px; font-size: 14px; }
+  #timer-bar button:hover { background: rgba(255, 255, 255, 0.12); }
+
+  .tool-panel { border: 1px solid var(--accent); border-radius: 10px; padding: 12px; margin-bottom: 10px; background: var(--surface); }
+  .tool-panel .row + .row { margin-top: 8px; }
+  .tool-out { font-weight: 650; margin-top: 8px; }
+  .ss-mark { border-left: 3px solid var(--accent); padding-left: 9px; }
   .prev-hint { margin: -4px 0 8px 32px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
   .pr-live {
     display: inline-flex; align-items: center; gap: 6px;
@@ -257,16 +283,26 @@
   <aside id="side"></aside>
   <main id="app"></main>
 </div>
+<div id="timer-bar" hidden>
+  <span class="t-label"></span>
+  <span class="t-time"></span>
+  <button type="button" class="t-plus" aria-label="30 seconden erbij">+30s</button>
+  <button type="button" class="t-pause" aria-label="Pauzeer timer">⏸</button>
+  <button type="button" class="t-stop" aria-label="Stop timer">✕</button>
+</div>
 
 <script>
 (() => {
   'use strict';
-  const APP_VERSION = 12; // bump when publishing; shown on the home screen
+  const APP_VERSION = 13; // bump when publishing; shown on the home screen
   const KEY = 'coachlog-v1';
   const $app = document.getElementById('app');
 
   // ---------- data ----------
-  const emptyDb = () => ({ clients: [], schemas: [], workouts: [], duos: [], duoSchemas: [], templates: [], measurements: [], settings: { unit: 'kg' }, updatedAt: 0 });
+  const emptyDb = () => ({
+    clients: [], schemas: [], workouts: [], duos: [], duoSchemas: [], templates: [], measurements: [],
+    settings: { unit: 'kg', restSeconds: 90, autoRest: true, sound: true, barWeight: 20 }, updatedAt: 0,
+  });
   let db = loadDb();
   function loadDb() {
     try {
@@ -278,7 +314,9 @@
   function normalizeDb(d) {
     const out = {
       clients: d.clients || [], schemas: d.schemas || [], workouts: d.workouts || [], duos: d.duos || [],
-      duoSchemas: d.duoSchemas || [], templates: d.templates || [], measurements: d.measurements || [], settings: d.settings || { unit: 'kg' }, updatedAt: d.updatedAt || 0,
+      duoSchemas: d.duoSchemas || [], templates: d.templates || [], measurements: d.measurements || [],
+      settings: { unit: 'kg', restSeconds: 90, autoRest: true, sound: true, barWeight: 20, ...(d.settings || {}) },
+      updatedAt: d.updatedAt || 0,
     };
     // migrate uniform sets/reps/weight to per-set targets
     for (const s of out.schemas) {
@@ -388,14 +426,63 @@
   const unitLbl = () => (db.settings && db.settings.unit) || 'kg';
   const fmtKg = (n) => (Math.round(n * 10) / 10).toLocaleString('nl-NL') + ' ' + unitLbl();
 
-  // metrics per workout for one exercise name
+  // ---------- exercise kinds, set types ----------
+  const KIND_LABELS = { kracht: 'Kracht', lichaamsgewicht: 'Lichaamsgewicht', cardio: 'Cardio' };
+  const entryKind = (e) => e.kind || 'kracht';
+  const SET_TYPES = { normaal: '', warmup: 'W', drop: 'D', falen: 'F' };
+  const SET_TYPE_LABELS = { normaal: 'Normaal', warmup: 'Warming-up', drop: 'Dropset', falen: 'Tot falen' };
+  const SIDE_LABELS = { beide: 'Beide', L: 'Links', R: 'Rechts' };
+  const setType = (s) => s.type || 'normaal';
+  const setSide = (s) => s.side || 'beide';
+  const filledSet = (s, kind) => kind === 'cardio' ? (s.distance > 0 || s.minutes > 0) : (s.weight > 0 || s.reps > 0);
+  const fmtNum = (n) => (Math.round(n * 10) / 10).toLocaleString('nl-NL');
+
+  // known kind for an exercise name: from history, then schemas
+  function kindFor(clientId, name) {
+    const key = name.trim().toLowerCase();
+    const ws = workoutsOf(clientId);
+    for (let i = ws.length - 1; i >= 0; i--) {
+      const e = ws[i].entries.find((x) => x.name.trim().toLowerCase() === key);
+      if (e) return entryKind(e);
+    }
+    for (const s of schemasOf(clientId)) {
+      const e = s.exercises.find((x) => x.name.trim().toLowerCase() === key);
+      if (e && e.kind) return e.kind;
+    }
+    return 'kracht';
+  }
+
+  // metrics per workout for one exercise name; warming-up sets never count
   function exerciseMetrics(entry) {
-    const sets = entry.sets.filter((s) => s.weight > 0 || s.reps > 0);
+    const kind = entryKind(entry);
+    const sets = entry.sets.filter((s) => setType(s) !== 'warmup' && filledSet(s, kind));
     if (!sets.length) return null;
+    if (kind === 'cardio') {
+      const distance = sets.reduce((t, s) => t + (s.distance || 0), 0);
+      const minutes = sets.reduce((t, s) => t + (s.minutes || 0), 0);
+      return { kind, distance, minutes, pace: distance > 0 ? minutes / distance : 0, top: distance, volume: minutes };
+    }
+    if (kind === 'lichaamsgewicht') {
+      const extra = Math.max(...sets.map((s) => s.weight || 0));
+      const bestReps = Math.max(...sets.map((s) => s.reps || 0));
+      const totalReps = sets.reduce((t, s) => t + (s.reps || 0), 0);
+      return { kind, extra, bestReps, totalReps, top: extra, volume: totalReps };
+    }
     const top = Math.max(...sets.map((s) => s.weight));
     const volume = sets.reduce((t, s) => t + s.weight * s.reps, 0);
     const e1rm = Math.max(...sets.map((s) => s.reps > 0 ? s.weight * (1 + s.reps / 30) : s.weight));
-    return { top, volume, e1rm };
+    return { kind, top, volume, e1rm };
+  }
+
+  // one logged set as text, incl. type/side/note markers
+  function setText(s, kind) {
+    const marks = [SET_TYPES[setType(s)], setSide(s) !== 'beide' ? setSide(s) : ''].filter(Boolean).join(' ');
+    const body = kind === 'cardio'
+      ? `${fmtNum(s.distance || 0)} km in ${fmtNum(s.minutes || 0)} min`
+      : kind === 'lichaamsgewicht'
+        ? `${s.weight > 0 ? '+' + fmtKg(s.weight) + ' × ' : ''}${s.reps || 0}${s.weight > 0 ? '' : ' herh.'}`
+        : `${fmtKg(s.weight || 0)} × ${s.reps || 0}`;
+    return body + (marks ? ` <span class="mut">${esc(marks)}</span>` : '') + (s.note ? ` <span class="mut">(${esc(s.note)})</span>` : '');
   }
 
   function loggedExercises(clientId) {
@@ -452,20 +539,112 @@
     return sessions.length ? Math.max(...sessions.map((s) => s.top)) : null;
   }
 
-  // set input rows for workout logging, incl. RIR column and previous-session hints
-  function setRowsHtml(attr, idx, sets, prevSets) {
-    const header = `<div class="set-row"><span></span><span class="col-head">Gewicht (${unitLbl()})</span><span class="col-head">Herh.</span><span class="col-head">RIR</span><span></span></div>`;
+  // set input rows for workout logging: kind-specific fields, per-set options, previous-session hints
+  function setRowsHtml(attr, idx, sets, prevSets, kind, openMore) {
+    const isCardio = kind === 'cardio';
+    const weightHead = kind === 'lichaamsgewicht' ? `Extra (${unitLbl()})` : `Gewicht (${unitLbl()})`;
+    const header = isCardio
+      ? `<div class="set-row cardio"><span></span><span class="col-head">Afstand (km)</span><span class="col-head">Tijd (min)</span><span></span></div>`
+      : `<div class="set-row"><span></span><span class="col-head">${weightHead}</span><span class="col-head">Herh.</span><span class="col-head">RIR</span><span></span></div>`;
+
     return header + sets.map((s, si) => {
+      const key = `${idx}.${si}`;
       const p = prevSets && prevSets[si];
-      return `<div class="set-row">
-        <span class="n">${si + 1}</span>
-        <input data-${attr}="${idx}.${si}" data-f="weight" type="text" inputmode="decimal" value="${s.weight || ''}" placeholder="kg">
-        <input data-${attr}="${idx}.${si}" data-f="reps" type="number" min="0" inputmode="numeric" value="${s.reps || ''}" placeholder="herh.">
-        <input data-${attr}="${idx}.${si}" data-f="rir" type="number" min="0" max="10" inputmode="numeric" value="${s.rir ?? ''}" placeholder="–" aria-label="Reps in reserve">
-        <button type="button" class="small danger ghost" data-rm-${attr}="${idx}.${si}" aria-label="Verwijder set">✕</button>
-      </div>` +
-      (p ? `<div class="prev-hint">vorige keer: ${esc(fmtKg(p.weight))} × ${p.reps}${p.rir != null ? ' · RIR ' + p.rir : ''}</div>` : '');
+      const marks = [SET_TYPES[setType(s)], setSide(s) !== 'beide' ? setSide(s) : ''].filter(Boolean).join('');
+      const nCell = `<span class="n">${si + 1}${marks ? ` <b>${esc(marks)}</b>` : ''}</span>`;
+      const row = isCardio
+        ? `<div class="set-row cardio">
+            ${nCell}
+            <input data-${attr}="${key}" data-f="distance" type="text" inputmode="decimal" value="${s.distance || ''}" placeholder="km">
+            <input data-${attr}="${key}" data-f="minutes" type="text" inputmode="decimal" value="${s.minutes || ''}" placeholder="min">
+            <button type="button" class="small ghost" data-more-${attr}="${key}" aria-label="Meer opties">⋯</button>
+          </div>`
+        : `<div class="set-row">
+            ${nCell}
+            <input data-${attr}="${key}" data-f="weight" type="text" inputmode="decimal" value="${s.weight || ''}" placeholder="${kind === 'lichaamsgewicht' ? '+' + unitLbl() : unitLbl()}">
+            <input data-${attr}="${key}" data-f="reps" type="number" min="0" inputmode="numeric" value="${s.reps || ''}" placeholder="herh.">
+            <input data-${attr}="${key}" data-f="rir" type="number" min="0" max="10" inputmode="numeric" value="${s.rir ?? ''}" placeholder="–" aria-label="Reps in reserve">
+            <button type="button" class="small ghost" data-more-${attr}="${key}" aria-label="Meer opties">⋯</button>
+          </div>`;
+
+      const more = openMore === key ? `<div class="set-more">
+          <span class="lbl">Type</span>
+          <div class="pillbar">${Object.keys(SET_TYPES).map((t) =>
+            `<button type="button" data-settype-${attr}="${key}.${t}" aria-pressed="${setType(s) === t}">${SET_TYPE_LABELS[t]}</button>`).join('')}</div>
+          <span class="lbl">Kant</span>
+          <div class="pillbar">${Object.keys(SIDE_LABELS).map((sd) =>
+            `<button type="button" data-setside-${attr}="${key}.${sd}" aria-pressed="${setSide(s) === sd}">${SIDE_LABELS[sd]}</button>`).join('')}</div>
+          <span class="lbl">Notitie</span>
+          <input data-${attr}="${key}" data-f="note" type="text" value="${esc(s.note || '')}" placeholder="bijv. linkerknie zeurde">
+          <span></span>
+          <div class="pillbar"><button type="button" class="danger" data-rm-${attr}="${key}">Set verwijderen</button></div>
+        </div>` : '';
+
+      const hint = p ? `<div class="prev-hint">vorige keer: ${kind === 'cardio'
+        ? `${fmtNum(p.distance || 0)} km in ${fmtNum(p.minutes || 0)} min`
+        : `${esc(fmtKg(p.weight || 0))} × ${p.reps || 0}${p.rir != null ? ' · RIR ' + p.rir : ''}`}</div>` : '';
+
+      return row + hint + more;
     }).join('');
+  }
+
+  // target rows for schema editors (key = "i" or "mi.i"); rmAttr/addAttr are data-attribute names
+  function targetRowsHtml(key, targets, kind, rmAttr) {
+    const isCardio = kind === 'cardio';
+    const head = isCardio
+      ? `<div class="tgt-row"><span></span><span class="col-head">Afstand (km)</span><span class="col-head">Tijd (min)</span><span></span></div>`
+      : `<div class="tgt-row"><span></span><span class="col-head">${kind === 'lichaamsgewicht' ? 'Extra' : 'Gewicht'} (${unitLbl()})</span><span class="col-head">Herh.</span><span></span></div>`;
+    return head + targets.map((t, si) => `<div class="tgt-row">
+      <span class="n">${si + 1}</span>
+      ${isCardio
+        ? `<input data-tgt="${key}.${si}" data-f="distance" type="text" inputmode="decimal" value="${t.distance || ''}" placeholder="km">
+           <input data-tgt="${key}.${si}" data-f="minutes" type="text" inputmode="decimal" value="${t.minutes || ''}" placeholder="min">`
+        : `<input data-tgt="${key}.${si}" data-f="weight" type="text" inputmode="decimal" value="${t.weight || ''}" placeholder="${unitLbl()}">
+           <input data-tgt="${key}.${si}" data-f="reps" type="number" min="0" inputmode="numeric" value="${t.reps || ''}" placeholder="herh.">`}
+      <button type="button" class="small danger ghost" data-${rmAttr}="${key}.${si}" aria-label="Verwijder set">✕</button>
+    </div>`).join('');
+  }
+
+  // wire up the per-set controls shared by solo and duo logging
+  function bindSetControls(attr, o) {
+    const camel = (p) => p + attr.charAt(0).toUpperCase() + attr.slice(1);
+    document.querySelectorAll(`[data-more-${attr}]`).forEach((b) => b.addEventListener('click', () => {
+      o.syncDraft();
+      const key = b.dataset[camel('more')];
+      o.setOpenMore(o.openMore() === key ? null : key);
+      o.repaint();
+    }));
+    document.querySelectorAll(`[data-settype-${attr}]`).forEach((b) => b.addEventListener('click', () => {
+      o.syncDraft();
+      const raw = b.dataset[camel('settype')];
+      const type = raw.slice(raw.lastIndexOf('.') + 1);
+      o.getSet(raw.slice(0, raw.lastIndexOf('.'))).type = type;
+      o.repaint();
+    }));
+    document.querySelectorAll(`[data-setside-${attr}]`).forEach((b) => b.addEventListener('click', () => {
+      o.syncDraft();
+      const raw = b.dataset[camel('setside')];
+      const side = raw.slice(raw.lastIndexOf('.') + 1);
+      o.getSet(raw.slice(0, raw.lastIndexOf('.'))).side = side;
+      o.repaint();
+    }));
+    document.querySelectorAll(`[data-rm-${attr}]`).forEach((b) => b.addEventListener('click', () => {
+      o.syncDraft();
+      o.removeSet(b.dataset[camel('rm')]);
+      o.setOpenMore(null);
+      o.repaint();
+    }));
+    // rest timer: per-exercise button, plus auto-start once a set's reps/time is entered
+    document.querySelectorAll(`[data-rest-${attr}]`).forEach((b) => b.addEventListener('click', () => {
+      startRest(db.settings.restSeconds || 90);
+    }));
+    if (db.settings.autoRest) {
+      document.querySelectorAll(`[data-${attr}][data-f="reps"], [data-${attr}][data-f="minutes"]`).forEach((inp) => {
+        inp.addEventListener('change', () => {
+          if (num(inp.value) > 0) startRest(db.settings.restSeconds || 90);
+        });
+      });
+    }
   }
 
   // live PR badge: show while typed weight beats the client's best for that exercise
@@ -505,6 +684,171 @@
       if (sessions[i].top > best) best = sessions[i].top;
     }
     return sessions;
+  }
+
+  // ---------- timers (rest + interval) ----------
+  const timer = { mode: null, endsAt: 0, tick: null, interval: null, paused: false, left: 0 };
+  let audioCtx = null;
+  function beep(times = 1) {
+    if (!db.settings.sound) return;
+    try {
+      audioCtx = audioCtx || new (window.AudioContext || window.webkitAudioContext)();
+      for (let i = 0; i < times; i++) {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = 880;
+        const start = audioCtx.currentTime + i * 0.25;
+        gain.gain.setValueAtTime(0.001, start);
+        gain.gain.exponentialRampToValueAtTime(0.4, start + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.001, start + 0.18);
+        osc.connect(gain).connect(audioCtx.destination);
+        osc.start(start);
+        osc.stop(start + 0.2);
+      }
+    } catch { /* audio unavailable */ }
+    if (navigator.vibrate) navigator.vibrate(times > 1 ? [200, 100, 200] : 300);
+  }
+  const mmss = (sec) => {
+    const total = Math.max(0, Math.round(sec));
+    return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+  };
+
+  function stopTimer() {
+    clearInterval(timer.tick);
+    timer.mode = null; timer.interval = null; timer.tick = null; timer.paused = false;
+    document.getElementById('timer-bar').hidden = true;
+    document.body.classList.remove('timer-on');
+  }
+  function startRest(seconds) {
+    clearInterval(timer.tick);
+    timer.mode = 'rest'; timer.interval = null; timer.paused = false;
+    timer.endsAt = Date.now() + seconds * 1000;
+    runTimer();
+  }
+  function startInterval(work, rest, rounds) {
+    clearInterval(timer.tick);
+    timer.mode = 'interval'; timer.paused = false;
+    timer.interval = { work, rest, rounds, round: 1, phase: 'work' };
+    timer.endsAt = Date.now() + work * 1000;
+    beep();
+    runTimer();
+  }
+  function runTimer() {
+    const bar = document.getElementById('timer-bar');
+    bar.hidden = false;
+    document.body.classList.add('timer-on');
+    const paint = () => {
+      const left = timer.paused ? timer.left : (timer.endsAt - Date.now()) / 1000;
+      const iv = timer.interval;
+      const label = iv ? `${iv.phase === 'work' ? '💪 Werk' : '😮‍💨 Rust'} · ronde ${iv.round}/${iv.rounds}` : '⏱ Rust';
+      bar.querySelector('.t-label').textContent = label;
+      bar.querySelector('.t-time').textContent = mmss(left);
+      bar.querySelector('.t-pause').textContent = timer.paused ? '▶' : '⏸';
+      if (!timer.paused && left <= 0) {
+        if (!iv) { beep(2); stopTimer(); return; }
+        if (iv.phase === 'work') {
+          if (iv.rest > 0) { iv.phase = 'rest'; timer.endsAt = Date.now() + iv.rest * 1000; beep(); return; }
+          iv.round++;
+        } else {
+          iv.phase = 'work'; iv.round++;
+        }
+        if (iv.round > iv.rounds) { beep(2); stopTimer(); return; }
+        iv.phase = 'work';
+        timer.endsAt = Date.now() + iv.work * 1000;
+        beep();
+      }
+    };
+    paint();
+    timer.tick = setInterval(paint, 250);
+  }
+  function bindTimerBar() {
+    const bar = document.getElementById('timer-bar');
+    bar.querySelector('.t-plus').addEventListener('click', () => {
+      if (timer.paused) timer.left += 30; else timer.endsAt += 30000;
+    });
+    bar.querySelector('.t-pause').addEventListener('click', () => {
+      if (timer.paused) { timer.endsAt = Date.now() + timer.left * 1000; timer.paused = false; }
+      else { timer.left = (timer.endsAt - Date.now()) / 1000; timer.paused = true; }
+    });
+    bar.querySelector('.t-stop').addEventListener('click', stopTimer);
+  }
+
+  // ---------- plate calculator ----------
+  const PLATES = [25, 20, 15, 10, 5, 2.5, 1.25];
+  function platesFor(total, bar) {
+    let perSide = (total - bar) / 2;
+    if (perSide <= 0) return { ok: total >= bar, plates: [], rest: 0 };
+    const out = [];
+    for (const p of PLATES) {
+      const n = Math.floor((perSide + 1e-9) / p);
+      if (n > 0) { out.push({ plate: p, n }); perSide -= n * p; }
+    }
+    return { ok: true, plates: out, rest: Math.round(perSide * 100) / 100 };
+  }
+  function plateText(total) {
+    const bar = db.settings.barWeight || 20;
+    const r = platesFor(total, bar);
+    if (!total) return 'Vul een gewicht in.';
+    if (!r.ok) return `${fmtKg(total)} is lichter dan de stang (${fmtKg(bar)}).`;
+    if (!r.plates.length) return `Alleen de stang (${fmtKg(bar)}).`;
+    const fmtP = (v) => v.toLocaleString('nl-NL', { maximumFractionDigits: 2 });
+    return `Per kant: ${r.plates.map((p) => `${p.n}×${fmtP(p.plate)}`).join(' + ')}` +
+      (r.rest > 0 ? ` (${fmtP(r.rest)} ${unitLbl()} rest)` : '');
+  }
+
+  // ---------- session tools panel (plates + interval timer) ----------
+  let plateWeight = 100;
+  const intervalCfg = { work: 40, rest: 20, rounds: 8 };
+  function toolPanelHtml(tool) {
+    if (tool === 'plates') {
+      return `<div class="tool-panel">
+        <div class="row">
+          <label class="field grow" style="margin:0"><span>Totaalgewicht incl. stang (${unitLbl()})</span>
+            <input id="plate-weight" type="text" inputmode="decimal" value="${plateWeight || ''}"></label>
+          <label class="field" style="margin:0;width:120px"><span>Stang (${unitLbl()})</span>
+            <input id="bar-weight" type="text" inputmode="decimal" value="${db.settings.barWeight}"></label>
+        </div>
+        <div class="tool-out" id="plate-out">${esc(plateText(plateWeight))}</div>
+      </div>`;
+    }
+    if (tool === 'interval') {
+      return `<div class="tool-panel">
+        <div class="row">
+          <label class="field grow" style="margin:0"><span>Werk (sec)</span><input id="iv-work" type="number" min="5" value="${intervalCfg.work}"></label>
+          <label class="field grow" style="margin:0"><span>Rust (sec)</span><input id="iv-rest" type="number" min="0" value="${intervalCfg.rest}"></label>
+          <label class="field grow" style="margin:0"><span>Rondes</span><input id="iv-rounds" type="number" min="1" value="${intervalCfg.rounds}"></label>
+        </div>
+        <div class="row"><button type="button" class="primary" id="iv-start">Start interval</button></div>
+      </div>`;
+    }
+    return '';
+  }
+  function bindToolPanel(getTool, setTool, repaint) {
+    const toggle = (name) => { setTool(getTool() === name ? null : name); repaint(); };
+    const p = document.getElementById('tool-plates');
+    if (p) p.addEventListener('click', () => toggle('plates'));
+    const i = document.getElementById('tool-interval');
+    if (i) i.addEventListener('click', () => toggle('interval'));
+
+    const pw = document.getElementById('plate-weight');
+    const bw = document.getElementById('bar-weight');
+    const out = document.getElementById('plate-out');
+    const recalc = () => {
+      plateWeight = num(pw.value);
+      const bar = num(bw.value);
+      if (bar > 0 && bar !== db.settings.barWeight) { db.settings.barWeight = bar; save(); }
+      out.textContent = plateText(plateWeight);
+    };
+    if (pw && bw && out) { pw.addEventListener('input', recalc); bw.addEventListener('input', recalc); }
+
+    const start = document.getElementById('iv-start');
+    if (start) start.addEventListener('click', () => {
+      intervalCfg.work = Math.max(5, num(document.getElementById('iv-work').value));
+      intervalCfg.rest = Math.max(0, num(document.getElementById('iv-rest').value));
+      intervalCfg.rounds = Math.max(1, num(document.getElementById('iv-rounds').value));
+      startInterval(intervalCfg.work, intervalCfg.rest, intervalCfg.rounds);
+    });
   }
 
   // ---------- chart ----------
@@ -741,6 +1085,18 @@
         </div>
         <p class="mut" style="margin:8px 0 0">Alleen het label wijzigt; bestaande getallen worden niet omgerekend.</p>
       </div>
+      <div class="card">
+        <div class="row">
+          <label class="field grow" style="margin:0"><span>Rusttijd (sec)</span>
+            <input id="set-rest" type="number" min="10" max="600" value="${db.settings.restSeconds}"></label>
+          <label class="field grow" style="margin:0"><span>Stanggewicht (${unitLbl()})</span>
+            <input id="set-bar" type="text" inputmode="decimal" value="${db.settings.barWeight}"></label>
+        </div>
+        <div class="pillbar" style="margin-top:10px">
+          <button id="set-autorest" aria-pressed="${!!db.settings.autoRest}">Rusttimer start automatisch</button>
+          <button id="set-sound" aria-pressed="${!!db.settings.sound}">Geluid en trilling</button>
+        </div>
+      </div>
       <div class="eyebrow">Synchronisatie</div>
       <div class="card">` +
       (syncCfg && syncCfg.gistId
@@ -791,6 +1147,18 @@
     ['kg', 'lbs'].forEach((u) => document.getElementById('unit-' + u).addEventListener('click', () => {
       db.settings.unit = u; save(); render();
     }));
+    document.getElementById('set-rest').addEventListener('change', (ev) => {
+      db.settings.restSeconds = Math.min(600, Math.max(10, num(ev.target.value) || 90)); save(); render();
+    });
+    document.getElementById('set-bar').addEventListener('change', (ev) => {
+      db.settings.barWeight = Math.max(0, num(ev.target.value)); save(); render();
+    });
+    document.getElementById('set-autorest').addEventListener('click', () => {
+      db.settings.autoRest = !db.settings.autoRest; save(); render();
+    });
+    document.getElementById('set-sound').addEventListener('click', () => {
+      db.settings.sound = !db.settings.sound; save(); if (db.settings.sound) beep(); render();
+    });
     const syncStatusEl = document.getElementById('sync-status');
     const connectBtn = document.getElementById('sync-connect');
     if (connectBtn) connectBtn.addEventListener('click', async () => {
@@ -846,10 +1214,12 @@
       const sessions = exerciseSessions(id, name);
       const lastSession = sessions[sessions.length - 1];
       const pr = Math.max(...sessions.map((s) => s.top));
+      const k = lastSession.kind || 'kracht';
+      const prTxt = k === 'cardio' ? `${fmtNum(pr)} km` : k === 'lichaamsgewicht' && pr === 0 ? `${Math.max(...sessions.map((s) => s.bestReps))} herh.` : fmtKg(pr);
       return `<div class="card tappable" data-nav="/klant/${id}/oefening/${encodeURIComponent(name)}" role="link" tabindex="0">
         <div class="row"><div class="grow">
-          <div class="title">${esc(name)}</div>
-          <div class="sub">PR ${esc(fmtKg(pr))} · laatst gedaan ${esc(fmtDate(lastSession.date))}</div>
+          <div class="title">${esc(name)}${k !== 'kracht' ? ` <span class="badge">${KIND_LABELS[k]}</span>` : ''}</div>
+          <div class="sub">PR ${esc(prTxt)} · laatst gedaan ${esc(fmtDate(lastSession.date))}</div>
         </div><span class="mut">›</span></div>
       </div>`;
     }).join('');
@@ -892,13 +1262,16 @@
         const schema = schemaById(w.schemaId);
         const summary = w.entries.map((e) => {
           const m = exerciseMetrics(e);
-          return m ? `${esc(e.name)} ${fmtKg(m.top)}` : esc(e.name);
+          if (!m) return esc(e.name);
+          const val = m.kind === 'cardio' ? `${fmtNum(m.distance)} km` : m.kind === 'lichaamsgewicht' ? `${m.bestReps} herh.` : fmtKg(m.top);
+          return `${esc(e.name)} ${val}`;
         }).join(' · ');
         return `<div class="card">
           <div class="row">
             <div class="grow">
               <div class="title">${esc(fmtDateFull(w.date))} <span class="badge">${esc(schema ? schema.name : w.duoId ? (duoSchemaById(w.schemaId) || {}).name || 'Duo-training' : 'Vrije training')}</span></div>
               <div class="sub">${summary}</div>
+              ${w.durationMin ? `<div class="mut">Duur: ${w.durationMin} min</div>` : ''}
               ${w.notes ? `<div class="mut">${esc(w.notes)}</div>` : ''}
             </div>
             <button class="small ghost" data-edit-workout="${w.id}" aria-label="Bewerk training">✎</button>
@@ -1011,52 +1384,98 @@
     const sessions = exerciseSessions(clientId, name);
     const first = sessions[0], last = sessions[sessions.length - 1];
 
-    const prTop = Math.max(...sessions.map((s) => s.top));
-    const prDate = sessions.find((s) => s.top === prTop).date;
-    const pr1rm = Math.max(...sessions.map((s) => s.e1rm));
-    const delta = last.top - first.top;
+    const kind = last.kind || 'kracht';
+    const cfg = {
+      kracht: {
+        metrics: { top: 'Zwaarste set', e1rm: 'Geschat 1RM' },
+        fmt: fmtKg, unit: 'kg',
+        lineTitle: 'Gewicht per training',
+        barKey: 'volume', barTitle: 'Volume per training',
+        barNote: 'Volume = som van gewicht × herhalingen per training.',
+        prLabel: 'PR · zwaarste set', pr2Label: 'PR · geschat 1RM', pr2: (ss) => fmtKg(Math.max(...ss.map((x) => x.e1rm))), pr2Note: 'Epley-formule',
+      },
+      lichaamsgewicht: {
+        metrics: { extra: 'Extra gewicht', bestReps: 'Beste set (herh.)' },
+        fmt: fmtKg, unit: 'kg',
+        lineTitle: 'Belasting per training',
+        barKey: 'totalReps', barTitle: 'Totaal herhalingen per training',
+        barNote: 'Som van alle herhalingen per training.',
+        prLabel: 'PR · extra gewicht', pr2Label: 'PR · meeste herhalingen', pr2: (ss) => `${Math.max(...ss.map((x) => x.bestReps))} herh.`, pr2Note: 'beste set',
+      },
+      cardio: {
+        metrics: { distance: 'Afstand (km)', pace: 'Tempo (min/km)' },
+        fmt: (v) => fmtNum(v) + ' km', unit: 'km',
+        lineTitle: 'Afstand en tempo',
+        barKey: 'minutes', barTitle: 'Tijd per training',
+        barNote: 'Totale tijd per training in minuten.',
+        prLabel: 'PR · langste afstand', pr2Label: 'PR · beste tempo',
+        pr2: (ss) => { const p = ss.filter((x) => x.pace > 0); return p.length ? fmtNum(Math.min(...p.map((x) => x.pace))) + ' min/km' : '—'; }, pr2Note: 'min per km',
+      },
+    }[kind];
+
+    const metricKeys = Object.keys(cfg.metrics);
+    if (!metricKeys.includes(uiState.metric)) uiState.metric = metricKeys[0];
+    // bodyweight work without added weight: progress is in reps, not kilos
+    const repsOnly = kind === 'lichaamsgewicht' && sessions.every((s) => !s.extra);
+    if (repsOnly) {
+      cfg.fmt = (v) => `${Math.round(v)} herh.`;
+      cfg.prLabel = 'PR · meeste herhalingen';
+      cfg.pr2Label = 'Meeste herhalingen in één sessie';
+      cfg.pr2 = (ss) => `${Math.max(...ss.map((x) => x.totalReps))} herh.`;
+      cfg.pr2Note = 'alle sets samen';
+      if (uiState.metric === 'extra') uiState.metric = 'bestReps';
+    }
+    const topOf = (s) => repsOnly ? s.bestReps : s.top;
+    const prTop = Math.max(...sessions.map(topOf));
+    const prDate = sessions.find((s) => topOf(s) === prTop).date;
+    const delta = topOf(last) - topOf(first);
     const deltaCls = delta > 0 ? 'up' : delta < 0 ? 'down' : '';
     const deltaSign = delta > 0 ? '+' : '';
-    const deltaPct = first.top > 0 ? ` (${deltaSign}${Math.round((delta / first.top) * 100)}%)` : '';
-
-    if (uiState.metric !== 'top' && uiState.metric !== 'e1rm') uiState.metric = 'top';
-    const metricNames = { top: 'Zwaarste set', e1rm: 'Geschat 1RM' };
+    const deltaPct = topOf(first) > 0 ? ` (${deltaSign}${Math.round((delta / topOf(first)) * 100)}%)` : '';
+    const lineUnit = uiState.metric === 'pace' ? 'min/km' : uiState.metric === 'bestReps' ? 'herh.' : cfg.unit;
 
     $app.innerHTML = topbar(name, `/klant/${clientId}`) +
+      (kind !== 'kracht' ? `<p style="margin:0 0 12px"><span class="badge">${KIND_LABELS[kind]}</span></p>` : '') +
       `<div class="stat-grid cols2">
-        <div class="stat"><div class="lbl">PR · zwaarste set</div><div class="val">${esc(fmtKg(prTop))}</div><div class="mut">op ${esc(fmtDateFull(prDate))}</div></div>
-        <div class="stat"><div class="lbl">PR · geschat 1RM</div><div class="val">${esc(fmtKg(pr1rm))}</div><div class="mut">Epley-formule</div></div>
+        <div class="stat"><div class="lbl">${cfg.prLabel}</div><div class="val">${esc(cfg.fmt(prTop))}</div><div class="mut">op ${esc(fmtDateFull(prDate))}</div></div>
+        <div class="stat"><div class="lbl">${cfg.pr2Label}</div><div class="val">${esc(cfg.pr2(sessions))}</div><div class="mut">${cfg.pr2Note}</div></div>
         <div class="stat"><div class="lbl">Laatst gedaan</div><div class="val">${esc(fmtDate(last.date))}</div><div class="mut">${sessions.length} sessie${sessions.length === 1 ? '' : 's'} sinds ${esc(fmtDate(first.date))}</div></div>
-        <div class="stat"><div class="lbl">Totale progressie</div><div class="val">${deltaSign}${esc(fmtKg(delta))}</div><div class="delta ${deltaCls}">${esc(fmtKg(first.top))} → ${esc(fmtKg(last.top))}${deltaPct}</div></div>
+        <div class="stat"><div class="lbl">Totale progressie</div><div class="val">${deltaSign}${esc(cfg.fmt(delta))}</div><div class="delta ${deltaCls}">${esc(cfg.fmt(topOf(first)))} → ${esc(cfg.fmt(topOf(last)))}${deltaPct}</div></div>
       </div>` +
 
-      `<div class="eyebrow">Gewicht per training</div>
+      `<div class="eyebrow">${cfg.lineTitle}</div>
       <div class="card">
         <div class="seg" role="group" aria-label="Meetwaarde">
-          ${['top', 'e1rm'].map((m) => `<button data-metric="${m}" aria-pressed="${uiState.metric === m}">${metricNames[m]}</button>`).join('')}
+          ${metricKeys.map((m) => `<button data-metric="${m}" aria-pressed="${uiState.metric === m}">${cfg.metrics[m]}</button>`).join('')}
         </div>
         <div class="chart-wrap" id="line-chart" style="margin-top:12px"></div>
-        <p class="mut" style="margin:6px 0 0">${uiState.metric === 'e1rm' ? 'Geschat 1RM via de Epley-formule op basis van de beste set.' : 'Zwaarste set per training.'}</p>
+        <p class="mut" style="margin:6px 0 0">${uiState.metric === 'e1rm' ? 'Geschat 1RM via de Epley-formule op basis van de beste set.' : cfg.metrics[uiState.metric] + ' per training.'} Warming-upsets tellen niet mee.</p>
       </div>` +
 
-      `<div class="eyebrow">Volume per training</div>
+      `<div class="eyebrow">${cfg.barTitle}</div>
       <div class="card">
         <div class="chart-wrap" id="bar-chart"></div>
-        <p class="mut" style="margin:6px 0 0">Volume = som van gewicht × herhalingen per training.</p>
+        <p class="mut" style="margin:6px 0 0">${cfg.barNote}</p>
       </div>` +
 
       `<div class="eyebrow">Alle sessies</div>` +
       [...sessions].reverse().map((s) => `<div class="card">
         <div class="row"><div class="grow">
           <div class="title">${esc(fmtDateFull(s.date))} ${s.isPr ? '<span class="badge pr">🏆 PR</span>' : ''}</div>
-          <div class="sub">${s.sets.map((st) => `${esc(fmtKg(st.weight))} × ${st.reps}${st.rir != null ? ' <span class="mut">RIR ' + st.rir + '</span>' : ''}`).join(' · ')}</div>
+          <div class="sub">${s.sets.map((st) => setText(st, kind) + (st.rir != null ? ` <span class="mut">RIR ${st.rir}</span>` : '')).join(' · ')}</div>
         </div>
-        <div class="mut" style="font-variant-numeric:tabular-nums">${esc(fmtKg(s.top))}</div></div>
+        <div class="mut" style="font-variant-numeric:tabular-nums">${esc(cfg.fmt(topOf(s)))}</div></div>
       </div>`).join('');
 
     bindNav();
-    renderChart(document.getElementById('line-chart'), sessions.map((s) => ({ date: s.date, value: s[uiState.metric] })), 'kg');
-    renderBarChart(document.getElementById('bar-chart'), sessions.map((s) => ({ date: s.date, value: s.volume })));
+    const linePts = sessions
+      .map((s) => ({ date: s.date, value: s[uiState.metric] }))
+      .filter((p) => Number.isFinite(p.value) && p.value > 0);
+    const lineBox = document.getElementById('line-chart');
+    if (linePts.length) renderChart(lineBox, linePts, lineUnit);
+    else lineBox.innerHTML = '<p class="mut">Nog geen waarden voor deze meetwaarde.</p>';
+    const barPts = sessions.map((s) => ({ date: s.date, value: s[cfg.barKey] || 0 }));
+    renderBarChart(document.getElementById('bar-chart'), barPts);
     document.querySelectorAll('[data-metric]').forEach((b) => b.addEventListener('click', () => {
       uiState.metric = b.dataset.metric; render();
     }));
@@ -1123,15 +1542,14 @@
           ${draft.exercises.map((e, i) => `<div class="card">
             <div class="row" style="margin-bottom:8px">
               <input data-exname="${i}" class="grow" required placeholder="bijv. Squat" value="${esc(e.name)}">
+              <button type="button" class="small ghost" data-ex-up="${i}" aria-label="Omhoog" ${i === 0 ? 'disabled' : ''}>↑</button>
+              <button type="button" class="small ghost" data-ex-down="${i}" aria-label="Omlaag" ${i === draft.exercises.length - 1 ? 'disabled' : ''}>↓</button>
               <button type="button" class="small danger ghost" data-rm-ex="${i}" aria-label="Verwijder oefening">✕</button>
             </div>
-            <div class="tgt-row"><span></span><span class="col-head">Gewicht (${unitLbl()})</span><span class="col-head">Herh.</span><span></span></div>
-            ${e.targets.map((t, si) => `<div class="tgt-row">
-              <span class="n">${si + 1}</span>
-              <input data-tgt="${i}.${si}" data-f="weight" type="text" inputmode="decimal" value="${t.weight || ''}" placeholder="${unitLbl()}">
-              <input data-tgt="${i}.${si}" data-f="reps" type="number" min="0" inputmode="numeric" value="${t.reps || ''}" placeholder="herh.">
-              <button type="button" class="small danger ghost" data-rm-tgt="${i}.${si}" aria-label="Verwijder set">✕</button>
-            </div>`).join('')}
+            <label class="field"><span>Soort</span>
+              <select data-exkind="${i}">${Object.entries(KIND_LABELS).map(([k, l]) => `<option value="${k}" ${(e.kind || 'kracht') === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+            </label>
+            ${targetRowsHtml(String(i), e.targets, e.kind || 'kracht', 'rm-tgt')}
             <button type="button" class="small" data-add-tgt="${i}">+ Set</button>
           </div>`).join('')}
           <button type="button" id="add-ex" class="small" style="margin:4px 0 16px">+ Oefening</button>
@@ -1145,11 +1563,27 @@
         document.querySelectorAll('[data-exname]').forEach((inp) => {
           draft.exercises[+inp.dataset.exname].name = inp.value;
         });
+        document.querySelectorAll('[data-exkind]').forEach((sel) => {
+          draft.exercises[+sel.dataset.exkind].kind = sel.value;
+        });
         document.querySelectorAll('[data-tgt]').forEach((inp) => {
           const [i, si] = inp.dataset.tgt.split('.').map(Number);
           draft.exercises[i].targets[si][inp.dataset.f] = num(inp.value);
         });
       };
+      document.querySelectorAll('[data-exkind]').forEach((sel) => sel.addEventListener('change', () => {
+        syncDraft();
+        paint();
+      }));
+      document.querySelectorAll('[data-ex-up], [data-ex-down]').forEach((b) => b.addEventListener('click', () => {
+        syncDraft();
+        const up = b.dataset.exUp !== undefined;
+        const i = +(up ? b.dataset.exUp : b.dataset.exDown);
+        const to = up ? i - 1 : i + 1;
+        if (to < 0 || to >= draft.exercises.length) return;
+        [draft.exercises[i], draft.exercises[to]] = [draft.exercises[to], draft.exercises[i]];
+        paint();
+      }));
       document.getElementById('add-ex').addEventListener('click', () => {
         syncDraft();
         draft.exercises.push(newExercise());
@@ -1180,7 +1614,7 @@
         draft.name = draft.name.trim();
         draft.exercises = draft.exercises
           .filter((e) => e.name.trim())
-          .map((e) => ({ id: e.id, name: e.name.trim(), targets: e.targets }));
+          .map((e) => ({ id: e.id, name: e.name.trim(), kind: e.kind || 'kracht', targets: e.targets }));
         if (!draft.name || !draft.exercises.length) return;
         if (isNew) db.templates.push(draft);
         else db.templates[db.templates.findIndex((t) => t.id === tid)] = draft;
@@ -1314,15 +1748,14 @@
             draft.plans[m.id].map((e, i) => `<div class="card">
               <div class="row" style="margin-bottom:8px">
                 <input data-dexname="${mi}.${i}" class="grow" required placeholder="bijv. Squat" value="${esc(e.name)}">
+                <button type="button" class="small ghost" data-dex-up="${mi}.${i}" aria-label="Omhoog" ${i === 0 ? 'disabled' : ''}>↑</button>
+                <button type="button" class="small ghost" data-dex-down="${mi}.${i}" aria-label="Omlaag" ${i === draft.plans[m.id].length - 1 ? 'disabled' : ''}>↓</button>
                 <button type="button" class="small danger ghost" data-drm-ex="${mi}.${i}" aria-label="Verwijder oefening">✕</button>
               </div>
-              <div class="tgt-row"><span></span><span class="col-head">Gewicht (${unitLbl()})</span><span class="col-head">Herh.</span><span></span></div>
-              ${e.targets.map((t, si) => `<div class="tgt-row">
-                <span class="n">${si + 1}</span>
-                <input data-tgt="${mi}.${i}.${si}" data-f="weight" type="text" inputmode="decimal" value="${t.weight || ''}" placeholder="${unitLbl()}">
-                <input data-tgt="${mi}.${i}.${si}" data-f="reps" type="number" min="0" inputmode="numeric" value="${t.reps || ''}" placeholder="herh.">
-                <button type="button" class="small danger ghost" data-drm-tgt="${mi}.${i}.${si}" aria-label="Verwijder set">✕</button>
-              </div>`).join('')}
+              <label class="field"><span>Soort</span>
+                <select data-dexkind="${mi}.${i}">${Object.entries(KIND_LABELS).map(([k, l]) => `<option value="${k}" ${(e.kind || 'kracht') === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+              </label>
+              ${targetRowsHtml(`${mi}.${i}`, e.targets, e.kind || 'kracht', 'drm-tgt')}
               <button type="button" class="small" data-dadd-tgt="${mi}.${i}">+ Set</button>
             </div>`).join('') +
             `<button type="button" class="small" data-dadd-ex="${mi}" style="margin:4px 0 16px">+ Oefening voor ${esc(m.name)}</button></div>`
@@ -1340,11 +1773,29 @@
           const [mi, i] = inp.dataset.dexname.split('.').map(Number);
           planOf(mi)[i].name = inp.value;
         });
+        document.querySelectorAll('[data-dexkind]').forEach((sel) => {
+          const [mi, i] = sel.dataset.dexkind.split('.').map(Number);
+          planOf(mi)[i].kind = sel.value;
+        });
         document.querySelectorAll('[data-tgt]').forEach((inp) => {
           const [mi, i, si] = inp.dataset.tgt.split('.').map(Number);
           planOf(mi)[i].targets[si][inp.dataset.f] = num(inp.value);
         });
       };
+      document.querySelectorAll('[data-dexkind]').forEach((sel) => sel.addEventListener('change', () => {
+        syncDraft();
+        paint();
+      }));
+      document.querySelectorAll('[data-dex-up], [data-dex-down]').forEach((b) => b.addEventListener('click', () => {
+        syncDraft();
+        const up = b.dataset.dexUp !== undefined;
+        const [mi, i] = (up ? b.dataset.dexUp : b.dataset.dexDown).split('.').map(Number);
+        const list = planOf(mi);
+        const to = up ? i - 1 : i + 1;
+        if (to < 0 || to >= list.length) return;
+        [list[i], list[to]] = [list[to], list[i]];
+        paint();
+      }));
       document.querySelectorAll('[data-dadd-ex]').forEach((b) => b.addEventListener('click', () => {
         syncDraft();
         planOf(+b.dataset.daddEx).push(newExercise());
@@ -1378,7 +1829,7 @@
         for (const m of members) {
           draft.plans[m.id] = draft.plans[m.id]
             .filter((e) => e.name.trim())
-            .map((e) => ({ id: e.id, name: e.name.trim(), targets: e.targets }));
+            .map((e) => ({ id: e.id, name: e.name.trim(), kind: e.kind || 'kracht', targets: e.targets }));
         }
         if (!draft.name || members.some((m) => !draft.plans[m.id].length)) {
           alert('Geef het schema een naam en minstens één oefening per persoon.');
@@ -1473,26 +1924,38 @@
     if (duoSchemaId && (!duoSchema || duoSchema.duoId !== duoId)) { location.hash = `/duo/${duoId}`; return; }
     if (!duoSchema && (!pendingDuo || pendingDuo.duoId !== duoId)) { location.hash = `/duo/${duoId}/vrij`; return; }
 
-    const prefill = (clientId, name, targets) => {
+    const prefill = (clientId, name, kind, targets) => {
       const prev = lastEntryFor(clientId, name);
-      if (prev) return prev.entry.sets.map((s) => ({ reps: s.reps, weight: s.weight }));
+      if (prev) return prev.entry.sets.map((s) => ({ ...s, note: '', type: setType(s) === 'warmup' ? 'warmup' : 'normaal' }));
       const t = (targets && targets.length ? targets : null) || targetsFor(clientId, name);
-      return t
-        ? t.map((x) => ({ reps: x.reps, weight: x.weight }))
-        : Array.from({ length: 3 }, () => ({ reps: 10, weight: 0 }));
+      if (t) return t.map((x) => ({ ...x }));
+      return kind === 'cardio' ? [{ distance: 0, minutes: 0 }] : Array.from({ length: 3 }, () => ({ reps: 10, weight: 0 }));
+    };
+    const mkExercise = (clientId, ex) => {
+      const kind = ex.kind || kindFor(clientId, ex.name);
+      return { name: ex.name, kind, superset: ex.superset || null, sets: prefill(clientId, ex.name, kind, ex.targets) };
     };
     const draft = members.map((m) => ({
       client: m,
       exercises: duoSchema
-        ? (duoSchema.plans[m.id] || []).map((ex) => ({ name: ex.name, sets: prefill(m.id, ex.name, ex.targets) }))
-        : (pendingDuo.picks[m.id] || []).map((n) => ({ name: n, sets: prefill(m.id, n) })),
+        ? (duoSchema.plans[m.id] || []).map((ex) => mkExercise(m.id, ex))
+        : (pendingDuo.picks[m.id] || []).map((n) => mkExercise(m.id, { name: n })),
     }));
     let swapping = null; // "mi.xi" of exercise currently in swap mode
+    let openMore = null; // "mi.xi.si" of the set whose options are open
+    let tool = null;
+    const startedAt = Date.now();
 
     const paint = () => {
       $app.innerHTML = topbar(`Duo-training — ${duoName(duo)}`, `/duo/${duoId}`) +
         `<p style="margin:0 0 12px"><span class="badge">${duoSchema ? esc(duoSchema.name) : 'Vrije training'}</span></p>` +
         `<form id="duo-form">
+          <div class="actions" style="margin-bottom:12px">
+            <button type="button" class="small" data-rest-dset="all">⏱ Rust</button>
+            <button type="button" class="small" id="tool-plates">🧮 Schijven</button>
+            <button type="button" class="small" id="tool-interval">⏲ Interval</button>
+          </div>
+          ${toolPanelHtml(tool)}
           <label class="field"><span>Datum</span><input type="date" name="date" value="${todayIso()}" required></label>
           <div class="duo-cols">
           ${draft.map((mem, mi) =>
@@ -1500,8 +1963,16 @@
             mem.exercises.map((ex, xi) => {
               const prev = lastEntryFor(mem.client.id, ex.name);
               const key = `${mi}.${xi}`;
-              return `<div class="card">
-              <div class="row" style="margin-bottom:2px"><div class="title grow">${esc(ex.name)}</div><button type="button" class="small ghost" data-dswap="${key}">⇄ Vervang</button></div>
+              const linked = ex.superset && mem.exercises.some((d, i) => i !== xi && d.superset === ex.superset);
+              return `<div class="card${linked ? ' ss-mark' : ''}">
+              <div class="row" style="margin-bottom:2px">
+                <div class="title grow">${esc(ex.name)}${linked ? ` <span class="badge">Superset ${esc(ex.superset)}</span>` : ''}${ex.kind !== 'kracht' ? ` <span class="badge">${KIND_LABELS[ex.kind]}</span>` : ''}</div>
+                <button type="button" class="small ghost" data-dup="${key}" aria-label="Omhoog" ${xi === 0 ? 'disabled' : ''}>↑</button>
+                <button type="button" class="small ghost" data-ddown="${key}" aria-label="Omlaag" ${xi === mem.exercises.length - 1 ? 'disabled' : ''}>↓</button>
+                <button type="button" class="small ghost" data-dlink="${key}" aria-label="Superset met vorige" ${xi === 0 ? 'disabled' : ''}>⛓</button>
+                <button type="button" class="small ghost" data-rest-dset="${key}" aria-label="Start rusttimer">⏱</button>
+                <button type="button" class="small ghost" data-dswap="${key}">⇄</button>
+              </div>
               ${prev ? `<div class="mut" style="margin-bottom:8px">vorige sessie: ${esc(fmtDate(prev.date))}</div>` : `<div class="mut" style="margin-bottom:8px">eerste keer</div>`}
               ${swapping === key ? `<div class="row" style="margin-bottom:10px">
                 <input id="swap-input" class="grow" list="swap-list" placeholder="Vervangende oefening">
@@ -1511,7 +1982,7 @@
                   .map((n) => `<option value="${esc(n)}">`).join('')}</datalist>
               </div>` : ''}
               <div class="pr-live" data-pr-live="${key}" hidden></div>
-              ${setRowsHtml('dset', key, ex.sets, prev && prev.entry.sets)}
+              ${setRowsHtml('dset', key, ex.sets, prev && prev.entry.sets, ex.kind, openMore)}
               <button type="button" class="small" data-dadd-set="${key}">+ Set</button>
             </div>`;
             }).join('') +
@@ -1521,7 +1992,10 @@
               <datalist id="dex-list-${mi}">${knownExercises(mem.client.id)
                 .filter((n) => !mem.exercises.some((e) => e.name.toLowerCase() === n.toLowerCase()))
                 .map((n) => `<option value="${esc(n)}">`).join('')}</datalist>
-              <button type="button" class="small" data-extra-add="${mi}">+ Oefening</button>
+              <div class="row">
+                <select data-extra-kind="${mi}" class="grow">${Object.entries(KIND_LABELS).map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select>
+                <button type="button" class="small" data-extra-add="${mi}">+ Oefening</button>
+              </div>
             </div></div>`
           ).join('')}
           </div>
@@ -1534,10 +2008,56 @@
         document.querySelectorAll('[data-dset]').forEach((inp) => {
           const [mi, xi, si] = inp.dataset.dset.split('.').map(Number);
           const f = inp.dataset.f;
-          draft[mi].exercises[xi].sets[si][f] = f === 'rir' && inp.value.trim() === '' ? undefined : num(inp.value);
+          const set = draft[mi].exercises[xi].sets[si];
+          if (f === 'note') set.note = inp.value;
+          else set[f] = f === 'rir' && inp.value.trim() === '' ? undefined : num(inp.value);
         });
       };
-      draft.forEach((mem, mi) => mem.exercises.forEach((ex, xi) => bindPrLive('dset', `${mi}.${xi}`, mem.client.id, ex.name)));
+      const repaintKeeping = () => {
+        const dateVal = document.querySelector('[name="date"]').value;
+        const notesVal = document.querySelector('[name="notes"]').value;
+        paint();
+        document.querySelector('[name="date"]').value = dateVal;
+        document.querySelector('[name="notes"]').value = notesVal;
+      };
+      draft.forEach((mem, mi) => mem.exercises.forEach((ex, xi) => {
+        if (ex.kind !== 'cardio') bindPrLive('dset', `${mi}.${xi}`, mem.client.id, ex.name);
+      }));
+      bindSetControls('dset', {
+        syncDraft,
+        repaint: repaintKeeping,
+        openMore: () => openMore,
+        setOpenMore: (v) => { openMore = v; },
+        getSet: (key) => { const [mi, xi, si] = key.split('.').map(Number); return draft[mi].exercises[xi].sets[si]; },
+        removeSet: (key) => { const [mi, xi, si] = key.split('.').map(Number); draft[mi].exercises[xi].sets.splice(si, 1); },
+      });
+      bindToolPanel(() => tool, (v) => { tool = v; }, repaintKeeping);
+
+      document.querySelectorAll('[data-dup], [data-ddown]').forEach((b) => b.addEventListener('click', () => {
+        syncDraft();
+        const up = b.dataset.dup !== undefined;
+        const [mi, xi] = (up ? b.dataset.dup : b.dataset.ddown).split('.').map(Number);
+        const list = draft[mi].exercises;
+        const to = up ? xi - 1 : xi + 1;
+        if (to < 0 || to >= list.length) return;
+        [list[xi], list[to]] = [list[to], list[xi]];
+        openMore = null;
+        repaintKeeping();
+      }));
+      document.querySelectorAll('[data-dlink]').forEach((b) => b.addEventListener('click', () => {
+        syncDraft();
+        const [mi, xi] = b.dataset.dlink.split('.').map(Number);
+        const list = draft[mi].exercises;
+        const prevEx = list[xi - 1];
+        if (list[xi].superset && list[xi].superset === prevEx.superset) {
+          list[xi].superset = null;
+        } else {
+          const group = prevEx.superset || String.fromCharCode(65 + list.filter((d, i) => i < xi && d.superset).length);
+          prevEx.superset = group;
+          list[xi].superset = group;
+        }
+        repaintKeeping();
+      }));
       document.querySelectorAll('[data-dswap]').forEach((b) => b.addEventListener('click', () => {
         syncDraft();
         swapping = swapping === b.dataset.dswap ? null : b.dataset.dswap;
@@ -1551,29 +2071,16 @@
         const [mi, xi] = swapping.split('.').map(Number);
         if (!name || draft[mi].exercises.some((e) => e.name.toLowerCase() === name.toLowerCase())) return;
         syncDraft();
-        draft[mi].exercises[xi] = { name, sets: prefill(draft[mi].client.id, name) };
+        draft[mi].exercises[xi] = mkExercise(draft[mi].client.id, { name });
         swapping = null;
         repaintKeeping();
       });
-      const repaintKeeping = () => {
-        const dateVal = document.querySelector('[name="date"]').value;
-        const notesVal = document.querySelector('[name="notes"]').value;
-        paint();
-        document.querySelector('[name="date"]').value = dateVal;
-        document.querySelector('[name="notes"]').value = notesVal;
-      };
       document.querySelectorAll('[data-dadd-set]').forEach((b) => b.addEventListener('click', () => {
         syncDraft();
         const [mi, xi] = b.dataset.daddSet.split('.').map(Number);
         const sets = draft[mi].exercises[xi].sets;
         const lastSet = sets[sets.length - 1];
-        sets.push(lastSet ? { ...lastSet } : { reps: 10, weight: 0 });
-        repaintKeeping();
-      }));
-      document.querySelectorAll('[data-rm-dset]').forEach((b) => b.addEventListener('click', () => {
-        syncDraft();
-        const [mi, xi, si] = b.dataset.rmDset.split('.').map(Number);
-        draft[mi].exercises[xi].sets.splice(si, 1);
+        sets.push(lastSet ? { ...lastSet, note: '' } : { reps: 10, weight: 0 });
         repaintKeeping();
       }));
       document.querySelectorAll('[data-extra-add]').forEach((b) => b.addEventListener('click', () => {
@@ -1582,7 +2089,9 @@
         const name = inp.value.trim();
         if (!name || draft[mi].exercises.some((e) => e.name.toLowerCase() === name.toLowerCase())) return;
         syncDraft();
-        draft[mi].exercises.push({ name, sets: prefill(draft[mi].client.id, name) });
+        const picked = document.querySelector(`[data-extra-kind="${mi}"]`).value;
+        const known = kindFor(draft[mi].client.id, name);
+        draft[mi].exercises.push(mkExercise(draft[mi].client.id, { name, kind: known !== 'kracht' ? known : picked }));
         repaintKeeping();
       }));
       document.getElementById('duo-form').addEventListener('submit', (ev) => {
@@ -1591,16 +2100,24 @@
         const f = new FormData(ev.target);
         const date = String(f.get('date'));
         const notes = String(f.get('notes')).trim();
+        const durationMin = Math.max(1, Math.round((Date.now() - startedAt) / 60000));
         let saved = 0;
         for (const mem of draft) {
           const entries = mem.exercises
-            .map((ex) => ({ name: ex.name, sets: ex.sets.filter((s) => s.weight > 0 || s.reps > 0) }))
+            .map((ex) => ({
+              name: ex.name, kind: ex.kind, superset: ex.superset || null,
+              sets: ex.sets.filter((s) => filledSet(s, ex.kind)),
+            }))
             .filter((ex) => ex.sets.length);
           if (!entries.length) continue;
-          db.workouts.push({ id: uid(), clientId: mem.client.id, schemaId: duoSchema ? duoSchema.id : null, duoId, date, notes, entries });
+          db.workouts.push({
+            id: uid(), clientId: mem.client.id, schemaId: duoSchema ? duoSchema.id : null,
+            duoId, date, notes, durationMin, entries,
+          });
           saved++;
         }
         if (!saved) { alert('Vul minstens één set in.'); return; }
+        stopTimer();
         save();
         pendingDuo = null;
         location.hash = `/duo/${duoId}`;
@@ -1632,15 +2149,14 @@
           ${draft.exercises.map((e, i) => `<div class="card">
             <div class="row" style="margin-bottom:8px">
               <input data-exname="${i}" class="grow" required placeholder="bijv. Squat" value="${esc(e.name)}">
+              <button type="button" class="small ghost" data-ex-up="${i}" aria-label="Omhoog" ${i === 0 ? 'disabled' : ''}>↑</button>
+              <button type="button" class="small ghost" data-ex-down="${i}" aria-label="Omlaag" ${i === draft.exercises.length - 1 ? 'disabled' : ''}>↓</button>
               <button type="button" class="small danger ghost" data-rm-ex="${i}" aria-label="Verwijder oefening">✕</button>
             </div>
-            <div class="tgt-row"><span></span><span class="col-head">Gewicht (${unitLbl()})</span><span class="col-head">Herh.</span><span></span></div>
-            ${e.targets.map((t, si) => `<div class="tgt-row">
-              <span class="n">${si + 1}</span>
-              <input data-tgt="${i}.${si}" data-f="weight" type="text" inputmode="decimal" value="${t.weight || ''}" placeholder="${unitLbl()}">
-              <input data-tgt="${i}.${si}" data-f="reps" type="number" min="0" inputmode="numeric" value="${t.reps || ''}" placeholder="herh.">
-              <button type="button" class="small danger ghost" data-rm-tgt="${i}.${si}" aria-label="Verwijder set">✕</button>
-            </div>`).join('')}
+            <label class="field"><span>Soort</span>
+              <select data-exkind="${i}">${Object.entries(KIND_LABELS).map(([k, l]) => `<option value="${k}" ${(e.kind || 'kracht') === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+            </label>
+            ${targetRowsHtml(String(i), e.targets, e.kind || 'kracht', 'rm-tgt')}
             <button type="button" class="small" data-add-tgt="${i}">+ Set</button>
           </div>`).join('')}
           <button type="button" id="add-ex" class="small" style="margin:4px 0 16px">+ Oefening</button>
@@ -1654,11 +2170,27 @@
         document.querySelectorAll('[data-exname]').forEach((inp) => {
           draft.exercises[+inp.dataset.exname].name = inp.value;
         });
+        document.querySelectorAll('[data-exkind]').forEach((sel) => {
+          draft.exercises[+sel.dataset.exkind].kind = sel.value;
+        });
         document.querySelectorAll('[data-tgt]').forEach((inp) => {
           const [i, si] = inp.dataset.tgt.split('.').map(Number);
           draft.exercises[i].targets[si][inp.dataset.f] = num(inp.value);
         });
       };
+      document.querySelectorAll('[data-exkind]').forEach((sel) => sel.addEventListener('change', () => {
+        syncDraft();
+        paint();
+      }));
+      document.querySelectorAll('[data-ex-up], [data-ex-down]').forEach((b) => b.addEventListener('click', () => {
+        syncDraft();
+        const up = b.dataset.exUp !== undefined;
+        const i = +(up ? b.dataset.exUp : b.dataset.exDown);
+        const to = up ? i - 1 : i + 1;
+        if (to < 0 || to >= draft.exercises.length) return;
+        [draft.exercises[i], draft.exercises[to]] = [draft.exercises[to], draft.exercises[i]];
+        paint();
+      }));
       document.getElementById('add-ex').addEventListener('click', () => {
         syncDraft();
         draft.exercises.push(newExercise());
@@ -1689,7 +2221,7 @@
         draft.name = draft.name.trim();
         draft.exercises = draft.exercises
           .filter((e) => e.name.trim())
-          .map((e) => ({ id: e.id, name: e.name.trim(), targets: e.targets }));
+          .map((e) => ({ id: e.id, name: e.name.trim(), kind: e.kind || 'kracht', targets: e.targets }));
         if (!draft.name || !draft.exercises.length) return;
         if (isNew) db.schemas.push(draft);
         else db.schemas[db.schemas.findIndex((s) => s.id === schemaId)] = draft;
@@ -1717,17 +2249,28 @@
 
     // prefill: most recent logged sets of this exercise (any session), else per-set schema targets
     const prefill = (ex) => {
+      const kind = ex.kind || kindFor(clientId, ex.name);
       const prev = lastEntryFor(clientId, ex.name, editing && editing.id);
-      if (prev) return prev.entry.sets.map((s) => ({ reps: s.reps, weight: s.weight }));
+      if (prev) return prev.entry.sets.map((s) => ({ ...s, note: '', type: setType(s) === 'warmup' ? 'warmup' : 'normaal' }));
       const targets = (ex.targets && ex.targets.length ? ex.targets : null) || targetsFor(clientId, ex.name);
-      return targets
-        ? targets.map((t) => ({ reps: t.reps, weight: t.weight }))
+      if (targets) return targets.map((t) => ({ ...t }));
+      return kind === 'cardio'
+        ? [{ distance: 0, minutes: 0 }]
         : Array.from({ length: 3 }, () => ({ reps: 10, weight: 0 }));
     };
+    const mkExercise = (ex) => ({
+      name: ex.name,
+      kind: ex.kind || kindFor(clientId, ex.name),
+      superset: ex.superset || null,
+      sets: prefill(ex),
+    });
     const draft = editing
-      ? editing.entries.map((e) => ({ name: e.name, sets: e.sets.map((s) => ({ ...s })) }))
-      : (isFree ? pendingFree.map((n) => ({ name: n })) : schema.exercises).map((ex) => ({ name: ex.name, sets: prefill(ex) }));
+      ? editing.entries.map((e) => ({ name: e.name, kind: entryKind(e), superset: e.superset || null, sets: e.sets.map((s) => ({ ...s })) }))
+      : (isFree ? pendingFree.map((n) => ({ name: n })) : schema.exercises).map(mkExercise);
     let swapping = null; // exercise index currently in swap mode
+    let openMore = null; // "xi.si" of the set whose options are open
+    let tool = null; // 'plates' | 'interval'
+    const startedAt = Date.now();
 
     const paint = () => {
       const extraOptions = knownExercises(clientId)
@@ -1735,11 +2278,26 @@
       $app.innerHTML = topbar(editing ? `Bewerken — ${c.name}` : `Training — ${c.name}`, `/klant/${clientId}`) +
         `<p style="margin:0 0 12px"><span class="badge">${esc(schema ? schema.name : editing && editing.duoId ? (duoSchemaById(editing.schemaId) || {}).name || 'Duo-training' : 'Vrije training')}</span></p>` +
         `<form id="wo-form">
+          <div class="actions" style="margin-bottom:12px">
+            <button type="button" class="small" data-rest-set="all">⏱ Rust</button>
+            <button type="button" class="small" id="tool-plates">🧮 Schijven</button>
+            <button type="button" class="small" id="tool-interval">⏲ Interval</button>
+          </div>
+          ${toolPanelHtml(tool)}
           <label class="field"><span>Datum</span><input type="date" name="date" value="${editing ? esc(editing.date) : todayIso()}" required></label>
+          ${editing ? `<label class="field"><span>Duur (min)</span><input type="number" min="0" name="duration" value="${editing.durationMin || ''}" placeholder="–"></label>` : ''}
           ${draft.map((ex, xi) => {
             const prev = lastEntryFor(clientId, ex.name, editing && editing.id);
-            return `<div class="card">
-            <div class="row" style="margin-bottom:2px"><div class="title grow">${esc(ex.name)}</div><button type="button" class="small ghost" data-swap="${xi}">⇄ Vervang</button></div>
+            const linked = ex.superset && draft.some((d, i) => i !== xi && d.superset === ex.superset);
+            return `<div class="card${linked ? ' ss-mark' : ''}">
+            <div class="row" style="margin-bottom:2px">
+              <div class="title grow">${esc(ex.name)}${linked ? ` <span class="badge">Superset ${esc(ex.superset)}</span>` : ''}${ex.kind !== 'kracht' ? ` <span class="badge">${KIND_LABELS[ex.kind]}</span>` : ''}</div>
+              <button type="button" class="small ghost" data-up="${xi}" aria-label="Omhoog" ${xi === 0 ? 'disabled' : ''}>↑</button>
+              <button type="button" class="small ghost" data-down="${xi}" aria-label="Omlaag" ${xi === draft.length - 1 ? 'disabled' : ''}>↓</button>
+              <button type="button" class="small ghost" data-link="${xi}" aria-label="Superset met vorige" ${xi === 0 ? 'disabled' : ''}>⛓</button>
+              <button type="button" class="small ghost" data-rest-set="${xi}" aria-label="Start rusttimer">⏱</button>
+              <button type="button" class="small ghost" data-swap="${xi}">⇄</button>
+            </div>
             ${prev ? `<div class="mut" style="margin-bottom:8px">vorige sessie: ${esc(fmtDate(prev.date))}</div>` : `<div class="mut" style="margin-bottom:8px">eerste keer</div>`}
             ${swapping === xi ? `<div class="row" style="margin-bottom:10px">
               <input id="swap-input" class="grow" list="swap-list" placeholder="Vervangende oefening">
@@ -1749,7 +2307,7 @@
                 .map((n) => `<option value="${esc(n)}">`).join('')}</datalist>
             </div>` : ''}
             <div class="pr-live" data-pr-live="${xi}" hidden></div>
-            ${setRowsHtml('set', xi, ex.sets, prev && prev.entry.sets)}
+            ${setRowsHtml('set', xi, ex.sets, prev && prev.entry.sets, ex.kind, openMore)}
             <button type="button" class="small" data-add-set="${xi}">+ Set</button>
           </div>`;
           }).join('')}
@@ -1757,7 +2315,10 @@
             <label class="field"><span>Oefening toevoegen aan deze sessie</span>
               <input id="extra-ex" list="ex-list" placeholder="bijv. Lat pulldown"></label>
             <datalist id="ex-list">${extraOptions.map((n) => `<option value="${esc(n)}">`).join('')}</datalist>
-            <button type="button" class="small" id="add-extra">+ Oefening</button>
+            <div class="row">
+              <select id="extra-kind" class="grow">${Object.entries(KIND_LABELS).map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select>
+              <button type="button" class="small" id="add-extra">+ Oefening</button>
+            </div>
           </div>
           <label class="field"><span>Notities (optioneel)</span><textarea name="notes" rows="2" placeholder="bijv. voelde sterk, knie licht gevoelig">${editing ? esc(editing.notes || '') : ''}</textarea></label>
           <button class="primary wide" type="submit">${editing ? 'Wijzigingen opslaan' : 'Training opslaan'}</button>
@@ -1768,17 +2329,59 @@
         document.querySelectorAll('[data-set]').forEach((inp) => {
           const [xi, si] = inp.dataset.set.split('.').map(Number);
           const f = inp.dataset.f;
-          draft[xi].sets[si][f] = f === 'rir' && inp.value.trim() === '' ? undefined : num(inp.value);
+          if (f === 'note') draft[xi].sets[si].note = inp.value;
+          else draft[xi].sets[si][f] = f === 'rir' && inp.value.trim() === '' ? undefined : num(inp.value);
         });
       };
-      draft.forEach((ex, xi) => bindPrLive('set', String(xi), clientId, ex.name, editing && editing.id));
-      const repaintKeeping = () => {
-        const dateVal = document.querySelector('[name="date"]').value;
-        const notesVal = document.querySelector('[name="notes"]').value;
-        paint();
-        document.querySelector('[name="date"]').value = dateVal;
-        document.querySelector('[name="notes"]').value = notesVal;
+      const keepFields = () => ({
+        date: document.querySelector('[name="date"]').value,
+        notes: document.querySelector('[name="notes"]').value,
+        duration: (document.querySelector('[name="duration"]') || {}).value,
+      });
+      const restoreFields = (v) => {
+        document.querySelector('[name="date"]').value = v.date;
+        document.querySelector('[name="notes"]').value = v.notes;
+        const d = document.querySelector('[name="duration"]');
+        if (d && v.duration !== undefined) d.value = v.duration;
       };
+      const repaintKeeping = () => { const v = keepFields(); paint(); restoreFields(v); };
+
+      draft.forEach((ex, xi) => {
+        if (ex.kind !== 'cardio') bindPrLive('set', String(xi), clientId, ex.name, editing && editing.id);
+      });
+      bindSetControls('set', {
+        syncDraft,
+        repaint: repaintKeeping,
+        openMore: () => openMore,
+        setOpenMore: (v) => { openMore = v; },
+        getSet: (key) => { const [xi, si] = key.split('.').map(Number); return draft[xi].sets[si]; },
+        removeSet: (key) => { const [xi, si] = key.split('.').map(Number); draft[xi].sets.splice(si, 1); },
+      });
+      bindToolPanel(() => tool, (v) => { tool = v; }, repaintKeeping);
+
+      document.querySelectorAll('[data-up], [data-down]').forEach((b) => b.addEventListener('click', () => {
+        syncDraft();
+        const up = b.dataset.up !== undefined;
+        const xi = +(up ? b.dataset.up : b.dataset.down);
+        const to = up ? xi - 1 : xi + 1;
+        if (to < 0 || to >= draft.length) return;
+        [draft[xi], draft[to]] = [draft[to], draft[xi]];
+        openMore = null;
+        repaintKeeping();
+      }));
+      document.querySelectorAll('[data-link]').forEach((b) => b.addEventListener('click', () => {
+        syncDraft();
+        const xi = +b.dataset.link;
+        const prevEx = draft[xi - 1];
+        if (draft[xi].superset && draft[xi].superset === prevEx.superset) {
+          draft[xi].superset = null;
+        } else {
+          const group = prevEx.superset || String.fromCharCode(65 + draft.filter((d, i) => i < xi && d.superset).length);
+          prevEx.superset = group;
+          draft[xi].superset = group;
+        }
+        repaintKeeping();
+      }));
       document.querySelectorAll('[data-swap]').forEach((b) => b.addEventListener('click', () => {
         syncDraft();
         swapping = swapping === +b.dataset.swap ? null : +b.dataset.swap;
@@ -1791,7 +2394,7 @@
         const name = document.getElementById('swap-input').value.trim();
         if (!name || draft.some((d) => d.name.toLowerCase() === name.toLowerCase())) return;
         syncDraft();
-        draft[swapping] = { name, sets: prefill({ name }) };
+        draft[swapping] = mkExercise({ name });
         swapping = null;
         repaintKeeping();
       });
@@ -1799,52 +2402,47 @@
         syncDraft();
         const sets = draft[+b.dataset.addSet].sets;
         const lastSet = sets[sets.length - 1];
-        sets.push(lastSet ? { ...lastSet } : { reps: 10, weight: 0 });
-        const dateVal = document.querySelector('[name="date"]').value;
-        const notesVal = document.querySelector('[name="notes"]').value;
-        paint();
-        document.querySelector('[name="date"]').value = dateVal;
-        document.querySelector('[name="notes"]').value = notesVal;
-      }));
-      document.querySelectorAll('[data-rm-set]').forEach((b) => b.addEventListener('click', () => {
-        syncDraft();
-        const [xi, si] = b.dataset.rmSet.split('.').map(Number);
-        draft[xi].sets.splice(si, 1);
-        paint();
+        sets.push(lastSet ? { ...lastSet, note: '' } : { reps: 10, weight: 0 });
+        repaintKeeping();
       }));
       document.getElementById('add-extra').addEventListener('click', () => {
         const inp = document.getElementById('extra-ex');
         const name = inp.value.trim();
         if (!name || draft.some((d) => d.name.toLowerCase() === name.toLowerCase())) return;
         syncDraft();
-        draft.push({ name, sets: prefill({ name }) });
-        const dateVal = document.querySelector('[name="date"]').value;
-        const notesVal = document.querySelector('[name="notes"]').value;
-        paint();
-        document.querySelector('[name="date"]').value = dateVal;
-        document.querySelector('[name="notes"]').value = notesVal;
+        const picked = document.getElementById('extra-kind').value;
+        const known = kindFor(clientId, name);
+        draft.push(mkExercise({ name, kind: known !== 'kracht' ? known : picked }));
+        repaintKeeping();
       });
       document.getElementById('wo-form').addEventListener('submit', (ev) => {
         ev.preventDefault();
         syncDraft();
         const f = new FormData(ev.target);
         const entries = draft
-          .map((ex) => ({ name: ex.name, sets: ex.sets.filter((s) => s.weight > 0 || s.reps > 0) }))
+          .map((ex) => ({
+            name: ex.name, kind: ex.kind, superset: ex.superset || null,
+            sets: ex.sets.filter((s) => filledSet(s, ex.kind)),
+          }))
           .filter((ex) => ex.sets.length);
         if (!entries.length) { alert('Vul minstens één set in.'); return; }
         if (editing) {
           editing.entries = entries;
           editing.date = String(f.get('date'));
           editing.notes = String(f.get('notes')).trim();
+          const d = num(f.get('duration'));
+          editing.durationMin = d > 0 ? d : undefined;
         } else {
           db.workouts.push({
             id: uid(), clientId,
             schemaId: isFree ? null : schemaId,
             date: String(f.get('date')),
             notes: String(f.get('notes')).trim(),
+            durationMin: Math.max(1, Math.round((Date.now() - startedAt) / 60000)),
             entries,
           });
         }
+        stopTimer();
         save();
         if (isFree) pendingFree = [];
         location.hash = `/klant/${clientId}`;
@@ -1922,6 +2520,7 @@
     if (t instanceof HTMLInputElement && (t.dataset.set !== undefined || t.dataset.dset !== undefined || t.dataset.tgt !== undefined)) t.select();
   });
 
+  bindTimerBar();
   window.addEventListener('hashchange', render);
   render();
   if (syncCfg && syncCfg.gistId && navigator.onLine) syncNow();
