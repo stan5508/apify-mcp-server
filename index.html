@@ -117,7 +117,9 @@
     #side { position: static; max-height: none; border-bottom: 1px solid var(--grid); padding-bottom: 4px; margin-bottom: 4px; }
   }
 
+  .nav-search { width: 100%; margin: 0 0 10px; padding: 7px 10px; font-size: 14px; }
   .brand-row { padding: 14px 0 10px; border-bottom: 1px solid var(--grid); margin-bottom: 10px; }
+  .nav-search { width: 100%; margin: 0 0 10px; padding: 7px 10px; font-size: 14px; }
   .brand-row a { text-decoration: none; }
   .navgrp { margin-bottom: 6px; }
   .navgrp summary {
@@ -341,7 +343,7 @@
 <script>
 (() => {
   'use strict';
-  const APP_VERSION = 17; // bump when publishing; shown on the home screen
+  const APP_VERSION = 18; // bump when publishing; shown on the home screen
   const KEY = 'coachlog-v1';
   const $app = document.getElementById('app');
 
@@ -366,6 +368,16 @@
       settings: { unit: 'kg', restSeconds: 90, autoRest: true, sound: true, barWeight: 20, ...(d.settings || {}) },
       updatedAt: d.updatedAt || 0,
     };
+    for (const c of out.clients) {
+      c.phone = c.phone || '';
+      c.email = c.email || '';
+      c.injuries = c.injuries || '';
+      c.medical = c.medical || '';
+      c.intake = c.intake || '';
+      c.goals = c.goals || [];
+      c.photos = c.photos || [];
+      c.archived = !!c.archived;
+    }
     // build the exercise registry from whatever names already exist
     const before = out.exercises.length;
     migrateExercises(out);
@@ -670,7 +682,14 @@
         return;
       }
       if (localAt > remoteAt) {
-        await gh('/gists/' + syncCfg.gistId, { method: 'PATCH', body: JSON.stringify({ files: { 'coachlog.json': { content: JSON.stringify(db) } } }) });
+        const payload = JSON.stringify(db);
+        if (payload.length > 900000) {
+          syncStatus = `te groot om te synchroniseren (${Math.round(payload.length / 1024)} kB) — verwijder wat progressiefoto's`;
+          const el0 = document.getElementById('sync-status');
+          if (el0) el0.textContent = syncStatus;
+          return;
+        }
+        await gh('/gists/' + syncCfg.gistId, { method: 'PATCH', body: JSON.stringify({ files: { 'coachlog.json': { content: payload } } }) });
         syncStatus = 'opgeslagen naar cloud · ' + syncTime();
       } else {
         syncStatus = 'up-to-date · ' + syncTime();
@@ -970,6 +989,44 @@
     }
     return sessions;
   }
+
+  // ---------- clients: goals, photos, storage ----------
+  const activeClients = () => db.clients.filter((c) => !c.archived);
+
+  // a goal tracks an exercise towards a target; progress comes from the logged history
+  function goalProgress(client, goal) {
+    if (!goal.exercise || !(goal.target > 0)) return null;
+    const sessions = exerciseSessions(client.id, goal.exercise);
+    const current = sessions.length ? Math.max(...sessions.map((s) => s.top)) : 0;
+    const start = goal.start != null ? goal.start : (sessions.length ? sessions[0].top : 0);
+    const span = goal.target - start;
+    const pct = span > 0 ? Math.round(((current - start) / span) * 100) : (current >= goal.target ? 100 : 0);
+    return { current, start, pct: Math.max(0, Math.min(100, pct)), reached: current >= goal.target };
+  }
+  const daysUntil = (iso) => Math.ceil((new Date(iso + 'T12:00:00') - new Date()) / 86400000);
+
+  // photos are stored inline, so shrink them hard before they hit local storage
+  function readPhoto(file, maxSize = 640, quality = 0.55) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error('kan bestand niet lezen'));
+      reader.onload = () => {
+        const img = new Image();
+        img.onerror = () => reject(new Error('geen geldige afbeelding'));
+        img.onload = () => {
+          const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.round(img.width * scale);
+          canvas.height = Math.round(img.height * scale);
+          canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+          resolve(canvas.toDataURL('image/jpeg', quality));
+        };
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+  const dbSizeKb = () => Math.round(JSON.stringify(db).length / 1024);
 
   // ---------- analysis helpers ----------
   const PERIODS = { '3m': '3 mnd', '6m': '6 mnd', '1j': 'Jaar', all: 'Alles' };
@@ -1449,13 +1506,19 @@
     const activeDuo = (hash.match(/^\/duo\/([^/]+)/) || [])[1];
     const activeTemplate = (hash.match(/^\/sjabloon\/([^/]+)/) || [])[1];
     const activeGroup = (hash.match(/^\/bibliotheek\/([^/]+)/) || [])[1] && decodeURIComponent(hash.match(/^\/bibliotheek\/([^/]+)/)[1]);
-    const clients = sortedClients();
-    const duos = sortedDuos();
+    const q = uiState.navQuery.trim().toLowerCase();
+    const match = (name) => !q || name.toLowerCase().includes(q);
+    const clients = sortedClients().filter((c) => (uiState.navArchived ? c.archived : !c.archived) && match(c.name));
+    const duos = sortedDuos().filter((d) => match(duoName(d)));
+    const archivedCount = db.clients.filter((c) => c.archived).length;
     $side.innerHTML = `
       <div class="brand-row"><a class="brand" href="#/">Coachlog</a></div>
+      <input id="nav-q" class="nav-search" placeholder="Zoek klant of duo…" value="${esc(uiState.navQuery)}">
       <details class="navgrp" data-key="Clients" ${uiState.navClients ? 'open' : ''}>
         <summary>Klanten <span class="chev">▾</span></summary>
         ${clients.map((c) => `<a class="navlink${c.id === activeClient ? ' active' : ''}" href="#/klant/${c.id}">${esc(c.name)}</a>`).join('')}
+        ${clients.length ? '' : '<span class="navlink mut">geen resultaten</span>'}
+        ${archivedCount ? `<button class="navlink add" id="nav-archived" type="button">${uiState.navArchived ? '‹ Actieve klanten' : `Archief (${archivedCount}) ›`}</button>` : ''}
         <a class="navlink add" href="#/">+ Nieuwe klant</a>
       </details>
       <details class="navgrp" data-key="Duos" ${uiState.navDuos ? 'open' : ''}>
@@ -1477,6 +1540,17 @@
     $side.querySelectorAll('details').forEach((d) => d.addEventListener('toggle', () => {
       uiState['nav' + d.dataset.key] = d.open;
     }));
+    const navQ = document.getElementById('nav-q');
+    navQ.addEventListener('input', () => {
+      uiState.navQuery = navQ.value;
+      const pos = navQ.selectionStart;
+      renderSidebar();
+      const again = document.getElementById('nav-q');
+      again.focus();
+      again.setSelectionRange(pos, pos);
+    });
+    const navArch = document.getElementById('nav-archived');
+    if (navArch) navArch.addEventListener('click', () => { uiState.navArchived = !uiState.navArchived; renderSidebar(); });
   }
 
   function render() {
@@ -1491,6 +1565,7 @@
     if (parts[0] === 'klant' && parts[2] === 'training') return viewWorkout(parts[1], parts[3]);
     if (parts[0] === 'klant' && parts[2] === 'bewerk') return viewWorkout(parts[1], null, parts[3]);
     if (parts[0] === 'klant' && parts[2] === 'metingen') return viewMeasurements(parts[1]);
+    if (parts[0] === 'klant' && parts[2] === 'profiel') return viewProfile(parts[1]);
     if (parts[0] === 'klant' && parts[2] === 'overzicht') return viewOverview(parts[1]);
     if (parts[0] === 'klant' && parts[2] === 'vergelijk') return viewCompare(parts[1]);
     if (parts[0] === 'klant' && parts[2] === 'rapport') return viewReport(parts[1]);
@@ -1659,7 +1734,7 @@
   const uiState = {
     metric: 'top', navClients: true, navDuos: true, navTemplates: true, measMetric: 'weight',
     period: 'all', comparePicks: [], compareMetric: 'top',
-    navLibrary: true, libQuery: '', libEquipment: '', libKind: '', libShowArchived: false, libEditing: null, libSort: 'used',
+    navQuery: '', navArchived: false, navLibrary: true, libQuery: '', libEquipment: '', libKind: '', libShowArchived: false, libEditing: null, libSort: 'used',
   };
   let pendingFree = []; // exercises picked for a free session, set by viewPickExercises
   let pendingDuo = null; // { duoId, picks: { [clientId]: [names] } }, set by viewDuoPick
@@ -1695,6 +1770,7 @@
     $app.innerHTML = topbar(c.name, '/') +
       clientTabs(id, '') +
       (c.goal ? `<p class="sub" style="margin:0 0 12px">Doel: ${esc(c.goal)}</p>` : '') +
+      ((c.injuries || c.medical) ? `<div class="note-box"><strong>Let op:</strong> ${esc([c.injuries, c.medical].filter(Boolean).join(' · '))}</div>` : '') +
       statHtml +
       `<div style="margin-top:16px" class="actions">` +
       schemas.map((s) => `<button class="primary" data-nav="/klant/${id}/training/${s.id}">Start: ${esc(s.name)}</button>`).join('') +
@@ -1764,6 +1840,7 @@
   function clientTabs(id, active) {
     const tabs = [
       ['', 'Training'],
+      ['profiel', 'Profiel'],
       ['overzicht', 'Overzicht'],
       ['vergelijk', 'Vergelijken'],
       ['metingen', 'Metingen'],
@@ -1981,6 +2058,165 @@
     });
   }
 
+  // --- client profile: contact, intake, goals, photos ---
+  function viewProfile(clientId) {
+    const c = clientById(clientId);
+    if (!c) { location.hash = '/'; return; }
+    const exercises = loggedExercises(clientId);
+
+    $app.innerHTML = topbar(`Profiel — ${c.name}`, `/klant/${clientId}`) +
+      clientTabs(clientId, 'profiel') +
+      (c.archived ? `<p style="margin:0 0 12px"><span class="badge">gearchiveerd</span></p>` : '') +
+
+      `<div class="eyebrow">Gegevens</div>
+      <form class="card" id="profile-form">
+        <label class="field"><span>Naam</span><input name="name" value="${esc(c.name)}" required></label>
+        <div class="row">
+          <label class="field grow"><span>Telefoon</span><input name="phone" type="tel" value="${esc(c.phone)}" placeholder="06…"></label>
+          <label class="field grow"><span>E-mail</span><input name="email" type="email" value="${esc(c.email)}" placeholder="naam@voorbeeld.nl"></label>
+        </div>
+        <label class="field"><span>Doel</span><input name="goal" value="${esc(c.goal || '')}" placeholder="bijv. kracht opbouwen"></label>
+        <button class="primary" type="submit">Opslaan</button>
+      </form>` +
+      ((c.phone || c.email) ? `<div class="actions" style="margin-bottom:10px">
+        ${c.phone ? `<a class="chip" href="tel:${esc(c.phone.replace(/\s/g, ''))}">Bellen</a>` : ''}
+        ${c.phone ? `<a class="chip" href="sms:${esc(c.phone.replace(/\s/g, ''))}">Sms</a>` : ''}
+        ${c.email ? `<a class="chip" href="mailto:${esc(c.email)}">Mailen</a>` : ''}
+      </div>` : '') +
+
+      `<div class="eyebrow">Intake &amp; aandachtspunten</div>
+      <form class="card" id="intake-form">
+        <label class="field"><span>Blessures</span><textarea name="injuries" rows="2" placeholder="bijv. linkerschouder, geen bovenhandse druk">${esc(c.injuries)}</textarea></label>
+        <label class="field"><span>Medisch</span><textarea name="medical" rows="2" placeholder="bijv. astma, inhalator bij zich">${esc(c.medical)}</textarea></label>
+        <label class="field"><span>Overige notities</span><textarea name="intake" rows="3" placeholder="achtergrond, ervaring, voorkeuren">${esc(c.intake)}</textarea></label>
+        <button class="primary" type="submit">Opslaan</button>
+      </form>` +
+
+      `<div class="eyebrow">Doelen</div>` +
+      (c.goals.length ? c.goals.map((g) => {
+        const p = goalProgress(c, g);
+        const days = g.date ? daysUntil(g.date) : null;
+        return `<div class="card">
+          <div class="row"><div class="grow">
+            <div class="title">${esc(g.text)} ${g.done || (p && p.reached) ? '<span class="badge pr">gehaald</span>' : ''}</div>
+            <div class="sub">${g.exercise ? `${esc(g.exercise)} naar ${esc(fmtKg(g.target))}` : 'zonder meetwaarde'}${g.date ? ` · streefdatum ${esc(fmtDate(g.date))}${days != null && !g.done && !(p && p.reached) ? ` (${days >= 0 ? days + ' dagen te gaan' : Math.abs(days) + ' dagen over tijd'})` : ''}` : ''}</div>
+            ${p ? `<div class="bar-row" style="margin-top:8px;grid-template-columns:1fr 78px">
+              <span class="track"><span class="fill" style="width:${p.pct}%"></span></span>
+              <span class="val">${p.pct}%</span>
+            </div><div class="mut">${esc(fmtKg(p.start))} → nu ${esc(fmtKg(p.current))} → doel ${esc(fmtKg(g.target))}</div>` : ''}
+          </div>
+          <button class="small ghost" data-goal-done="${g.id}">${g.done ? 'Heropenen' : 'Afvinken'}</button>
+          <button class="small danger ghost" data-goal-del="${g.id}" aria-label="Verwijder doel">✕</button>
+          </div>
+        </div>`;
+      }).join('') : '<p class="mut">Nog geen doelen.</p>') +
+      `<form class="card" id="goal-form">
+        <label class="field"><span>Nieuw doel</span><input name="text" required placeholder="bijv. 100 kg squatten"></label>
+        <div class="row">
+          <label class="field grow"><span>Oefening (optioneel)</span>
+            <select name="exercise"><option value="">—</option>${exercises.map((n) => `<option value="${esc(n)}">${esc(n)}</option>`).join('')}</select></label>
+          <label class="field grow"><span>Streefwaarde (${unitLbl()})</span><input name="target" type="text" inputmode="decimal" placeholder="bijv. 100"></label>
+          <label class="field grow"><span>Streefdatum</span><input name="date" type="date"></label>
+        </div>
+        <button class="primary" type="submit">Doel toevoegen</button>
+      </form>` +
+
+      `<div class="eyebrow">Progressiefoto's</div>
+      <div class="card">
+        <input type="file" id="photo-input" accept="image/*" hidden>
+        <div class="actions"><button type="button" id="photo-btn">Foto toevoegen</button></div>
+        <p class="mut" style="margin:8px 0 0">Foto's worden verkleind opgeslagen op dit apparaat. Nu in gebruik: ${dbSizeKb()} kB.</p>
+      </div>` +
+      (c.photos.length ? `<div class="duo-cols">${[...c.photos].reverse().map((ph) => `<div class="card">
+          <img src="${ph.data}" alt="Progressiefoto ${esc(fmtDate(ph.date))}" style="width:100%;border-radius:8px">
+          <div class="row" style="margin-top:8px"><div class="grow sub">${esc(fmtDateFull(ph.date))}</div>
+            <button class="small danger ghost" data-photo-del="${ph.id}">Verwijderen</button></div>
+        </div>`).join('')}</div>` : '<p class="mut">Nog geen foto\'s.</p>') +
+
+      `<hr class="divider">
+      <div class="actions">
+        <button id="archive-client">${c.archived ? 'Klant terugzetten' : 'Klant archiveren'}</button>
+        <button class="danger ghost" id="delete-client">Klant verwijderen</button>
+      </div>`;
+
+    bindNav();
+    document.getElementById('profile-form').addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      const f = new FormData(ev.target);
+      const name = String(f.get('name')).trim();
+      if (!name) return;
+      c.name = name;
+      c.phone = String(f.get('phone')).trim();
+      c.email = String(f.get('email')).trim();
+      c.goal = String(f.get('goal')).trim();
+      save(); render();
+    });
+    document.getElementById('intake-form').addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      const f = new FormData(ev.target);
+      c.injuries = String(f.get('injuries')).trim();
+      c.medical = String(f.get('medical')).trim();
+      c.intake = String(f.get('intake')).trim();
+      save(); render();
+    });
+    document.getElementById('goal-form').addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      const f = new FormData(ev.target);
+      const text = String(f.get('text')).trim();
+      if (!text) return;
+      const exercise = String(f.get('exercise'));
+      const target = num(f.get('target'));
+      const sessions = exercise ? exerciseSessions(clientId, exercise) : [];
+      c.goals.push({
+        id: uid(), text, exercise: exercise || null, target: target > 0 ? target : null,
+        start: sessions.length ? Math.max(...sessions.map((x) => x.top)) : 0,
+        date: String(f.get('date')) || null, done: false,
+      });
+      save(); render();
+    });
+    document.querySelectorAll('[data-goal-done]').forEach((b) => b.addEventListener('click', () => {
+      const g = c.goals.find((x) => x.id === b.dataset.goalDone);
+      g.done = !g.done;
+      save(); render();
+    }));
+    document.querySelectorAll('[data-goal-del]').forEach((b) => b.addEventListener('click', () => {
+      if (!confirm('Dit doel verwijderen?')) return;
+      c.goals = c.goals.filter((x) => x.id !== b.dataset.goalDel);
+      save(); render();
+    }));
+    const photoInput = document.getElementById('photo-input');
+    document.getElementById('photo-btn').addEventListener('click', () => photoInput.click());
+    photoInput.addEventListener('change', async () => {
+      const file = photoInput.files[0];
+      if (!file) return;
+      try {
+        const data = await readPhoto(file);
+        c.photos.push({ id: uid(), date: todayIso(), data });
+        save(); render();
+      } catch (e) {
+        alert('Foto toevoegen mislukt: ' + e.message);
+      }
+    });
+    document.querySelectorAll('[data-photo-del]').forEach((b) => b.addEventListener('click', () => {
+      if (!confirm('Deze foto verwijderen?')) return;
+      c.photos = c.photos.filter((p) => p.id !== b.dataset.photoDel);
+      save(); render();
+    }));
+    document.getElementById('archive-client').addEventListener('click', () => {
+      c.archived = !c.archived;
+      save(); render();
+    });
+    document.getElementById('delete-client').addEventListener('click', () => {
+      if (!confirm(`${c.name} en alle bijbehorende schema's en trainingen verwijderen?`)) return;
+      db.clients = db.clients.filter((x) => x.id !== clientId);
+      db.schemas = db.schemas.filter((x) => x.clientId !== clientId);
+      db.workouts = db.workouts.filter((w) => w.clientId !== clientId);
+      db.duos = db.duos.filter((d) => !d.clientIds.includes(clientId));
+      db.measurements = db.measurements.filter((m) => m.clientId !== clientId);
+      save(); location.hash = '/';
+    });
+  }
+
   // --- client overview: months, attendance, muscle groups ---
   function viewOverview(clientId) {
     const c = clientById(clientId);
@@ -2162,6 +2398,14 @@
         <tbody>${meas.map((m) => `<tr><td>${esc(fmtDate(m.date))}</td>${MEAS_FIELDS.map((f) =>
           `<td class="num">${m[f.key] != null ? esc(fmtNum(m[f.key]) + ' ' + f.unit()) : '–'}</td>`).join('')}</tr>`).join('')}</tbody>
       </table></div>` : '') +
+      (c.goals && c.goals.length ? `<div class="eyebrow">Doelen</div>
+      <div class="card">${c.goals.map((g) => {
+        const p = goalProgress(c, g);
+        return `<div class="bar-row" style="grid-template-columns:1fr 78px;margin-bottom:4px">
+            <span>${esc(g.text)}${g.done || (p && p.reached) ? ' ✓' : ''}</span>
+            <span class="val">${p ? p.pct + '%' : ''}</span>
+          </div>${p ? `<div class="bar-row" style="grid-template-columns:1fr;margin-bottom:10px"><span class="track"><span class="fill" style="width:${p.pct}%"></span></span></div>` : ''}`;
+      }).join('')}</div>` : '') +
       `<p class="mut" style="margin-top:20px">Coachlog</p>`;
 
     bindNav();
@@ -2879,6 +3123,7 @@
           <div class="duo-cols">
           ${draft.map((mem, mi) =>
             `<div><div class="eyebrow">${esc(mem.client.name)}</div>` +
+            ((mem.client.injuries || mem.client.medical) ? `<div class="note-box"><strong>Let op:</strong> ${esc([mem.client.injuries, mem.client.medical].filter(Boolean).join(' · '))}</div>` : '') +
             mem.exercises.map((ex, xi) => {
               const prev = lastEntryFor(mem.client.id, ex.name);
               const key = `${mi}.${xi}`;
@@ -3090,7 +3335,13 @@
           <button type="button" id="add-ex" class="small" style="margin:4px 0 16px">+ Oefening</button>
           <button class="primary wide" type="submit">Schema opslaan</button>
         </form>` +
-        (!isNew ? `<hr class="divider"><button class="danger ghost" id="del-schema">Schema verwijderen</button>` : '');
+        (!isNew ? `<hr class="divider">
+          <div class="row" style="margin-bottom:10px">
+            <select id="copy-target" class="grow"><option value="">Kopieer naar klant…</option>${
+              sortedClients().filter((x) => !x.archived && x.id !== clientId).map((x) => `<option value="${x.id}">${esc(x.name)}</option>`).join('')}</select>
+            <button type="button" class="small" id="copy-schema">Kopiëren</button>
+          </div>
+          <button class="danger ghost" id="del-schema">Schema verwijderen</button>` : '');
 
       bindNav();
       const syncDraft = () => {
@@ -3155,6 +3406,18 @@
         else db.schemas[db.schemas.findIndex((s) => s.id === schemaId)] = draft;
         save(); location.hash = `/klant/${clientId}`;
       });
+      const copyBtn = document.getElementById('copy-schema');
+      if (copyBtn) copyBtn.addEventListener('click', () => {
+        const target = document.getElementById('copy-target').value;
+        if (!target) { alert('Kies eerst een klant.'); return; }
+        syncDraft();
+        db.schemas.push({
+          id: uid(), clientId: target, name: draft.name.trim() || 'Schema',
+          exercises: copyExercises(draft.exercises.filter((e) => e.name.trim())),
+        });
+        save();
+        alert(`Schema gekopieerd naar ${clientById(target).name}.`);
+      });
       const del = document.getElementById('del-schema');
       if (del) del.addEventListener('click', () => {
         if (!confirm('Dit schema verwijderen? Gelogde trainingen blijven bewaard.')) return;
@@ -3206,6 +3469,7 @@
         .filter((n) => !draft.some((d) => d.name.toLowerCase() === n.toLowerCase()));
       $app.innerHTML = topbar(editing ? `Bewerken — ${c.name}` : `Training — ${c.name}`, `/klant/${clientId}`) +
         `<p style="margin:0 0 12px"><span class="badge">${esc(schema ? schema.name : editing && editing.duoId ? (duoSchemaById(editing.schemaId) || {}).name || 'Duo-training' : 'Vrije training')}</span></p>` +
+        ((c.injuries || c.medical) ? `<div class="note-box"><strong>Let op:</strong> ${esc([c.injuries, c.medical].filter(Boolean).join(' · '))}</div>` : '') +
         `<form id="wo-form">
           <div class="actions" style="margin-bottom:12px">
             <button type="button" class="small" data-rest-set="all">⏱ Rust</button>
