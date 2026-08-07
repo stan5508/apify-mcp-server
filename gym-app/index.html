@@ -338,14 +338,14 @@
 <script>
 (() => {
   'use strict';
-  const APP_VERSION = 14; // bump when publishing; shown on the home screen
+  const APP_VERSION = 15; // bump when publishing; shown on the home screen
   const KEY = 'coachlog-v1';
   const $app = document.getElementById('app');
 
   // ---------- data ----------
   const emptyDb = () => ({
     clients: [], schemas: [], workouts: [], duos: [], duoSchemas: [], templates: [], measurements: [],
-    muscleGroups: {}, settings: { unit: 'kg', restSeconds: 90, autoRest: true, sound: true, barWeight: 20 }, updatedAt: 0,
+    exercises: [], muscleGroups: {}, settings: { unit: 'kg', restSeconds: 90, autoRest: true, sound: true, barWeight: 20 }, updatedAt: 0,
   });
   let db = loadDb();
   function loadDb() {
@@ -359,10 +359,14 @@
     const out = {
       clients: d.clients || [], schemas: d.schemas || [], workouts: d.workouts || [], duos: d.duos || [],
       duoSchemas: d.duoSchemas || [], templates: d.templates || [], measurements: d.measurements || [],
-      muscleGroups: d.muscleGroups || {},
+      exercises: d.exercises || [], muscleGroups: d.muscleGroups || {},
       settings: { unit: 'kg', restSeconds: 90, autoRest: true, sound: true, barWeight: 20, ...(d.settings || {}) },
       updatedAt: d.updatedAt || 0,
     };
+    // build the exercise registry from whatever names already exist
+    const before = out.exercises.length;
+    migrateExercises(out);
+    if (out.exercises.length !== before) out._needsSave = true;
     // migrate uniform sets/reps/weight to per-set targets
     for (const s of out.schemas) {
       for (const e of s.exercises || []) {
@@ -377,6 +381,124 @@
     db.updatedAt = Date.now();
     localStorage.setItem(KEY, JSON.stringify(db));
     scheduleSync();
+  }
+
+  // ---------- exercise registry ----------
+  const EQUIPMENT = ['Onbekend', 'Barbell', 'Dumbbell', 'Machine', 'Kabel', 'Lichaamsgewicht', 'Kettlebell', 'Band', 'Cardio-apparaat'];
+
+  function migrateExercises(d) {
+    const byKey = new Map(d.exercises.map((e) => [e.name.trim().toLowerCase(), e]));
+    const seen = (name, kind) => {
+      const key = String(name || '').trim().toLowerCase();
+      if (!key) return;
+      let rec = byKey.get(key);
+      if (!rec) {
+        rec = {
+          id: uid(), name: String(name).trim(), kind: kind || 'kracht',
+          group: d.muscleGroups[key] || (kind === 'cardio' ? 'Cardio' : 'Overig'),
+          equipment: 'Onbekend', restSeconds: null, notes: '', aliases: [], archived: false,
+        };
+        byKey.set(key, rec);
+        d.exercises.push(rec);
+      }
+      if (kind && kind !== 'kracht') rec.kind = kind;
+      if (d.muscleGroups[key]) rec.group = d.muscleGroups[key];
+    };
+    for (const w of d.workouts) for (const e of w.entries) seen(e.name, e.kind);
+    for (const sc of d.schemas) for (const e of sc.exercises || []) seen(e.name, e.kind);
+    for (const t of d.templates) for (const e of t.exercises || []) seen(e.name, e.kind);
+    for (const ds of d.duoSchemas) for (const plan of Object.values(ds.plans || {})) for (const e of plan) seen(e.name, e.kind);
+    for (const e of d.exercises) {
+      e.aliases = e.aliases || [];
+      e.equipment = e.equipment || 'Onbekend';
+      e.group = e.group || 'Overig';
+      e.kind = e.kind || 'kracht';
+      e.notes = e.notes || '';
+    }
+  }
+
+  const exKey = (name) => String(name || '').trim().toLowerCase();
+  const exerciseById = (id) => db.exercises.find((e) => e.id === id);
+  function exerciseByName(name) {
+    const key = exKey(name);
+    return db.exercises.find((e) => exKey(e.name) === key || (e.aliases || []).some((a) => exKey(a) === key)) || null;
+  }
+  function ensureExercise(name, kind) {
+    const found = exerciseByName(name);
+    if (found) return found;
+    const rec = {
+      id: uid(), name: String(name).trim(), kind: kind || 'kracht',
+      group: kind === 'cardio' ? 'Cardio' : 'Overig', equipment: 'Onbekend',
+      restSeconds: null, notes: '', aliases: [], archived: false,
+    };
+    db.exercises.push(rec);
+    return rec;
+  }
+  const activeExercises = () => db.exercises.filter((e) => !e.archived);
+  function exerciseUsage(name) {
+    const key = exKey(name);
+    let sessions = 0, lastDate = null;
+    const clients = new Set();
+    for (const w of db.workouts) {
+      if (!w.entries.some((e) => exKey(e.name) === key)) continue;
+      sessions++;
+      clients.add(w.clientId);
+      if (!lastDate || w.date > lastDate) lastDate = w.date;
+    }
+    return { sessions, clients: clients.size, lastDate };
+  }
+  // library names for pickers: most used first, then alphabetical
+  function libraryNames(extraFilter) {
+    return activeExercises()
+      .filter((e) => !extraFilter || extraFilter(e))
+      .map((e) => ({ name: e.name, uses: exerciseUsage(e.name).sessions }))
+      .sort((a, b) => (b.uses - a.uses) || byName(a.name, b.name))
+      .map((e) => e.name);
+  }
+  const restFor = (name) => {
+    const rec = exerciseByName(name);
+    return (rec && rec.restSeconds) || db.settings.restSeconds || 90;
+  };
+
+  const STARTER_EXERCISES = [
+    ['Squat', 'kracht', 'Benen', 'Barbell'], ['Front squat', 'kracht', 'Benen', 'Barbell'],
+    ['Leg press', 'kracht', 'Benen', 'Machine'], ['Lunges', 'kracht', 'Benen', 'Dumbbell'],
+    ['Bulgarian split squat', 'kracht', 'Benen', 'Dumbbell'], ['Leg extension', 'kracht', 'Benen', 'Machine'],
+    ['Leg curl', 'kracht', 'Benen', 'Machine'], ['Hip thrust', 'kracht', 'Benen', 'Barbell'],
+    ['Kuitheffen', 'kracht', 'Benen', 'Machine'], ['Deadlift', 'kracht', 'Rug', 'Barbell'],
+    ['Romanian deadlift', 'kracht', 'Benen', 'Barbell'], ['Barbell row', 'kracht', 'Rug', 'Barbell'],
+    ['Dumbbell row', 'kracht', 'Rug', 'Dumbbell'], ['Lat pulldown', 'kracht', 'Rug', 'Machine'],
+    ['Seated row', 'kracht', 'Rug', 'Kabel'], ['Pull-up', 'lichaamsgewicht', 'Rug', 'Lichaamsgewicht'],
+    ['Chin-up', 'lichaamsgewicht', 'Rug', 'Lichaamsgewicht'], ['Face pull', 'kracht', 'Schouders', 'Kabel'],
+    ['Bankdrukken', 'kracht', 'Borst', 'Barbell'], ['Incline bankdrukken', 'kracht', 'Borst', 'Barbell'],
+    ['Dumbbell press', 'kracht', 'Borst', 'Dumbbell'], ['Chest fly', 'kracht', 'Borst', 'Kabel'],
+    ['Push-up', 'lichaamsgewicht', 'Borst', 'Lichaamsgewicht'], ['Dips', 'lichaamsgewicht', 'Borst', 'Lichaamsgewicht'],
+    ['Overhead press', 'kracht', 'Schouders', 'Barbell'], ['Arnold press', 'kracht', 'Schouders', 'Dumbbell'],
+    ['Lateral raise', 'kracht', 'Schouders', 'Dumbbell'], ['Reverse fly', 'kracht', 'Schouders', 'Dumbbell'],
+    ['Shrugs', 'kracht', 'Schouders', 'Dumbbell'], ['Barbell curl', 'kracht', 'Armen', 'Barbell'],
+    ['Dumbbell curl', 'kracht', 'Armen', 'Dumbbell'], ['Hammer curl', 'kracht', 'Armen', 'Dumbbell'],
+    ['Triceps pushdown', 'kracht', 'Armen', 'Kabel'], ['Skull crusher', 'kracht', 'Armen', 'Barbell'],
+    ['Triceps dip', 'lichaamsgewicht', 'Armen', 'Lichaamsgewicht'], ['Plank', 'lichaamsgewicht', 'Core', 'Lichaamsgewicht'],
+    ['Hanging leg raise', 'lichaamsgewicht', 'Core', 'Lichaamsgewicht'], ['Russian twist', 'kracht', 'Core', 'Dumbbell'],
+    ['Cable crunch', 'kracht', 'Core', 'Kabel'], ['Back extension', 'lichaamsgewicht', 'Core', 'Lichaamsgewicht'],
+    ['Farmer walk', 'kracht', 'Core', 'Dumbbell'], ['Kettlebell swing', 'kracht', 'Benen', 'Kettlebell'],
+    ['Roeien', 'cardio', 'Cardio', 'Cardio-apparaat'], ['Loopband', 'cardio', 'Cardio', 'Cardio-apparaat'],
+    ['Hometrainer', 'cardio', 'Cardio', 'Cardio-apparaat'], ['Crosstrainer', 'cardio', 'Cardio', 'Cardio-apparaat'],
+    ['Skierg', 'cardio', 'Cardio', 'Cardio-apparaat'], ['Assault bike', 'cardio', 'Cardio', 'Cardio-apparaat'],
+    ['Touwtjespringen', 'cardio', 'Cardio', 'Lichaamsgewicht'], ['Wandelen', 'cardio', 'Cardio', 'Lichaamsgewicht'],
+  ];
+  function addStarterExercises() {
+    let added = 0;
+    for (const [name, kind, group, equipment] of STARTER_EXERCISES) {
+      if (exerciseByName(name)) continue;
+      db.exercises.push({
+        id: uid(), name, kind, group, equipment,
+        restSeconds: null, notes: '', aliases: [], archived: false,
+      });
+      added++;
+    }
+    save();
+    return added;
   }
 
   // ---------- sync via private GitHub Gist ----------
@@ -484,6 +606,8 @@
 
   // known kind for an exercise name: from history, then schemas
   function kindFor(clientId, name) {
+    const rec = exerciseByName(name);
+    if (rec) return rec.kind;
     const key = name.trim().toLowerCase();
     const ws = workoutsOf(clientId);
     for (let i = ws.length - 1; i >= 0; i--) {
@@ -680,13 +804,16 @@
       o.repaint();
     }));
     // rest timer: per-exercise button, plus auto-start once a set's reps/time is entered
+    const restSecondsFor = (key) => (o.restFor && key ? o.restFor(key) : db.settings.restSeconds) || 90;
     document.querySelectorAll(`[data-rest-${attr}]`).forEach((b) => b.addEventListener('click', () => {
-      startRest(db.settings.restSeconds || 90);
+      const key = b.dataset[camel('rest')];
+      startRest(restSecondsFor(key === 'all' ? null : key));
     }));
     if (db.settings.autoRest) {
       document.querySelectorAll(`[data-${attr}][data-f="reps"], [data-${attr}][data-f="minutes"]`).forEach((inp) => {
         inp.addEventListener('change', () => {
-          if (num(inp.value) > 0) startRest(db.settings.restSeconds || 90);
+          const key = inp.dataset[attr] || '';
+          if (num(inp.value) > 0) startRest(restSecondsFor(key.slice(0, key.lastIndexOf('.'))));
         });
       });
     }
@@ -745,8 +872,14 @@
 
   const MUSCLE_GROUPS = ['Borst', 'Rug', 'Benen', 'Schouders', 'Armen', 'Core', 'Cardio', 'Overig'];
   const groupKey = (name) => name.trim().toLowerCase();
-  const groupOf = (name, kind) => db.muscleGroups[groupKey(name)] || (kind === 'cardio' ? 'Cardio' : 'Overig');
+  const groupOf = (name, kind) => {
+    const rec = exerciseByName(name);
+    if (rec) return rec.group;
+    return db.muscleGroups[groupKey(name)] || (kind === 'cardio' ? 'Cardio' : 'Overig');
+  };
   function setGroup(name, group) {
+    const rec = exerciseByName(name);
+    if (rec) rec.group = group;
     if (group) db.muscleGroups[groupKey(name)] = group;
     else delete db.muscleGroups[groupKey(name)];
     save();
@@ -1202,6 +1335,7 @@
     const activeClient = (hash.match(/^\/klant\/([^/]+)/) || [])[1];
     const activeDuo = (hash.match(/^\/duo\/([^/]+)/) || [])[1];
     const activeTemplate = (hash.match(/^\/sjabloon\/([^/]+)/) || [])[1];
+    const activeGroup = (hash.match(/^\/bibliotheek\/([^/]+)/) || [])[1] && decodeURIComponent(hash.match(/^\/bibliotheek\/([^/]+)/)[1]);
     const clients = sortedClients();
     const duos = sortedDuos();
     $side.innerHTML = `
@@ -1215,6 +1349,12 @@
         <summary>Duo klanten <span class="chev">▾</span></summary>
         ${duos.map((d) => `<a class="navlink${d.id === activeDuo ? ' active' : ''}" href="#/duo/${d.id}">${esc(duoName(d))}</a>`).join('')}
         <a class="navlink add" href="#/">+ Nieuw duo</a>
+      </details>
+      <details class="navgrp" data-key="Library" ${uiState.navLibrary ? 'open' : ''}>
+        <summary>Oefeningen <span class="chev">▾</span></summary>
+        <a class="navlink${hash.startsWith('/bibliotheek') && !activeGroup ? ' active' : ''}" href="#/bibliotheek">Alle oefeningen</a>
+        ${MUSCLE_GROUPS.filter((g) => activeExercises().some((e) => e.group === g)).map((g) =>
+          `<a class="navlink${activeGroup === g ? ' active' : ''}" href="#/bibliotheek/${encodeURIComponent(g)}">${esc(g)}</a>`).join('')}
       </details>
       <details class="navgrp" data-key="Templates" ${uiState.navTemplates ? 'open' : ''}>
         <summary>Sjablonen <span class="chev">▾</span></summary>
@@ -1246,6 +1386,7 @@
     if (parts[0] === 'klant' && parts[2] === 'sjabloon') return viewTemplatePick('klant', parts[1]);
     if (parts[0] === 'klant') return viewClient(parts[1]);
     if (parts[0] === 'sjabloon') return viewTemplate(parts[1]);
+    if (parts[0] === 'bibliotheek') return viewLibrary(parts[1] ? decodeURIComponent(parts[1]) : null);
     if (parts[0] === 'duo' && parts[2] === 'vrij') return viewDuoPick(parts[1]);
     if (parts[0] === 'duo' && parts[2] === 'sjabloon') return viewTemplatePick('duo', parts[1]);
     if (parts[0] === 'duo' && parts[2] === 'schema') return viewDuoSchema(parts[1], parts[3]);
@@ -1405,6 +1546,7 @@
   const uiState = {
     metric: 'top', navClients: true, navDuos: true, navTemplates: true, measMetric: 'weight',
     period: 'all', comparePicks: [], compareMetric: 'top',
+    navLibrary: true, libQuery: '', libEquipment: '', libKind: '', libShowArchived: false, libEditing: null,
   };
   let pendingFree = []; // exercises picked for a free session, set by viewPickExercises
   let pendingDuo = null; // { duoId, picks: { [clientId]: [names] } }, set by viewDuoPick
@@ -1528,6 +1670,147 @@
     document.querySelectorAll('[data-period]').forEach((b) => b.addEventListener('click', () => {
       uiState.period = b.dataset.period; render();
     }));
+  }
+
+  // --- exercise library ---
+  function viewLibrary(group) {
+    const q = uiState.libQuery.trim().toLowerCase();
+    const list = db.exercises
+      .filter((e) => uiState.libShowArchived ? e.archived : !e.archived)
+      .filter((e) => !group || e.group === group)
+      .filter((e) => !uiState.libEquipment || e.equipment === uiState.libEquipment)
+      .filter((e) => !uiState.libKind || e.kind === uiState.libKind)
+      .filter((e) => !q || e.name.toLowerCase().includes(q) || (e.aliases || []).some((a) => a.toLowerCase().includes(q)))
+      .map((e) => ({ rec: e, usage: exerciseUsage(e.name) }))
+      .sort((a, b) => (b.usage.sessions - a.usage.sessions) || byName(a.rec.name, b.rec.name));
+
+    const editing = uiState.libEditing ? exerciseById(uiState.libEditing) : null;
+
+    $app.innerHTML = topbar(group ? `Bibliotheek — ${group}` : 'Bibliotheek', '/') +
+      `<div class="row" style="margin-bottom:10px">
+        <input id="lib-q" class="grow" placeholder="Zoek oefening…" value="${esc(uiState.libQuery)}">
+        <button class="small" id="lib-add-toggle">+ Nieuw</button>
+      </div>
+      <div class="row" style="margin-bottom:12px">
+        <select id="lib-kind" class="grow"><option value="">Alle soorten</option>${
+          Object.entries(KIND_LABELS).map(([k, l]) => `<option value="${k}" ${uiState.libKind === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
+        <select id="lib-equip" class="grow"><option value="">Alle materialen</option>${
+          EQUIPMENT.map((eq) => `<option value="${eq}" ${uiState.libEquipment === eq ? 'selected' : ''}>${eq}</option>`).join('')}</select>
+        <button class="small" id="lib-archived" aria-pressed="${uiState.libShowArchived}">${uiState.libShowArchived ? 'Archief' : 'Actief'}</button>
+      </div>
+      <form class="card" id="lib-new" ${uiState.libEditing === 'new' ? '' : 'hidden'}>
+        <label class="field"><span>Naam</span><input name="name" placeholder="bijv. Lat pulldown" required></label>
+        <div class="row">
+          <label class="field grow"><span>Soort</span><select name="kind">${Object.entries(KIND_LABELS).map(([k, l]) => `<option value="${k}">${l}</option>`).join('')}</select></label>
+          <label class="field grow"><span>Spiergroep</span><select name="group">${MUSCLE_GROUPS.map((g) => `<option value="${g}" ${g === 'Overig' ? 'selected' : ''}>${g}</option>`).join('')}</select></label>
+          <label class="field grow"><span>Materiaal</span><select name="equipment">${EQUIPMENT.map((eq) => `<option value="${eq}">${eq}</option>`).join('')}</select></label>
+        </div>
+        <button class="primary" type="submit">Oefening toevoegen</button>
+      </form>` +
+
+      (list.length ? list.map(({ rec, usage }) => uiState.libEditing === rec.id
+        ? `<form class="card" data-edit-form="${rec.id}">
+            <div class="title" style="margin-bottom:8px">${esc(rec.name)}</div>
+            <div class="row">
+              <label class="field grow"><span>Soort</span><select name="kind">${Object.entries(KIND_LABELS).map(([k, l]) => `<option value="${k}" ${rec.kind === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+              <label class="field grow"><span>Spiergroep</span><select name="group">${MUSCLE_GROUPS.map((g) => `<option value="${g}" ${rec.group === g ? 'selected' : ''}>${g}</option>`).join('')}</select></label>
+              <label class="field grow"><span>Materiaal</span><select name="equipment">${EQUIPMENT.map((eq) => `<option value="${eq}" ${rec.equipment === eq ? 'selected' : ''}>${eq}</option>`).join('')}</select></label>
+            </div>
+            <div class="row">
+              <label class="field grow"><span>Rusttijd (sec, leeg = standaard ${db.settings.restSeconds})</span>
+                <input name="rest" type="number" min="10" max="600" value="${rec.restSeconds || ''}" placeholder="${db.settings.restSeconds}"></label>
+              <label class="field grow"><span>Synoniemen (komma-gescheiden)</span>
+                <input name="aliases" value="${esc((rec.aliases || []).join(', '))}" placeholder="bijv. bench press"></label>
+            </div>
+            <label class="field"><span>Notities (voor later — uitvoering, aandachtspunten)</span>
+              <textarea name="notes" rows="2">${esc(rec.notes || '')}</textarea></label>
+            <div class="actions">
+              <button class="primary" type="submit">Opslaan</button>
+              <button type="button" class="ghost" data-cancel-edit="1">Annuleren</button>
+              <button type="button" class="danger ghost" data-archive="${rec.id}">${rec.archived ? 'Terugzetten' : 'Archiveren'}</button>
+            </div>
+            <p class="mut" style="margin:8px 0 0">Naam wijzigen en dubbelen samenvoegen komt in de volgende stap.</p>
+          </form>`
+        : `<div class="card">
+            <div class="row">
+              <div class="grow">
+                <div class="title">${esc(rec.name)}${rec.archived ? ' <span class="badge">gearchiveerd</span>' : ''}</div>
+                <div class="sub">${esc(rec.group)} · ${esc(rec.equipment)}${rec.kind !== 'kracht' ? ' · ' + KIND_LABELS[rec.kind] : ''}${rec.restSeconds ? ' · rust ' + rec.restSeconds + 's' : ''}</div>
+                <div class="mut">${usage.sessions ? `${usage.sessions} sessie${usage.sessions === 1 ? '' : 's'} · ${usage.clients} klant${usage.clients === 1 ? '' : 'en'} · laatst ${esc(fmtDate(usage.lastDate))}` : 'nog niet gebruikt'}</div>
+              </div>
+              <button class="small ghost" data-edit="${rec.id}">Bewerken</button>
+            </div>
+          </div>`).join('')
+        : `<div class="empty"><p>${uiState.libShowArchived ? 'Niets gearchiveerd.' : 'Geen oefeningen gevonden.'}</p></div>`) +
+
+      (activeExercises().length < 20 && !uiState.libShowArchived
+        ? `<hr class="divider"><div class="card">
+            <div class="title">Standaardlijst</div>
+            <p class="sub">Voeg circa 50 gangbare oefeningen toe, netjes ingedeeld op spiergroep en materiaal. Je kunt ze altijd archiveren.</p>
+            <button id="lib-starter">Standaardlijst toevoegen</button>
+          </div>` : '');
+
+    bindNav();
+    const qIn = document.getElementById('lib-q');
+    qIn.addEventListener('input', () => {
+      uiState.libQuery = qIn.value;
+      const pos = qIn.selectionStart;
+      render();
+      const again = document.getElementById('lib-q');
+      again.focus();
+      again.setSelectionRange(pos, pos);
+    });
+    document.getElementById('lib-kind').addEventListener('change', (ev) => { uiState.libKind = ev.target.value; render(); });
+    document.getElementById('lib-equip').addEventListener('change', (ev) => { uiState.libEquipment = ev.target.value; render(); });
+    document.getElementById('lib-archived').addEventListener('click', () => { uiState.libShowArchived = !uiState.libShowArchived; render(); });
+    document.getElementById('lib-add-toggle').addEventListener('click', () => {
+      uiState.libEditing = uiState.libEditing === 'new' ? null : 'new';
+      render();
+    });
+    document.getElementById('lib-new').addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      const f = new FormData(ev.target);
+      const name = String(f.get('name')).trim();
+      if (!name) return;
+      if (exerciseByName(name)) { alert('Deze oefening bestaat al.'); return; }
+      const rec = ensureExercise(name, String(f.get('kind')));
+      rec.group = String(f.get('group'));
+      rec.equipment = String(f.get('equipment'));
+      uiState.libEditing = null;
+      save(); render();
+    });
+    document.querySelectorAll('[data-edit]').forEach((b) => b.addEventListener('click', () => {
+      uiState.libEditing = b.dataset.edit; render();
+    }));
+    document.querySelectorAll('[data-cancel-edit]').forEach((b) => b.addEventListener('click', () => {
+      uiState.libEditing = null; render();
+    }));
+    document.querySelectorAll('[data-archive]').forEach((b) => b.addEventListener('click', () => {
+      const rec = exerciseById(b.dataset.archive);
+      rec.archived = !rec.archived;
+      uiState.libEditing = null;
+      save(); render();
+    }));
+    document.querySelectorAll('[data-edit-form]').forEach((form) => form.addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      const rec = exerciseById(form.dataset.editForm);
+      const f = new FormData(form);
+      rec.kind = String(f.get('kind'));
+      rec.group = String(f.get('group'));
+      rec.equipment = String(f.get('equipment'));
+      rec.restSeconds = num(f.get('rest')) > 0 ? num(f.get('rest')) : null;
+      rec.notes = String(f.get('notes')).trim();
+      rec.aliases = String(f.get('aliases')).split(',').map((a) => a.trim()).filter(Boolean);
+      db.muscleGroups[exKey(rec.name)] = rec.group;
+      uiState.libEditing = null;
+      save(); render();
+    }));
+    const starter = document.getElementById('lib-starter');
+    if (starter) starter.addEventListener('click', () => {
+      const n = addStarterExercises();
+      alert(`${n} oefeningen toegevoegd.`);
+      render();
+    });
   }
 
   // --- client overview: months, attendance, muscle groups ---
@@ -1908,7 +2191,7 @@
   function viewPickExercises(clientId) {
     const c = clientById(clientId);
     if (!c) { location.hash = '/'; return; }
-    const known = knownExercises(clientId);
+    const known = [...new Set([...knownExercises(clientId), ...libraryNames()])];
     const selected = new Set(pendingFree.filter((n) => known.some((k) => k.toLowerCase() === n.toLowerCase())));
 
     const paint = () => {
@@ -1961,10 +2244,11 @@
         `<p class="sub" style="margin:0 0 12px">Een sjabloon koppel je via de klant- of duo-pagina ("+ Schema uit sjabloon"); daar wordt het een eigen kopie die je per klant kunt aanpassen.</p>
         <form id="schema-form">
           <label class="field"><span>Naam sjabloon</span><input name="name" required placeholder="bijv. Full body beginner" value="${esc(draft.name)}"></label>
+          <datalist id="lib-names">${libraryNames().map((n) => `<option value="${esc(n)}">`).join('')}</datalist>
           <div class="eyebrow">Oefeningen — elke set apart</div>
           ${draft.exercises.map((e, i) => `<div class="card">
             <div class="row" style="margin-bottom:8px">
-              <input data-exname="${i}" class="grow" required placeholder="bijv. Squat" value="${esc(e.name)}">
+              <input data-exname="${i}" class="grow" list="lib-names" required placeholder="bijv. Squat" value="${esc(e.name)}">
               <button type="button" class="small ghost" data-ex-up="${i}" aria-label="Omhoog" ${i === 0 ? 'disabled' : ''}>↑</button>
               <button type="button" class="small ghost" data-ex-down="${i}" aria-label="Omlaag" ${i === draft.exercises.length - 1 ? 'disabled' : ''}>↓</button>
               <button type="button" class="small danger ghost" data-rm-ex="${i}" aria-label="Verwijder oefening">✕</button>
@@ -2037,7 +2321,7 @@
         draft.name = draft.name.trim();
         draft.exercises = draft.exercises
           .filter((e) => e.name.trim())
-          .map((e) => ({ id: e.id, name: e.name.trim(), kind: e.kind || 'kracht', targets: e.targets }));
+          .map((e) => ({ id: e.id, name: e.name.trim(), kind: ensureExercise(e.name.trim(), e.kind || 'kracht').kind, targets: e.targets }));
         if (!draft.name || !draft.exercises.length) return;
         if (isNew) db.templates.push(draft);
         else db.templates[db.templates.findIndex((t) => t.id === tid)] = draft;
@@ -2190,10 +2474,10 @@
           <label class="field"><span>Naam schema</span><input name="name" required placeholder="bijv. Duo full body" value="${esc(draft.name)}"></label>
           <div class="duo-cols">` +
           members.map((m, mi) =>
-            `<div><div class="eyebrow">${esc(m.name)} — elke set apart</div>` +
+            `<div><datalist id="lib-names">${libraryNames().map((n) => `<option value="${esc(n)}">`).join('')}</datalist><div class="eyebrow">${esc(m.name)} — elke set apart</div>` +
             draft.plans[m.id].map((e, i) => `<div class="card">
               <div class="row" style="margin-bottom:8px">
-                <input data-dexname="${mi}.${i}" class="grow" required placeholder="bijv. Squat" value="${esc(e.name)}">
+                <input data-dexname="${mi}.${i}" class="grow" list="lib-names" required placeholder="bijv. Squat" value="${esc(e.name)}">
                 <button type="button" class="small ghost" data-dex-up="${mi}.${i}" aria-label="Omhoog" ${i === 0 ? 'disabled' : ''}>↑</button>
                 <button type="button" class="small ghost" data-dex-down="${mi}.${i}" aria-label="Omlaag" ${i === draft.plans[m.id].length - 1 ? 'disabled' : ''}>↓</button>
                 <button type="button" class="small danger ghost" data-drm-ex="${mi}.${i}" aria-label="Verwijder oefening">✕</button>
@@ -2275,7 +2559,7 @@
         for (const m of members) {
           draft.plans[m.id] = draft.plans[m.id]
             .filter((e) => e.name.trim())
-            .map((e) => ({ id: e.id, name: e.name.trim(), kind: e.kind || 'kracht', targets: e.targets }));
+            .map((e) => ({ id: e.id, name: e.name.trim(), kind: ensureExercise(e.name.trim(), e.kind || 'kracht').kind, targets: e.targets }));
         }
         if (!draft.name || members.some((m) => !draft.plans[m.id].length)) {
           alert('Geef het schema een naam en minstens één oefening per persoon.');
@@ -2300,7 +2584,7 @@
     const duo = duoById(duoId);
     const members = duo ? duo.clientIds.map(clientById) : [];
     if (!duo || members.some((m) => !m)) { location.hash = '/'; return; }
-    const known = members.map((m) => knownExercises(m.id));
+    const known = members.map((m) => [...new Set([...knownExercises(m.id), ...libraryNames()])]);
     const selected = members.map(() => new Set());
 
     const paint = () => {
@@ -2423,7 +2707,7 @@
               ${swapping === key ? `<div class="row" style="margin-bottom:10px">
                 <input id="swap-input" class="grow" list="swap-list" placeholder="Vervangende oefening">
                 <button type="button" class="small primary" id="swap-ok">OK</button>
-                <datalist id="swap-list">${knownExercises(mem.client.id)
+                <datalist id="swap-list">${[...new Set([...knownExercises(mem.client.id), ...libraryNames()])]
                   .filter((n) => !mem.exercises.some((e) => e.name.toLowerCase() === n.toLowerCase()))
                   .map((n) => `<option value="${esc(n)}">`).join('')}</datalist>
               </div>` : ''}
@@ -2435,7 +2719,7 @@
             `<div class="card">
               <label class="field"><span>Oefening toevoegen voor ${esc(mem.client.name)}</span>
                 <input data-extra-input="${mi}" list="dex-list-${mi}" placeholder="bijv. Lat pulldown"></label>
-              <datalist id="dex-list-${mi}">${knownExercises(mem.client.id)
+              <datalist id="dex-list-${mi}">${[...new Set([...knownExercises(mem.client.id), ...libraryNames()])]
                 .filter((n) => !mem.exercises.some((e) => e.name.toLowerCase() === n.toLowerCase()))
                 .map((n) => `<option value="${esc(n)}">`).join('')}</datalist>
               <div class="row">
@@ -2476,6 +2760,7 @@
         setOpenMore: (v) => { openMore = v; },
         getSet: (key) => { const [mi, xi, si] = key.split('.').map(Number); return draft[mi].exercises[xi].sets[si]; },
         removeSet: (key) => { const [mi, xi, si] = key.split('.').map(Number); draft[mi].exercises[xi].sets.splice(si, 1); },
+        restFor: (key) => { const [mi, xi] = String(key).split('.').map(Number); const ex = draft[mi] && draft[mi].exercises[xi]; return ex ? restFor(ex.name) : null; },
       });
       bindToolPanel(() => tool, (v) => { tool = v; }, repaintKeeping);
 
@@ -2551,7 +2836,7 @@
         for (const mem of draft) {
           const entries = mem.exercises
             .map((ex) => ({
-              name: ex.name, kind: ex.kind, superset: ex.superset || null,
+              name: ex.name, exerciseId: ensureExercise(ex.name, ex.kind).id, kind: ex.kind, superset: ex.superset || null,
               sets: ex.sets.filter((s) => filledSet(s, ex.kind)),
             }))
             .filter((ex) => ex.sets.length);
@@ -2591,10 +2876,11 @@
       $app.innerHTML = topbar(isNew ? 'Nieuw schema' : 'Schema bewerken', `/klant/${clientId}`) +
         `<form id="schema-form">
           <label class="field"><span>Naam schema</span><input name="name" required placeholder="bijv. Full body A" value="${esc(draft.name)}"></label>
+          <datalist id="lib-names">${libraryNames().map((n) => `<option value="${esc(n)}">`).join('')}</datalist>
           <div class="eyebrow">Oefeningen — elke set apart</div>
           ${draft.exercises.map((e, i) => `<div class="card">
             <div class="row" style="margin-bottom:8px">
-              <input data-exname="${i}" class="grow" required placeholder="bijv. Squat" value="${esc(e.name)}">
+              <input data-exname="${i}" class="grow" list="lib-names" required placeholder="bijv. Squat" value="${esc(e.name)}">
               <button type="button" class="small ghost" data-ex-up="${i}" aria-label="Omhoog" ${i === 0 ? 'disabled' : ''}>↑</button>
               <button type="button" class="small ghost" data-ex-down="${i}" aria-label="Omlaag" ${i === draft.exercises.length - 1 ? 'disabled' : ''}>↓</button>
               <button type="button" class="small danger ghost" data-rm-ex="${i}" aria-label="Verwijder oefening">✕</button>
@@ -2667,7 +2953,7 @@
         draft.name = draft.name.trim();
         draft.exercises = draft.exercises
           .filter((e) => e.name.trim())
-          .map((e) => ({ id: e.id, name: e.name.trim(), kind: e.kind || 'kracht', targets: e.targets }));
+          .map((e) => ({ id: e.id, name: e.name.trim(), kind: ensureExercise(e.name.trim(), e.kind || 'kracht').kind, targets: e.targets }));
         if (!draft.name || !draft.exercises.length) return;
         if (isNew) db.schemas.push(draft);
         else db.schemas[db.schemas.findIndex((s) => s.id === schemaId)] = draft;
@@ -2719,7 +3005,7 @@
     const startedAt = Date.now();
 
     const paint = () => {
-      const extraOptions = knownExercises(clientId)
+      const extraOptions = [...new Set([...knownExercises(clientId), ...libraryNames()])]
         .filter((n) => !draft.some((d) => d.name.toLowerCase() === n.toLowerCase()));
       $app.innerHTML = topbar(editing ? `Bewerken — ${c.name}` : `Training — ${c.name}`, `/klant/${clientId}`) +
         `<p style="margin:0 0 12px"><span class="badge">${esc(schema ? schema.name : editing && editing.duoId ? (duoSchemaById(editing.schemaId) || {}).name || 'Duo-training' : 'Vrije training')}</span></p>` +
@@ -2748,7 +3034,7 @@
             ${swapping === xi ? `<div class="row" style="margin-bottom:10px">
               <input id="swap-input" class="grow" list="swap-list" placeholder="Vervangende oefening">
               <button type="button" class="small primary" id="swap-ok">OK</button>
-              <datalist id="swap-list">${knownExercises(clientId)
+              <datalist id="swap-list">${[...new Set([...knownExercises(clientId), ...libraryNames()])]
                 .filter((n) => !draft.some((d) => d.name.toLowerCase() === n.toLowerCase()))
                 .map((n) => `<option value="${esc(n)}">`).join('')}</datalist>
             </div>` : ''}
@@ -2802,6 +3088,7 @@
         setOpenMore: (v) => { openMore = v; },
         getSet: (key) => { const [xi, si] = key.split('.').map(Number); return draft[xi].sets[si]; },
         removeSet: (key) => { const [xi, si] = key.split('.').map(Number); draft[xi].sets.splice(si, 1); },
+        restFor: (key) => { const ex = draft[Number(String(key).split('.')[0])]; return ex ? restFor(ex.name) : null; },
       });
       bindToolPanel(() => tool, (v) => { tool = v; }, repaintKeeping);
 
@@ -2867,7 +3154,7 @@
         const f = new FormData(ev.target);
         const entries = draft
           .map((ex) => ({
-            name: ex.name, kind: ex.kind, superset: ex.superset || null,
+            name: ex.name, exerciseId: ensureExercise(ex.name, ex.kind).id, kind: ex.kind, superset: ex.superset || null,
             sets: ex.sets.filter((s) => filledSet(s, ex.kind)),
           }))
           .filter((ex) => ex.sets.length);
@@ -2965,6 +3252,9 @@
     const t = ev.target;
     if (t instanceof HTMLInputElement && (t.dataset.set !== undefined || t.dataset.dset !== undefined || t.dataset.tgt !== undefined)) t.select();
   });
+
+  // persist a one-off migration (e.g. the exercise registry) so it survives a reload
+  if (db._needsSave) { delete db._needsSave; save(); }
 
   bindTimerBar();
   window.addEventListener('hashchange', render);
