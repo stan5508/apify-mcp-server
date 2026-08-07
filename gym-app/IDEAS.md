@@ -21,13 +21,13 @@ progressiepagina per oefening (lijn + staaf, PR's, totale progressie), lichaamsm
 trainingen bewerken, kg/lbs-label, zijbalknavigatie (alfabetisch), duo-kolommen naast elkaar,
 sync via privé GitHub Gist, offline PWA, publicatie via `gh-pages` (zie `publish.sh`).
 
-## Afgewezen — niet opnieuw voorstellen
-
-- **Oefeningenbibliotheek met instructies** — coach kent alle oefeningen zelf.
-- **Technieknotities per oefening** — zelfde reden.
-
 ## Geparkeerd — "misschien op een ander moment"
 
+Niet afgewezen, alleen nu niet van toepassing:
+
+- **Oefeningenbibliotheek met instructies** — coach kent de oefeningen zelf; relevant zodra
+  anderen (mede-coach, klanten) meekijken.
+- **Technieknotities per oefening** — zelfde reden.
 - **Progressieregels** — automatisch gewichtsverhoging voorstellen bij alle reps gehaald.
 - **Weekprogramma's / mesocycli** — relevant zodra klanten 2×/week komen.
 
