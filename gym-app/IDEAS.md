@@ -48,14 +48,15 @@ hernoemen met historie-herschrijving, dubbelen samenvoegen, gebruiksstatistieken
 en uitleg: uitvoering, aandachtspunten, video- en afbeeldingslink, plus
 technieknotities per klant die tijdens de training zichtbaar zijn.
 
-### Klantbeheer
-20. Intake & aandachtspunten (blessures, medisch, doelen)
-21. Doelen met streefdatum + voortgangsbalk
-22. Progressiefoto's
-23. Archiveren van gestopte klanten
-24. Zoekveld (vanaf ~30 klanten)
-25. Contactgegevens (klikbaar)
-26. Schema kopiëren tussen klanten
+### Klantbeheer — allemaal gebouwd (20 t/m 26)
+Profiel-tabblad met contactgegevens (bellen/sms/mail), intake (blessures, medisch,
+notities) met waarschuwing op de klantpagina en tijdens de training, doelen met
+streefdatum en voortgangsbalk (ook in het rapport), progressiefoto's (verkleind
+opgeslagen), archiveren van klanten, zoekveld in de zijbalk en schema's kopiëren
+naar een andere klant.
+
+Let op: foto's tellen mee in de synchronisatie; boven ~900 kB weigert de sync met
+een duidelijke melding in plaats van stil te falen.
 
 ### Zakelijk
 27. Sessietegoed / strippenkaart (aftellen, seintje bij bijna op)
