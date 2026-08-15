@@ -349,7 +349,7 @@
 <script>
 (() => {
   'use strict';
-  const APP_VERSION = 24; // bump when publishing; shown on the home screen
+  const APP_VERSION = 25; // bump when publishing; shown on the home screen
   const KEY = 'coachlog-v1';
   const $app = document.getElementById('app');
 
@@ -1977,6 +1977,7 @@
     const archivedCount = db.clients.filter((c) => c.archived).length;
     $side.innerHTML = `
       <div class="brand-row"><a class="brand" href="#/">Coachlog</a></div>
+      <a class="navlink${hash === '/' ? ' active' : ''}" href="#/">Vandaag</a>
       <input id="nav-q" class="nav-search" placeholder="Zoek klant of duo…" value="${esc(uiState.navQuery)}">
       <details class="navgrp" data-key="Clients" ${uiState.navClients ? 'open' : ''}>
         <summary>Klanten <span class="chev">▾</span></summary>
@@ -2008,7 +2009,8 @@
         <summary>Sjablonen <span class="chev">▾</span></summary>
         ${[...db.templates].sort((a, b) => byName(a.name, b.name)).map((t) => `<a class="navlink${t.id === activeTemplate ? ' active' : ''}" href="#/sjabloon/${t.id}">${esc(t.name)}</a>`).join('')}
         <a class="navlink add" href="#/sjabloon/nieuw">+ Nieuw sjabloon</a>
-      </details>`;
+      </details>
+      <a class="navlink${hash.startsWith('/instellingen') ? ' active' : ''}" href="#/instellingen" style="margin-top:6px">Instellingen</a>`;
     $side.querySelectorAll('details').forEach((d) => d.addEventListener('toggle', () => {
       uiState['nav' + d.dataset.key] = d.open;
     }));
@@ -2051,14 +2053,15 @@
     if (parts[0] === 'zakelijk') return viewBusiness();
     if (parts[0] === 'voedingsmiddelen') return viewFoods();
     if (parts[0] === 'vanklanten') return viewClientFeed(parts[1] || null);
-    if (parts[0] === 'cloud') return viewHome('cloud-card');
+    if (parts[0] === 'instellingen') return viewSettings();
+    if (parts[0] === 'cloud') return viewSettings('cloud-card');
     if (parts[0] === 'bibliotheek') return viewLibrary(parts[1] ? decodeURIComponent(parts[1]) : null);
     if (parts[0] === 'duo' && parts[2] === 'vrij') return viewDuoPick(parts[1]);
     if (parts[0] === 'duo' && parts[2] === 'sjabloon') return viewTemplatePick('duo', parts[1]);
     if (parts[0] === 'duo' && parts[2] === 'schema') return viewDuoSchema(parts[1], parts[3]);
     if (parts[0] === 'duo' && parts[2] === 'training') return viewDuoWorkout(parts[1], parts[3]);
     if (parts[0] === 'duo') return viewDuo(parts[1]);
-    return viewHome();
+    return viewToday();
   }
 
   function topbar(title, backHash) {
@@ -2068,16 +2071,23 @@
       `</div>`;
   }
 
-  // --- home: client list ---
-  function viewHome(scrollToId) {
+  // --- vandaag: what the day looks like ---
+  function viewToday() {
     const clients = sortedClients().filter((c) => !c.archived);
     const archivedCount = db.clients.length - clients.length;
     const lowCredit = clients.map((c) => ({ c, l: creditLedger(c.id) })).filter((x) => x.l && x.l.low);
     const today = appointmentsOn(todayIso());
     const tomorrow = appointmentsOn(addDays(todayIso(), 1));
+    const lastDateOf = (id) => { const ws = workoutsOf(id); return ws.length ? ws[ws.length - 1].date : null; };
+    const seen = clients.map((c) => ({ c, date: lastDateOf(c.id) }));
+    const quiet = seen.filter((x) => !x.date || x.date < addDays(todayIso(), -7))
+      .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+    const recent = seen.filter((x) => x.date).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 3);
+    const apptHash = (a) => a.duoId ? `/duo/${a.duoId}` : `/klant/${a.clientId}`;
     const apptLine = (a) => `<div class="row" style="margin-bottom:4px"><div class="grow sub">${a.time ? esc(a.time) + ' · ' : ''}${esc(apptTitle(a))}</div>
-      <span class="badge${a.status === 'geweest' ? ' pr' : ''}">${APPT_STATUS[a.status]}</span></div>`;
-    $app.innerHTML = topbar('Overzicht') +
+      <span class="badge${a.status === 'geweest' ? ' pr' : ''}">${APPT_STATUS[a.status]}</span>${
+      a.status === 'gepland' ? `<button class="small" data-nav="${apptHash(a)}">Start ›</button>` : ''}</div>`;
+    $app.innerHTML = topbar('Vandaag') +
       `<div class="stat-grid">
         <div class="stat"><div class="lbl">Klanten</div><div class="val">${clients.length}</div>${archivedCount ? `<div class="mut">${archivedCount} gearchiveerd</div>` : ''}</div>
         <div class="stat"><div class="lbl">Duo's</div><div class="val">${sortedDuos().length}</div></div>
@@ -2089,6 +2099,15 @@
           : '<div class="mut">Vandaag geen afspraken.</div>'}
         ${tomorrow.length ? `<div class="title" style="margin:10px 0 6px">Morgen (${tomorrow.length})</div>${tomorrow.map(apptLine).join('')}` : ''}
       </div>` +
+      (recent.length ? `<div class="eyebrow">Snel starten</div>
+        <div class="actions">${recent.map(({ c }) => `<button data-nav="/klant/${c.id}">${esc(c.name)} ›</button>`).join('')}</div>` : '') +
+      (quiet.length ? `<div class="eyebrow">Langer dan een week niet geweest</div>
+        <div class="card">
+          ${quiet.slice(0, 6).map(({ c, date }) => `<div class="row" style="margin-bottom:4px"><div class="grow sub">${esc(c.name)}</div>
+            <span class="mut">${date ? esc(fmtDate(date)) : 'nog geen training'}</span>
+            <button class="small" data-nav="/klant/${c.id}">Openen ›</button></div>`).join('')}
+          ${quiet.length > 6 ? `<p class="mut" style="margin:8px 0 0">en nog ${quiet.length - 6}.</p>` : ''}
+        </div>` : '') +
       (lowCredit.length ? `<div class="eyebrow">Sessietegoed bijna op</div>
         <div class="card tappable" data-nav="/zakelijk" role="link" tabindex="0">
           ${lowCredit.map(({ c, l }) => `<div class="row" style="margin-bottom:4px"><div class="grow sub">${esc(c.name)}</div>
@@ -2109,7 +2128,37 @@
         <button class="primary wide" type="submit">Duo toevoegen</button>
       </form>` : `<p class="mut">Voeg minstens twee klanten toe om een duo te maken.</p>`) +
       `<hr class="divider">
-      <div class="eyebrow">Instellingen</div>
+      <div class="actions"><button data-nav="/instellingen">Instellingen ›</button></div>
+      <p class="mut" style="margin-top:16px">Coachlog versie ${APP_VERSION}</p>`;
+
+    bindNav();
+    document.getElementById('add-client').addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      const f = new FormData(ev.target);
+      const name = String(f.get('name')).trim();
+      if (!name) return;
+      const c = { id: uid(), name, goal: String(f.get('goal')).trim() };
+      db.clients.push(c); save();
+      location.hash = `/klant/${c.id}`;
+    });
+    const demo = document.getElementById('demo-btn');
+    if (demo) demo.addEventListener('click', () => { loadDemo(); save(); render(); });
+    const duoForm = document.getElementById('add-duo');
+    if (duoForm) duoForm.addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      const f = new FormData(ev.target);
+      const a = String(f.get('a')), b = String(f.get('b'));
+      if (a === b) { alert('Kies twee verschillende klanten.'); return; }
+      const d = { id: uid(), clientIds: [a, b], name: String(f.get('name')).trim() };
+      db.duos.push(d); save();
+      location.hash = `/duo/${d.id}`;
+    });
+  }
+
+  // --- instellingen: everything technical, off the daily path ---
+  function viewSettings(scrollToId) {
+    $app.innerHTML = topbar('Instellingen', '/') +
+      `<div class="eyebrow">Training</div>
       <div class="card">
         <label class="field"><span>Gewichtseenheid</span></label>
         <div class="seg" role="group" aria-label="Gewichtseenheid" style="max-width:200px">
@@ -2129,8 +2178,8 @@
           <button id="set-sound" aria-pressed="${!!db.settings.sound}">Geluid en trilling</button>
         </div>
       </div>
+      <div class="eyebrow">Weergave</div>
       <div class="card">
-        <label class="field"><span>Weergave</span></label>
         <div class="seg" role="group" aria-label="Thema" style="max-width:300px">
           ${[['system', 'Systeem'], ['light', 'Licht'], ['dark', 'Donker']].map(([k, l]) =>
             `<button id="theme-${k}" aria-pressed="${(db.settings.theme || 'system') === k}">${l}</button>`).join('')}
@@ -2209,27 +2258,6 @@
 
     bindNav();
     if (scrollToId) document.getElementById(scrollToId)?.scrollIntoView({ block: 'center' });
-    document.getElementById('add-client').addEventListener('submit', (ev) => {
-      ev.preventDefault();
-      const f = new FormData(ev.target);
-      const name = String(f.get('name')).trim();
-      if (!name) return;
-      const c = { id: uid(), name, goal: String(f.get('goal')).trim() };
-      db.clients.push(c); save();
-      location.hash = `/klant/${c.id}`;
-    });
-    const demo = document.getElementById('demo-btn');
-    if (demo) demo.addEventListener('click', () => { loadDemo(); save(); render(); });
-    const duoForm = document.getElementById('add-duo');
-    if (duoForm) duoForm.addEventListener('submit', (ev) => {
-      ev.preventDefault();
-      const f = new FormData(ev.target);
-      const a = String(f.get('a')), b = String(f.get('b'));
-      if (a === b) { alert('Kies twee verschillende klanten.'); return; }
-      const d = { id: uid(), clientIds: [a, b], name: String(f.get('name')).trim() };
-      db.duos.push(d); save();
-      location.hash = `/duo/${d.id}`;
-    });
     document.getElementById('export-btn').addEventListener('click', exportJson);
     document.getElementById('csv-all').addEventListener('click', () => downloadCsv(null));
     const fileInput = document.getElementById('import-file');
