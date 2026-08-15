@@ -66,12 +66,16 @@ omzet per maand). Tegoed telt één sessie per training plus no-shows (uit te
 zetten). Dagoverzicht op de startpagina; herinneringen 15 minuten vooraf zolang
 de app open staat (een gesloten PWA kan de browser hier niet wekken).
 
-### Techniek & veiligheid
-32. Pincode- of vingerafdrukslot (klantgegevens, AVG)
-33. Automatische back-up
-34. Klant-inzage (vereist sync)
-35. Meerdere coaches
-36. Handmatige licht/donker-schakelaar
+### Techniek & veiligheid — gebouwd (32 t/m 36)
+Pincodeslot met automatische vergrendeling (schermslot: gegevens zelf blijven
+leesbaar in browseropslag — geen encryptie), dagelijkse cloud-back-up in dezelfde
+gist met terugzetten (laatste zeven), klant-inzage via `klant.html` op een
+verborgen gist per klant, coachnaam die bij nieuwe trainingen wordt vastgelegd,
+en een licht/donker/systeem-schakelaar.
+
+Nog open op dit vlak: echte meerdere-coaches-rechten en vingerafdruk/gezicht
+(WebAuthn) vragen een backend of aanzienlijk meer complexiteit. Nu deelt een
+tweede coach hetzelfde sync-token, wat volledige toegang geeft.
 
 ### Later te verkennen
 37. Voeding (maaltijden, macro's, dagtotalen, koppeling aan doelen)
