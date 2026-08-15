@@ -58,12 +58,13 @@ naar een andere klant.
 Let op: foto's tellen mee in de synchronisatie; boven ~900 kB weigert de sync met
 een duidelijke melding in plaats van stil te falen.
 
-### Zakelijk
-27. Sessietegoed / strippenkaart (aftellen, seintje bij bijna op)
-28. Agenda (afspraken, dagoverzicht)
-29. No-shows registreren
-30. Facturatie / betaalstatus
-31. Herinneringen
+### Zakelijk — allemaal gebouwd (27 t/m 31)
+Sidebar-groep "Planning" met Agenda (dagweergave, afspraken voor klant of duo,
+statussen gepland/geweest/no-show/geannuleerd) en Tegoeden & betalingen
+(strippenkaarten per klant, restant met waarschuwing, openstaande betalingen,
+omzet per maand). Tegoed telt één sessie per training plus no-shows (uit te
+zetten). Dagoverzicht op de startpagina; herinneringen 15 minuten vooraf zolang
+de app open staat (een gesloten PWA kan de browser hier niet wekken).
 
 ### Techniek & veiligheid
 32. Pincode- of vingerafdrukslot (klantgegevens, AVG)

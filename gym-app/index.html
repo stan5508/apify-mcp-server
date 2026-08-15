@@ -343,14 +343,14 @@
 <script>
 (() => {
   'use strict';
-  const APP_VERSION = 18; // bump when publishing; shown on the home screen
+  const APP_VERSION = 19; // bump when publishing; shown on the home screen
   const KEY = 'coachlog-v1';
   const $app = document.getElementById('app');
 
   // ---------- data ----------
   const emptyDb = () => ({
     clients: [], schemas: [], workouts: [], duos: [], duoSchemas: [], templates: [], measurements: [],
-    exercises: [], clientNotes: {}, muscleGroups: {}, settings: { unit: 'kg', restSeconds: 90, autoRest: true, sound: true, barWeight: 20 }, updatedAt: 0,
+    exercises: [], clientNotes: {}, appointments: [], packages: [], muscleGroups: {}, settings: { unit: 'kg', restSeconds: 90, autoRest: true, sound: true, barWeight: 20 }, updatedAt: 0,
   });
   let db = loadDb();
   function loadDb() {
@@ -364,8 +364,9 @@
     const out = {
       clients: d.clients || [], schemas: d.schemas || [], workouts: d.workouts || [], duos: d.duos || [],
       duoSchemas: d.duoSchemas || [], templates: d.templates || [], measurements: d.measurements || [],
-      exercises: d.exercises || [], clientNotes: d.clientNotes || {}, muscleGroups: d.muscleGroups || {},
-      settings: { unit: 'kg', restSeconds: 90, autoRest: true, sound: true, barWeight: 20, ...(d.settings || {}) },
+      exercises: d.exercises || [], clientNotes: d.clientNotes || {},
+      appointments: d.appointments || [], packages: d.packages || [], muscleGroups: d.muscleGroups || {},
+      settings: { unit: 'kg', restSeconds: 90, autoRest: true, sound: true, barWeight: 20, noShowCounts: true, currency: '€', ...(d.settings || {}) },
       updatedAt: d.updatedAt || 0,
     };
     for (const c of out.clients) {
@@ -1028,6 +1029,57 @@
   }
   const dbSizeKb = () => Math.round(JSON.stringify(db).length / 1024);
 
+  // ---------- appointments, credits and payments ----------
+  const APPT_STATUS = { gepland: 'Gepland', geweest: 'Geweest', noshow: 'No-show', geannuleerd: 'Geannuleerd' };
+  const money = (n) => `${db.settings.currency || '€'} ${(Math.round(n * 100) / 100).toLocaleString('nl-NL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const apptTitle = (a) => a.duoId ? (duoById(a.duoId) ? duoName(duoById(a.duoId)) : 'Duo') : (clientById(a.clientId) || { name: '?' }).name;
+  const apptClientIds = (a) => a.duoId ? ((duoById(a.duoId) || {}).clientIds || []) : [a.clientId];
+  const sortedAppointments = () => [...db.appointments].sort((a, b) => (a.date + (a.time || '')).localeCompare(b.date + (b.time || '')));
+  const appointmentsOn = (date) => sortedAppointments().filter((a) => a.date === date);
+  const appointmentsFor = (clientId) => sortedAppointments().filter((a) => apptClientIds(a).includes(clientId));
+  const packagesOf = (clientId) => db.packages.filter((p) => p.clientId === clientId).sort((a, b) => a.date.localeCompare(b.date));
+  const addDays = (iso, n) => { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
+
+  // one credit per training; a no-show costs a credit too unless switched off
+  function creditLedger(clientId) {
+    const packs = packagesOf(clientId);
+    if (!packs.length) return null;
+    const from = packs[0].date;
+    const bought = packs.reduce((t, p) => t + (p.sessions || 0), 0);
+    const trainings = workoutsOf(clientId).filter((w) => w.date >= from).length;
+    const noShows = db.settings.noShowCounts
+      ? appointmentsFor(clientId).filter((a) => a.status === 'noshow' && a.date >= from).length
+      : 0;
+    const used = trainings + noShows;
+    return { from, bought, used, trainings, noShows, remaining: bought - used, low: bought - used <= 2 };
+  }
+  const openInvoices = () => db.packages.filter((p) => !p.paid).sort((a, b) => a.date.localeCompare(b.date));
+  function revenueByMonth() {
+    const months = new Map();
+    for (const p of db.packages) {
+      const m = p.date.slice(0, 7);
+      const cur = months.get(m) || { month: m, invoiced: 0, paid: 0 };
+      cur.invoiced += p.price || 0;
+      if (p.paid) cur.paid += p.price || 0;
+      months.set(m, cur);
+    }
+    return [...months.values()].sort((a, b) => b.month.localeCompare(a.month));
+  }
+
+  // reminders only fire while the app is open — a closed PWA cannot be woken here
+  function scheduleReminders() {
+    if (!('Notification' in window) || Notification.permission !== 'granted') return;
+    const now = Date.now();
+    for (const a of appointmentsOn(todayIso())) {
+      if (a.status !== 'gepland' || !a.time) continue;
+      const ms = new Date(`${a.date}T${a.time}:00`).getTime() - 15 * 60000 - now;
+      if (ms <= 0 || ms > 12 * 3600000) continue;
+      setTimeout(() => {
+        try { new Notification('Over 15 minuten', { body: `${apptTitle(a)} om ${a.time}` }); } catch { /* blocked */ }
+      }, ms);
+    }
+  }
+
   // ---------- analysis helpers ----------
   const PERIODS = { '3m': '3 mnd', '6m': '6 mnd', '1j': 'Jaar', all: 'Alles' };
   function periodStart(period) {
@@ -1526,6 +1578,11 @@
         ${duos.map((d) => `<a class="navlink${d.id === activeDuo ? ' active' : ''}" href="#/duo/${d.id}">${esc(duoName(d))}</a>`).join('')}
         <a class="navlink add" href="#/">+ Nieuw duo</a>
       </details>
+      <details class="navgrp" data-key="Business" ${uiState.navBusiness ? 'open' : ''}>
+        <summary>Planning <span class="chev">▾</span></summary>
+        <a class="navlink${hash.startsWith('/agenda') ? ' active' : ''}" href="#/agenda">Agenda</a>
+        <a class="navlink${hash.startsWith('/zakelijk') ? ' active' : ''}" href="#/zakelijk">Tegoeden &amp; betalingen${openInvoices().length ? ` (${openInvoices().length})` : ''}</a>
+      </details>
       <details class="navgrp" data-key="Library" ${uiState.navLibrary ? 'open' : ''}>
         <summary>Oefeningen <span class="chev">▾</span></summary>
         <a class="navlink${hash.startsWith('/bibliotheek') && !activeGroup ? ' active' : ''}" href="#/bibliotheek">Alle oefeningen</a>
@@ -1574,6 +1631,8 @@
     if (parts[0] === 'klant' && parts[2] === 'sjabloon') return viewTemplatePick('klant', parts[1]);
     if (parts[0] === 'klant') return viewClient(parts[1]);
     if (parts[0] === 'sjabloon') return viewTemplate(parts[1]);
+    if (parts[0] === 'agenda') return viewAgenda(parts[1] || todayIso());
+    if (parts[0] === 'zakelijk') return viewBusiness();
     if (parts[0] === 'bibliotheek') return viewLibrary(parts[1] ? decodeURIComponent(parts[1]) : null);
     if (parts[0] === 'duo' && parts[2] === 'vrij') return viewDuoPick(parts[1]);
     if (parts[0] === 'duo' && parts[2] === 'sjabloon') return viewTemplatePick('duo', parts[1]);
@@ -1592,13 +1651,30 @@
 
   // --- home: client list ---
   function viewHome() {
-    const clients = sortedClients();
+    const clients = sortedClients().filter((c) => !c.archived);
+    const archivedCount = db.clients.length - clients.length;
+    const lowCredit = clients.map((c) => ({ c, l: creditLedger(c.id) })).filter((x) => x.l && x.l.low);
+    const today = appointmentsOn(todayIso());
+    const tomorrow = appointmentsOn(addDays(todayIso(), 1));
+    const apptLine = (a) => `<div class="row" style="margin-bottom:4px"><div class="grow sub">${a.time ? esc(a.time) + ' · ' : ''}${esc(apptTitle(a))}</div>
+      <span class="badge${a.status === 'geweest' ? ' pr' : ''}">${APPT_STATUS[a.status]}</span></div>`;
     $app.innerHTML = topbar('Overzicht') +
       `<div class="stat-grid">
-        <div class="stat"><div class="lbl">Klanten</div><div class="val">${clients.length}</div></div>
+        <div class="stat"><div class="lbl">Klanten</div><div class="val">${clients.length}</div>${archivedCount ? `<div class="mut">${archivedCount} gearchiveerd</div>` : ''}</div>
         <div class="stat"><div class="lbl">Duo's</div><div class="val">${sortedDuos().length}</div></div>
         <div class="stat"><div class="lbl">Trainingen</div><div class="val">${db.workouts.length}</div></div>
       </div>` +
+      `<div class="eyebrow">Agenda</div>
+      <div class="card tappable" data-nav="/agenda" role="link" tabindex="0">
+        ${today.length ? `<div class="title" style="margin-bottom:6px">Vandaag (${today.length})</div>${today.map(apptLine).join('')}`
+          : '<div class="mut">Vandaag geen afspraken.</div>'}
+        ${tomorrow.length ? `<div class="title" style="margin:10px 0 6px">Morgen (${tomorrow.length})</div>${tomorrow.map(apptLine).join('')}` : ''}
+      </div>` +
+      (lowCredit.length ? `<div class="eyebrow">Sessietegoed bijna op</div>
+        <div class="card tappable" data-nav="/zakelijk" role="link" tabindex="0">
+          ${lowCredit.map(({ c, l }) => `<div class="row" style="margin-bottom:4px"><div class="grow sub">${esc(c.name)}</div>
+            <span class="delta down">nog ${l.remaining}</span></div>`).join('')}
+        </div>` : '') +
       (clients.length ? '' : `<div class="empty"><p>Nog geen klanten. Voeg je eerste klant toe, of bekijk de app met voorbeelddata.</p><button class="primary" id="demo-btn">Voorbeelddata laden</button></div>`) +
       `<div class="eyebrow">Nieuwe klant</div>
       <form class="card" id="add-client">
@@ -1734,7 +1810,7 @@
   const uiState = {
     metric: 'top', navClients: true, navDuos: true, navTemplates: true, measMetric: 'weight',
     period: 'all', comparePicks: [], compareMetric: 'top',
-    navQuery: '', navArchived: false, navLibrary: true, libQuery: '', libEquipment: '', libKind: '', libShowArchived: false, libEditing: null, libSort: 'used',
+    navQuery: '', navArchived: false, navBusiness: true, navLibrary: true, libQuery: '', libEquipment: '', libKind: '', libShowArchived: false, libEditing: null, libSort: 'used',
   };
   let pendingFree = []; // exercises picked for a free session, set by viewPickExercises
   let pendingDuo = null; // { duoId, picks: { [clientId]: [names] } }, set by viewDuoPick
@@ -1860,6 +1936,169 @@
     document.querySelectorAll('[data-period]').forEach((b) => b.addEventListener('click', () => {
       uiState.period = b.dataset.period; render();
     }));
+  }
+
+  // --- agenda: day view with appointments ---
+  function viewAgenda(date) {
+    const list = appointmentsOn(date);
+    const week = Array.from({ length: 7 }, (_, i) => addDays(date, i - 3));
+    const dayLabel = (iso) => new Date(iso + 'T12:00:00').toLocaleDateString('nl-NL', { weekday: 'short', day: 'numeric' });
+    const statusClass = { gepland: '', geweest: 'pr', noshow: '', geannuleerd: '' };
+
+    $app.innerHTML = topbar('Agenda', '/') +
+      `<div class="chips" style="margin-bottom:12px">
+        ${week.map((d) => `<button class="chip" data-day="${d}" aria-pressed="${d === date}">${esc(dayLabel(d))}</button>`).join('')}
+        <button class="chip" data-day="${todayIso()}">Vandaag</button>
+      </div>
+      <div class="row" style="margin-bottom:12px">
+        <input type="date" id="agenda-date" value="${esc(date)}" class="grow">
+      </div>
+      <div class="eyebrow">${esc(fmtDateFull(date))}</div>` +
+      (list.length ? list.map((a) => {
+        const ledgers = apptClientIds(a).map((cid) => ({ name: (clientById(cid) || {}).name, l: creditLedger(cid) })).filter((x) => x.l);
+        return `<div class="card">
+          <div class="row"><div class="grow">
+            <div class="title">${a.time ? esc(a.time) + ' · ' : ''}${esc(apptTitle(a))}
+              <span class="badge${a.status === 'geweest' ? ' pr' : ''}">${APPT_STATUS[a.status]}</span></div>
+            <div class="sub">${a.durationMin ? a.durationMin + ' min' : ''}${a.note ? (a.durationMin ? ' · ' : '') + esc(a.note) : ''}</div>
+            ${ledgers.map((x) => `<div class="mut">${esc(x.name)}: nog ${x.l.remaining} sessie${x.l.remaining === 1 ? '' : 's'}${x.l.low ? ' ⚠️' : ''}</div>`).join('')}
+          </div>
+          <button class="small ghost" data-appt-del="${a.id}" aria-label="Verwijder afspraak">✕</button></div>
+          <div class="pillbar" style="margin-top:8px">
+            ${Object.entries(APPT_STATUS).map(([k, l]) => `<button type="button" data-appt-status="${a.id}.${k}" aria-pressed="${a.status === k}">${l}</button>`).join('')}
+            ${!a.duoId ? `<button type="button" data-appt-train="${a.id}">Start training ›</button>` : ''}
+          </div>
+        </div>`;
+      }).join('') : '<p class="mut">Geen afspraken op deze dag.</p>') +
+
+      `<div class="eyebrow">Afspraak toevoegen</div>
+      <form class="card" id="appt-form">
+        <label class="field"><span>Klant of duo</span>
+          <select name="who" required>
+            <optgroup label="Klanten">${sortedClients().filter((c) => !c.archived).map((c) => `<option value="c:${c.id}">${esc(c.name)}</option>`).join('')}</optgroup>
+            <optgroup label="Duo's">${sortedDuos().map((d) => `<option value="d:${d.id}">${esc(duoName(d))}</option>`).join('')}</optgroup>
+          </select></label>
+        <div class="row">
+          <label class="field grow"><span>Datum</span><input type="date" name="date" value="${esc(date)}" required></label>
+          <label class="field grow"><span>Tijd</span><input type="time" name="time" value="09:00"></label>
+          <label class="field grow"><span>Duur (min)</span><input type="number" name="duration" min="15" step="15" value="60"></label>
+        </div>
+        <label class="field"><span>Notitie</span><input name="note" placeholder="bijv. focus op techniek"></label>
+        <button class="primary" type="submit">Afspraak toevoegen</button>
+      </form>` +
+
+      `<div class="eyebrow">Herinneringen</div>
+      <div class="card">
+        <p class="sub" style="margin:0 0 8px">Meldingen 15 minuten voor een afspraak. Ze verschijnen alleen zolang de app open staat — een gesloten app kan de browser hier niet wekken.</p>
+        <button id="notif-btn">${('Notification' in window) && Notification.permission === 'granted' ? 'Meldingen staan aan' : 'Meldingen aanzetten'}</button>
+      </div>`;
+
+    bindNav();
+    document.querySelectorAll('[data-day]').forEach((b) => b.addEventListener('click', () => { location.hash = `/agenda/${b.dataset.day}`; }));
+    document.getElementById('agenda-date').addEventListener('change', (ev) => { location.hash = `/agenda/${ev.target.value}`; });
+    document.getElementById('appt-form').addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      const f = new FormData(ev.target);
+      const who = String(f.get('who'));
+      if (!who) return;
+      const appt = {
+        id: uid(), date: String(f.get('date')), time: String(f.get('time')),
+        durationMin: num(f.get('duration')) || null, status: 'gepland', note: String(f.get('note')).trim(),
+      };
+      if (who.startsWith('c:')) appt.clientId = who.slice(2); else appt.duoId = who.slice(2);
+      db.appointments.push(appt);
+      save();
+      location.hash = `/agenda/${appt.date}`;
+      render();
+    });
+    document.querySelectorAll('[data-appt-status]').forEach((b) => b.addEventListener('click', () => {
+      const raw = b.dataset.apptStatus;
+      const id = raw.slice(0, raw.lastIndexOf('.'));
+      const appt = db.appointments.find((a) => a.id === id);
+      appt.status = raw.slice(raw.lastIndexOf('.') + 1);
+      save(); render();
+    }));
+    document.querySelectorAll('[data-appt-del]').forEach((b) => b.addEventListener('click', () => {
+      if (!confirm('Deze afspraak verwijderen?')) return;
+      db.appointments = db.appointments.filter((a) => a.id !== b.dataset.apptDel);
+      save(); render();
+    }));
+    document.querySelectorAll('[data-appt-train]').forEach((b) => b.addEventListener('click', () => {
+      const appt = db.appointments.find((a) => a.id === b.dataset.apptTrain);
+      appt.status = 'geweest';
+      save();
+      location.hash = `/klant/${appt.clientId}`;
+    }));
+    document.getElementById('notif-btn').addEventListener('click', async () => {
+      if (!('Notification' in window)) { alert('Deze browser ondersteunt geen meldingen.'); return; }
+      const res = await Notification.requestPermission();
+      if (res === 'granted') scheduleReminders();
+      render();
+    });
+  }
+
+  // --- credits and payments ---
+  function viewBusiness() {
+    const rows = sortedClients().map((c) => ({ c, l: creditLedger(c.id) })).filter((x) => x.l || !x.c.archived);
+    const open = openInvoices();
+    const months = revenueByMonth();
+    const openTotal = open.reduce((t, p) => t + (p.price || 0), 0);
+    const paidTotal = db.packages.filter((p) => p.paid).reduce((t, p) => t + (p.price || 0), 0);
+
+    $app.innerHTML = topbar('Tegoeden & betalingen', '/') +
+      `<div class="stat-grid">
+        <div class="stat"><div class="lbl">Openstaand</div><div class="val">${esc(money(openTotal))}</div><div class="mut">${open.length} factuur${open.length === 1 ? '' : 'en'}</div></div>
+        <div class="stat"><div class="lbl">Betaald</div><div class="val">${esc(money(paidTotal))}</div><div class="mut">totaal</div></div>
+        <div class="stat"><div class="lbl">Bijna op</div><div class="val">${rows.filter((x) => x.l && x.l.low && x.l.remaining > 0).length}</div><div class="mut">klanten ≤ 2 sessies</div></div>
+      </div>` +
+
+      `<div class="eyebrow">Sessietegoed per klant</div>` +
+      (rows.some((x) => x.l) ? `<div class="card table-wrap"><table class="data">
+        <thead><tr><th>Klant</th><th class="num">Gekocht</th><th class="num">Gebruikt</th><th class="num">Restant</th></tr></thead>
+        <tbody>${rows.filter((x) => x.l).map(({ c, l }) => `<tr>
+          <td><a href="#/klant/${c.id}/profiel">${esc(c.name)}</a>${c.archived ? ' <span class="badge">archief</span>' : ''}</td>
+          <td class="num">${l.bought}</td>
+          <td class="num">${l.used}${l.noShows ? ` <span class="mut">(${l.noShows} no-show)</span>` : ''}</td>
+          <td class="num">${l.remaining <= 0 ? `<span class="delta down">${l.remaining}</span>` : l.low ? `<span class="delta down">${l.remaining} ⚠️</span>` : l.remaining}</td>
+        </tr>`).join('')}</tbody>
+      </table></div>` : '<p class="mut">Nog geen strippenkaarten. Voeg er een toe op het profiel van een klant.</p>') +
+
+      `<div class="eyebrow">Openstaande betalingen</div>` +
+      (open.length ? open.map((p) => `<div class="card"><div class="row"><div class="grow">
+          <div class="title">${esc((clientById(p.clientId) || {}).name || '?')} — ${esc(money(p.price || 0))}</div>
+          <div class="sub">${p.sessions} sessies · ${esc(fmtDate(p.date))}${p.note ? ' · ' + esc(p.note) : ''}</div>
+        </div><button class="small primary" data-pay="${p.id}">Betaald</button></div></div>`).join('')
+        : '<p class="mut">Niets openstaand.</p>') +
+
+      `<div class="eyebrow">Omzet per maand</div>` +
+      (months.length ? `<div class="card table-wrap"><table class="data">
+        <thead><tr><th>Maand</th><th class="num">Gefactureerd</th><th class="num">Betaald</th></tr></thead>
+        <tbody>${months.map((m) => `<tr><td>${esc(monthLabel(m.month))}</td><td class="num">${esc(money(m.invoiced))}</td><td class="num">${esc(money(m.paid))}</td></tr>`).join('')}</tbody>
+      </table></div>` : '<p class="mut">Nog geen omzet geregistreerd.</p>') +
+
+      `<div class="eyebrow">Instellingen</div>
+      <div class="card">
+        <div class="row">
+          <label class="field grow" style="margin:0"><span>Valuta</span><input id="cur" value="${esc(db.settings.currency || '€')}" style="max-width:100px"></label>
+          <button class="small" id="noshow-toggle" aria-pressed="${!!db.settings.noShowCounts}">No-show kost een sessie</button>
+        </div>
+      </div>`;
+
+    bindNav();
+    document.querySelectorAll('[data-pay]').forEach((b) => b.addEventListener('click', () => {
+      const p = db.packages.find((x) => x.id === b.dataset.pay);
+      p.paid = true;
+      p.paidAt = todayIso();
+      save(); render();
+    }));
+    document.getElementById('noshow-toggle').addEventListener('click', () => {
+      db.settings.noShowCounts = !db.settings.noShowCounts;
+      save(); render();
+    });
+    document.getElementById('cur').addEventListener('change', (ev) => {
+      db.settings.currency = ev.target.value.trim() || '€';
+      save(); render();
+    });
   }
 
   // --- exercise library ---
@@ -2121,6 +2360,46 @@
         <button class="primary" type="submit">Doel toevoegen</button>
       </form>` +
 
+      `<div class="eyebrow">Sessietegoed</div>` +
+      (() => {
+        const l = creditLedger(clientId);
+        const packs = packagesOf(clientId);
+        return (l ? `<div class="card">
+          <div class="row"><div class="grow">
+            <div class="title">Nog ${l.remaining} sessie${l.remaining === 1 ? '' : 's'} ${l.low ? '<span class="badge">bijna op</span>' : ''}</div>
+            <div class="sub">${l.bought} gekocht · ${l.trainings} getraind${l.noShows ? ` · ${l.noShows} no-show` : ''} sinds ${esc(fmtDate(l.from))}</div>
+          </div></div>
+        </div>` : '') +
+        packs.map((p) => `<div class="card"><div class="row"><div class="grow">
+            <div class="title">${p.sessions} sessies — ${esc(money(p.price || 0))} <span class="badge${p.paid ? ' pr' : ''}">${p.paid ? 'betaald' : 'openstaand'}</span></div>
+            <div class="sub">${esc(fmtDate(p.date))}${p.note ? ' · ' + esc(p.note) : ''}</div>
+          </div>
+          ${p.paid ? '' : `<button class="small primary" data-pkg-pay="${p.id}">Betaald</button>`}
+          <button class="small danger ghost" data-pkg-del="${p.id}" aria-label="Verwijder">✕</button></div></div>`).join('') +
+        `<form class="card" id="pkg-form">
+          <div class="row">
+            <label class="field grow"><span>Aantal sessies</span><input name="sessions" type="number" min="1" value="10" required></label>
+            <label class="field grow"><span>Prijs</span><input name="price" type="text" inputmode="decimal" placeholder="bijv. 350"></label>
+            <label class="field grow"><span>Datum</span><input name="date" type="date" value="${todayIso()}" required></label>
+          </div>
+          <label class="field"><span>Notitie</span><input name="note" placeholder="bijv. 10-rittenkaart"></label>
+          <div class="actions">
+            <button class="primary" type="submit">Strippenkaart toevoegen</button>
+            <button type="button" class="small" id="pkg-paid-toggle" aria-pressed="false">Direct betaald</button>
+          </div>
+        </form>`;
+      })() +
+
+      `<div class="eyebrow">Afspraken</div>` +
+      (() => {
+        const appts = appointmentsFor(clientId).filter((a) => a.date >= addDays(todayIso(), -14));
+        return appts.length ? appts.map((a) => `<div class="card"><div class="row"><div class="grow">
+            <div class="title">${esc(fmtDateFull(a.date))}${a.time ? ' · ' + esc(a.time) : ''} <span class="badge${a.status === 'geweest' ? ' pr' : ''}">${APPT_STATUS[a.status]}</span></div>
+            <div class="sub">${a.duoId ? 'duo-afspraak' : 'individueel'}${a.note ? ' · ' + esc(a.note) : ''}</div>
+          </div><button class="small ghost" data-nav="/agenda/${a.date}">Agenda ›</button></div></div>`).join('')
+          : '<p class="mut">Geen recente of geplande afspraken.</p>';
+      })() +
+
       `<div class="eyebrow">Progressiefoto's</div>
       <div class="card">
         <input type="file" id="photo-input" accept="image/*" hidden>
@@ -2182,6 +2461,33 @@
     document.querySelectorAll('[data-goal-del]').forEach((b) => b.addEventListener('click', () => {
       if (!confirm('Dit doel verwijderen?')) return;
       c.goals = c.goals.filter((x) => x.id !== b.dataset.goalDel);
+      save(); render();
+    }));
+    let pkgPaid = false;
+    document.getElementById('pkg-paid-toggle').addEventListener('click', (ev) => {
+      pkgPaid = !pkgPaid;
+      ev.target.setAttribute('aria-pressed', String(pkgPaid));
+    });
+    document.getElementById('pkg-form').addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      const f = new FormData(ev.target);
+      const sessions = num(f.get('sessions'));
+      if (sessions <= 0) return;
+      db.packages.push({
+        id: uid(), clientId, sessions, price: num(f.get('price')),
+        date: String(f.get('date')), note: String(f.get('note')).trim(),
+        paid: pkgPaid, paidAt: pkgPaid ? todayIso() : null,
+      });
+      save(); render();
+    });
+    document.querySelectorAll('[data-pkg-pay]').forEach((b) => b.addEventListener('click', () => {
+      const p = db.packages.find((x) => x.id === b.dataset.pkgPay);
+      p.paid = true; p.paidAt = todayIso();
+      save(); render();
+    }));
+    document.querySelectorAll('[data-pkg-del]').forEach((b) => b.addEventListener('click', () => {
+      if (!confirm('Deze strippenkaart verwijderen?')) return;
+      db.packages = db.packages.filter((x) => x.id !== b.dataset.pkgDel);
       save(); render();
     }));
     const photoInput = document.getElementById('photo-input');
@@ -3470,6 +3776,7 @@
       $app.innerHTML = topbar(editing ? `Bewerken — ${c.name}` : `Training — ${c.name}`, `/klant/${clientId}`) +
         `<p style="margin:0 0 12px"><span class="badge">${esc(schema ? schema.name : editing && editing.duoId ? (duoSchemaById(editing.schemaId) || {}).name || 'Duo-training' : 'Vrije training')}</span></p>` +
         ((c.injuries || c.medical) ? `<div class="note-box"><strong>Let op:</strong> ${esc([c.injuries, c.medical].filter(Boolean).join(' · '))}</div>` : '') +
+        (() => { const l = creditLedger(clientId); return l && l.low ? `<div class="note-box"><strong>Tegoed:</strong> nog ${l.remaining} sessie${l.remaining === 1 ? '' : 's'} na deze training.</div>` : ''; })() +
         `<form id="wo-form">
           <div class="actions" style="margin-bottom:12px">
             <button type="button" class="small" data-rest-set="all">⏱ Rust</button>
@@ -3725,6 +4032,7 @@
   if (db._needsSave) { delete db._needsSave; save(); }
 
   bindTimerBar();
+  scheduleReminders();
   window.addEventListener('hashchange', render);
   render();
   if (syncCfg && syncCfg.gistId && navigator.onLine) syncNow();
