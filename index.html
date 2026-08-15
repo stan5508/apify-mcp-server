@@ -349,7 +349,7 @@
 <script>
 (() => {
   'use strict';
-  const APP_VERSION = 23; // bump when publishing; shown on the home screen
+  const APP_VERSION = 24; // bump when publishing; shown on the home screen
   const KEY = 'coachlog-v1';
   const $app = document.getElementById('app');
 
@@ -415,13 +415,16 @@
     const SESSION_KEY = 'coachlog-session';
     let cfg = null;
     let session = null;
+    // Project Settings shows the REST endpoint too; accept either form
+    const baseUrl = (url) => String(url).trim().replace(/\/+$/, '').replace(/\/(rest|auth)\/v1$/, '');
     try { cfg = JSON.parse(localStorage.getItem(CFG_KEY) || 'null'); } catch { cfg = null; }
+    if (cfg && cfg.url) cfg.url = baseUrl(cfg.url);
     try { session = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'); } catch { session = null; }
 
     const configured = () => !!(cfg && cfg.url && cfg.key);
     const signedIn = () => !!(session && session.access_token);
     const setConfig = (url, key) => {
-      cfg = { url: String(url).replace(/\/+$/, ''), key: String(key).trim() };
+      cfg = { url: baseUrl(url), key: String(key).trim() };
       localStorage.setItem(CFG_KEY, JSON.stringify(cfg));
     };
     const clearConfig = () => { cfg = null; localStorage.removeItem(CFG_KEY); };
