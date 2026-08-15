@@ -349,14 +349,15 @@
 <script>
 (() => {
   'use strict';
-  const APP_VERSION = 20; // bump when publishing; shown on the home screen
+  const APP_VERSION = 21; // bump when publishing; shown on the home screen
   const KEY = 'coachlog-v1';
   const $app = document.getElementById('app');
 
   // ---------- data ----------
   const emptyDb = () => ({
     clients: [], schemas: [], workouts: [], duos: [], duoSchemas: [], templates: [], measurements: [],
-    exercises: [], clientNotes: {}, appointments: [], packages: [], muscleGroups: {}, settings: { unit: 'kg', restSeconds: 90, autoRest: true, sound: true, barWeight: 20 }, updatedAt: 0,
+    exercises: [], clientNotes: {}, appointments: [], packages: [],
+    nutritionPlans: {}, meals: [], foods: [], water: {}, muscleGroups: {}, settings: { unit: 'kg', restSeconds: 90, autoRest: true, sound: true, barWeight: 20 }, updatedAt: 0,
   });
   let db = loadDb();
   function loadDb() {
@@ -371,8 +372,11 @@
       clients: d.clients || [], schemas: d.schemas || [], workouts: d.workouts || [], duos: d.duos || [],
       duoSchemas: d.duoSchemas || [], templates: d.templates || [], measurements: d.measurements || [],
       exercises: d.exercises || [], clientNotes: d.clientNotes || {},
-      appointments: d.appointments || [], packages: d.packages || [], muscleGroups: d.muscleGroups || {},
-      settings: { unit: 'kg', restSeconds: 90, autoRest: true, sound: true, barWeight: 20, noShowCounts: true, currency: '€', theme: 'system', pin: null, lockMinutes: 15, coachName: '', lastBackupAt: null, ...(d.settings || {}) },
+      appointments: d.appointments || [], packages: d.packages || [],
+      nutritionPlans: d.nutritionPlans || {}, meals: d.meals || [], foods: d.foods || [], water: d.water || {},
+      muscleGroups: d.muscleGroups || {},
+      settings: { unit: 'kg', restSeconds: 90, autoRest: true, sound: true, barWeight: 20, noShowCounts: true, currency: '€', theme: 'system', pin: null, lockMinutes: 15, coachName: '', lastBackupAt: null,
+        countTrainingBurn: true, kcalPerMin: 6, waterTargetMl: 2000, ...(d.settings || {}) },
       updatedAt: d.updatedAt || 0,
     };
     for (const c of out.clients) {
@@ -1044,6 +1048,165 @@
   }
   const dbSizeKb = () => Math.round(JSON.stringify(db).length / 1024);
 
+  // ---------- nutrition ----------
+  const MOMENTS = ['Ontbijt', 'Lunch', 'Diner', 'Snack'];
+  const MACROS = [
+    { key: 'kcal', label: 'Calorieën', unit: 'kcal' },
+    { key: 'protein', label: 'Eiwit', unit: 'g' },
+    { key: 'carbs', label: 'Koolhydraten', unit: 'g' },
+    { key: 'fat', label: 'Vet', unit: 'g' },
+  ];
+  const planOf = (clientId) => db.nutritionPlans[clientId] || null;
+  const mealsOn = (clientId, date) => db.meals
+    .filter((m) => m.clientId === clientId && m.date === date)
+    .sort((a, b) => MOMENTS.indexOf(a.moment) - MOMENTS.indexOf(b.moment));
+  const emptyTotals = () => ({ kcal: 0, protein: 0, carbs: 0, fat: 0 });
+  function dayTotals(clientId, date) {
+    return mealsOn(clientId, date).reduce((t, m) => {
+      for (const { key } of MACROS) t[key] += m[key] || 0;
+      return t;
+    }, emptyTotals());
+  }
+  // averages over the days that actually have something logged
+  function nutritionAverages(clientId, days = 7) {
+    const today = todayIso();
+    let logged = 0;
+    const sum = emptyTotals();
+    for (let i = 0; i < days; i++) {
+      const date = addDays(today, -i);
+      if (!mealsOn(clientId, date).length) continue;
+      logged++;
+      const t = dayTotals(clientId, date);
+      for (const { key } of MACROS) sum[key] += t[key];
+    }
+    if (!logged) return null;
+    const avg = emptyTotals();
+    for (const { key } of MACROS) avg[key] = Math.round(sum[key] / logged);
+    return { avg, days: logged };
+  }
+  // rough starting point; the coach adjusts from there
+  function suggestPlan(clientId) {
+    const meas = db.measurements.filter((m) => m.clientId === clientId && m.weight > 0).sort((a, b) => a.date.localeCompare(b.date));
+    const weight = meas.length ? meas[meas.length - 1].weight : null;
+    if (!weight) return null;
+    const protein = Math.round(weight * 1.8);
+    const kcal = Math.round(weight * 33);
+    const fat = Math.round(weight * 0.9);
+    const carbs = Math.max(0, Math.round((kcal - protein * 4 - fat * 9) / 4));
+    return { weight, kcal, protein, carbs, fat };
+  }
+  const foodByName = (name) => db.foods.find((f) => f.name.trim().toLowerCase() === String(name).trim().toLowerCase()) || null;
+  const foodById = (id) => db.foods.find((f) => f.id === id) || null;
+
+  // calories burned that day, estimated from logged training time
+  function burnedOn(clientId, date) {
+    if (!db.settings.countTrainingBurn) return 0;
+    const perMin = db.settings.kcalPerMin || 6;
+    return workoutsOf(clientId)
+      .filter((w) => w.date === date)
+      .reduce((t, w) => t + Math.round((w.durationMin || 0) * perMin), 0);
+  }
+  // the number MyFitnessPal leads with: target minus food plus exercise
+  function remainingKcal(clientId, date) {
+    const plan = planOf(clientId);
+    if (!plan || !plan.kcal) return null;
+    const eaten = dayTotals(clientId, date).kcal;
+    const burned = burnedOn(clientId, date);
+    return { target: plan.kcal, eaten: Math.round(eaten), burned, remaining: Math.round(plan.kcal - eaten + burned) };
+  }
+  const waterOn = (clientId, date) => ((db.water[clientId] || {})[date] || 0);
+  function addWater(clientId, date, ml) {
+    const perClient = db.water[clientId] || (db.water[clientId] = {});
+    perClient[date] = Math.max(0, (perClient[date] || 0) + ml);
+    if (!perClient[date]) delete perClient[date];
+    save();
+  }
+  // foods used most often, for one-tap logging
+  function frequentFoods(clientId, limit = 8) {
+    const counts = new Map();
+    for (const m of db.meals) {
+      if (m.clientId !== clientId) continue;
+      const key = m.name.trim().toLowerCase();
+      const cur = counts.get(key) || { name: m.name, uses: 0, last: m, date: m.date };
+      cur.uses++;
+      if (m.date >= cur.date) { cur.last = m; cur.date = m.date; }
+      counts.set(key, cur);
+    }
+    return [...counts.values()].sort((a, b) => (b.uses - a.uses) || b.date.localeCompare(a.date)).slice(0, limit);
+  }
+  function copyDay(clientId, fromDate, toDate) {
+    const source = mealsOn(clientId, fromDate);
+    for (const m of source) {
+      db.meals.push({ ...m, id: uid(), date: toDate });
+    }
+    save();
+    return source.length;
+  }
+  // macro targets from a percentage split, the way most nutrition apps do it
+  function planFromPercents(kcal, pProtein, pCarbs, pFat) {
+    return {
+      kcal: Math.round(kcal),
+      protein: Math.round((kcal * pProtein / 100) / 4),
+      carbs: Math.round((kcal * pCarbs / 100) / 4),
+      fat: Math.round((kcal * pFat / 100) / 9),
+    };
+  }
+
+  // ---------- product lookup (Open Food Facts) ----------
+  const OFF_FIELDS = 'code,product_name,brands,serving_size,nutriments';
+  function offToFood(p) {
+    const n = p.nutriments || {};
+    const name = [p.product_name, p.brands ? p.brands.split(',')[0].trim() : ''].filter(Boolean).join(' — ');
+    if (!name) return null;
+    return {
+      name, code: p.code || '', per: '100g', servingSize: p.serving_size || '',
+      kcal: Math.round(n['energy-kcal_100g'] || (n.energy_100g ? n.energy_100g / 4.184 : 0)),
+      protein: Math.round((n.proteins_100g || 0) * 10) / 10,
+      carbs: Math.round((n.carbohydrates_100g || 0) * 10) / 10,
+      fat: Math.round((n.fat_100g || 0) * 10) / 10,
+    };
+  }
+  async function searchProducts(term) {
+    const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(term)}` +
+      `&search_simple=1&action=process&json=1&page_size=15&fields=${OFF_FIELDS}`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(12000) });
+    if (!res.ok) throw new Error('zoeken mislukt (' + res.status + ')');
+    const data = await res.json();
+    return (data.products || []).map(offToFood).filter((f) => f && f.kcal > 0);
+  }
+  async function productByBarcode(code) {
+    const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(code)}.json?fields=${OFF_FIELDS}`, { signal: AbortSignal.timeout(12000) });
+    if (!res.ok) throw new Error('product niet gevonden');
+    const data = await res.json();
+    if (!data.product) throw new Error('product niet gevonden');
+    return offToFood(data.product);
+  }
+  const barcodeSupported = () => 'BarcodeDetector' in window;
+  async function scanBarcode(videoEl) {
+    const detector = new window.BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128'] });
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    videoEl.srcObject = stream;
+    await videoEl.play();
+    const stop = () => stream.getTracks().forEach((t) => t.stop());
+    const deadline = Date.now() + 20000;
+    while (Date.now() < deadline) {
+      try {
+        const found = await detector.detect(videoEl);
+        if (found.length) { stop(); return found[0].rawValue; }
+      } catch { /* keep trying */ }
+      await new Promise((r) => setTimeout(r, 300));
+    }
+    stop();
+    throw new Error('geen barcode herkend');
+  }
+  // amount is grams for per-100g foods, or a number of portions
+  function macrosFor(food, amount) {
+    const factor = food.per === 'portie' ? amount : amount / 100;
+    const out = {};
+    for (const { key } of MACROS) out[key] = Math.round((food[key] || 0) * factor * 10) / 10;
+    return out;
+  }
+
   // ---------- backups and sharing ----------
   async function listBackups() {
     if (!syncCfg || !syncCfg.gistId) return [];
@@ -1076,6 +1239,11 @@
       client: { name: c.name, goal: c.goal || '' },
       goals: (c.goals || []).map((g) => ({ text: g.text, exercise: g.exercise, target: g.target, date: g.date, done: g.done })),
       measurements: db.measurements.filter((m) => m.clientId === clientId),
+      nutrition: (() => {
+        const plan = planOf(clientId);
+        const week = nutritionAverages(clientId, 7);
+        return plan || week ? { plan, week } : null;
+      })(),
       workouts: workoutsOf(clientId).map((w) => ({ date: w.date, durationMin: w.durationMin, entries: w.entries })),
       exercises,
     };
@@ -1718,6 +1886,7 @@
         <summary>Planning <span class="chev">▾</span></summary>
         <a class="navlink${hash.startsWith('/agenda') ? ' active' : ''}" href="#/agenda">Agenda</a>
         <a class="navlink${hash.startsWith('/zakelijk') ? ' active' : ''}" href="#/zakelijk">Tegoeden &amp; betalingen${openInvoices().length ? ` (${openInvoices().length})` : ''}</a>
+        <a class="navlink${hash.startsWith('/voedingsmiddelen') ? ' active' : ''}" href="#/voedingsmiddelen">Voedingsmiddelen</a>
       </details>
       <details class="navgrp" data-key="Library" ${uiState.navLibrary ? 'open' : ''}>
         <summary>Oefeningen <span class="chev">▾</span></summary>
@@ -1759,6 +1928,7 @@
     if (parts[0] === 'klant' && parts[2] === 'bewerk') return viewWorkout(parts[1], null, parts[3]);
     if (parts[0] === 'klant' && parts[2] === 'metingen') return viewMeasurements(parts[1]);
     if (parts[0] === 'klant' && parts[2] === 'profiel') return viewProfile(parts[1]);
+    if (parts[0] === 'klant' && parts[2] === 'voeding') return viewNutrition(parts[1], parts[3] || todayIso());
     if (parts[0] === 'klant' && parts[2] === 'overzicht') return viewOverview(parts[1]);
     if (parts[0] === 'klant' && parts[2] === 'vergelijk') return viewCompare(parts[1]);
     if (parts[0] === 'klant' && parts[2] === 'rapport') return viewReport(parts[1]);
@@ -1769,6 +1939,7 @@
     if (parts[0] === 'sjabloon') return viewTemplate(parts[1]);
     if (parts[0] === 'agenda') return viewAgenda(parts[1] || todayIso());
     if (parts[0] === 'zakelijk') return viewBusiness();
+    if (parts[0] === 'voedingsmiddelen') return viewFoods();
     if (parts[0] === 'bibliotheek') return viewLibrary(parts[1] ? decodeURIComponent(parts[1]) : null);
     if (parts[0] === 'duo' && parts[2] === 'vrij') return viewDuoPick(parts[1]);
     if (parts[0] === 'duo' && parts[2] === 'sjabloon') return viewTemplatePick('duo', parts[1]);
@@ -2022,7 +2193,8 @@
   const uiState = {
     metric: 'top', navClients: true, navDuos: true, navTemplates: true, measMetric: 'weight',
     period: 'all', comparePicks: [], compareMetric: 'top',
-    navQuery: '', navArchived: false, navBusiness: true, navLibrary: true, libQuery: '', libEquipment: '', libKind: '', libShowArchived: false, libEditing: null, libSort: 'used',
+    navQuery: '', navArchived: false, foodQuery: '',
+    nutri: { moment: null, query: '', results: [], message: '' }, navBusiness: true, navLibrary: true, libQuery: '', libEquipment: '', libKind: '', libShowArchived: false, libEditing: null, libSort: 'used',
   };
   let pendingFree = []; // exercises picked for a free session, set by viewPickExercises
   let pendingDuo = null; // { duoId, picks: { [clientId]: [names] } }, set by viewDuoPick
@@ -2132,6 +2304,7 @@
       ['overzicht', 'Overzicht'],
       ['vergelijk', 'Vergelijken'],
       ['metingen', 'Metingen'],
+      ['voeding', 'Voeding'],
       ['rapport', 'Rapport'],
     ];
     return `<div class="chips no-print" style="margin-bottom:14px">${tabs.map(([slug, label]) =>
@@ -2773,6 +2946,367 @@
     });
   }
 
+  // --- nutrition diary, modelled on how the mainstream nutrition apps work ---
+  function viewNutrition(clientId, date) {
+    const c = clientById(clientId);
+    if (!c) { location.hash = '/'; return; }
+    const plan = planOf(clientId);
+    const meals = mealsOn(clientId, date);
+    const totals = dayTotals(clientId, date);
+    const rem = remainingKcal(clientId, date);
+    const week = nutritionAverages(clientId, 7);
+    const suggestion = suggestPlan(clientId);
+    const water = waterOn(clientId, date);
+    const waterTarget = db.settings.waterTargetMl || 2000;
+    const freq = frequentFoods(clientId);
+    const ui = uiState.nutri;
+
+    const macroLine = () => MACROS.filter((m) => m.key !== 'kcal').map((m) => {
+      const value = totals[m.key];
+      const target = plan ? plan[m.key] : 0;
+      const pct = target > 0 ? Math.min(100, Math.round((value / target) * 100)) : 0;
+      return `<div class="bar-row">
+        <span>${m.label}</span>
+        <span class="track"><span class="fill" style="width:${pct}%"></span></span>
+        <span class="val">${Math.round(value)}${target ? ' / ' + Math.round(target) : ''} ${m.unit}</span>
+      </div>`;
+    }).join('');
+
+    const mealGroup = (moment) => {
+      const items = meals.filter((m) => m.moment === moment);
+      const kcal = items.reduce((t, m) => t + (m.kcal || 0), 0);
+      return `<div class="card">
+        <div class="row" style="margin-bottom:6px">
+          <div class="title grow">${moment}</div>
+          <div class="mut">${Math.round(kcal)} kcal</div>
+          <button class="small" data-add-to="${moment}">+</button>
+        </div>
+        ${items.length ? items.map((m) => `<div class="row" style="margin-bottom:4px">
+            <div class="grow">
+              <div class="sub">${esc(m.name)}${m.amount ? ` <span class="mut">${fmtNum(m.amount)}${m.per === 'portie' ? '×' : ' g'}</span>` : ''}</div>
+              <div class="mut">${Math.round(m.kcal || 0)} kcal · E ${fmtNum(m.protein || 0)} · K ${fmtNum(m.carbs || 0)} · V ${fmtNum(m.fat || 0)}</div>
+            </div>
+            <button class="small danger ghost" data-meal-del="${m.id}" aria-label="Verwijder">✕</button>
+          </div>`).join('') : '<div class="mut">Niets gelogd.</div>'}
+      </div>`;
+    };
+
+    const searchPanel = ui.moment ? `<div class="tool-panel">
+      <div class="row" style="margin-bottom:8px">
+        <div class="title grow">Toevoegen aan ${esc(ui.moment)}</div>
+        <button type="button" class="small ghost" id="add-close">Sluiten</button>
+      </div>
+      <div class="row">
+        <input id="food-search" class="grow" placeholder="Zoek product of eigen item…" value="${esc(ui.query)}">
+        <button type="button" class="small" id="food-search-btn">Zoeken</button>
+        ${barcodeSupported() ? '<button type="button" class="small" id="scan-btn">Scan</button>' : ''}
+      </div>
+      <video id="scan-video" playsinline muted hidden style="width:100%;max-width:360px;border-radius:8px;margin-top:8px"></video>
+      <p class="mut" id="search-msg" style="margin:8px 0 0">${esc(ui.message || '')}</p>
+      <div id="search-results">${(ui.results || []).map((f, i) => `<div class="row" style="margin-top:8px">
+          <div class="grow"><div class="sub">${esc(f.name)}</div>
+            <div class="mut">${Math.round(f.kcal)} kcal / 100 g · E ${fmtNum(f.protein)} · K ${fmtNum(f.carbs)} · V ${fmtNum(f.fat)}${f.source === 'lokaal' ? ' · eigen lijst' : ''}</div></div>
+          <input class="pick-amount" data-idx="${i}" type="text" inputmode="decimal" value="100" style="width:80px">
+          <button type="button" class="small primary" data-pick="${i}">Voeg toe</button>
+        </div>`).join('')}</div>
+      <hr class="divider" style="margin:14px 0">
+      <form id="quick-form">
+        <div class="row">
+          <input name="name" class="grow" placeholder="Snel toevoegen: omschrijving" required>
+          <input name="kcal" type="text" inputmode="decimal" placeholder="kcal" style="width:90px" required>
+        </div>
+        <div class="row" style="margin-top:8px">
+          ${MACROS.filter((m) => m.key !== 'kcal').map((m) => `<input name="${m.key}" type="text" inputmode="decimal" placeholder="${m.label} (g)" class="grow">`).join('')}
+          <button class="small primary" type="submit">Toevoegen</button>
+        </div>
+      </form>
+    </div>` : '';
+
+    $app.innerHTML = topbar(`Voeding — ${c.name}`, `/klant/${clientId}`) +
+      clientTabs(clientId, 'voeding') +
+      `<div class="row" style="margin-bottom:10px">
+        <button class="small" data-nutri-day="${addDays(date, -1)}">‹</button>
+        <input type="date" id="nutri-date" class="grow" value="${esc(date)}">
+        <button class="small" data-nutri-day="${addDays(date, 1)}">›</button>
+        <button class="small" data-nutri-day="${todayIso()}">Vandaag</button>
+      </div>` +
+
+      (rem ? `<div class="card">
+        <div class="stat-grid cols2" style="gap:6px">
+          <div class="stat"><div class="lbl">Doel</div><div class="val">${rem.target}</div></div>
+          <div class="stat"><div class="lbl">Gegeten</div><div class="val">${rem.eaten}</div></div>
+          <div class="stat"><div class="lbl">Beweging</div><div class="val">+${rem.burned}</div></div>
+          <div class="stat"><div class="lbl">Resterend</div><div class="val" style="color:${rem.remaining < 0 ? 'var(--danger)' : 'var(--good)'}">${rem.remaining}</div></div>
+        </div>
+        <div style="margin-top:10px">${macroLine()}</div>
+      </div>`
+      : `<div class="card">
+          <div class="title">${Math.round(totals.kcal)} kcal gegeten</div>
+          <div style="margin-top:8px">${macroLine()}</div>
+          <p class="mut" style="margin:8px 0 0">Stel onderaan een dagdoel in om "resterend" te zien.</p>
+        </div>`) +
+
+      `<div class="actions" style="margin-bottom:10px">
+        <button class="small" id="copy-yesterday">Kopieer gisteren</button>
+        <button class="small" data-add-to="Snack">Snel toevoegen</button>
+      </div>` +
+      searchPanel +
+
+      (freq.length && !ui.moment ? `<div class="eyebrow">Vaak gebruikt</div>
+        <div class="chips" style="margin-bottom:12px">${freq.map((f, i) => `<button class="chip" data-freq="${i}">${esc(f.name)}</button>`).join('')}</div>` : '') +
+
+      `<div class="eyebrow">Dagboek — ${esc(fmtDateFull(date))}</div>` +
+      MOMENTS.map(mealGroup).join('') +
+
+      `<div class="eyebrow">Water</div>
+      <div class="card">
+        <div class="bar-row" style="margin-bottom:8px">
+          <span>Vandaag</span>
+          <span class="track"><span class="fill" style="width:${Math.min(100, Math.round((water / waterTarget) * 100))}%"></span></span>
+          <span class="val">${(water / 1000).toLocaleString('nl-NL')} / ${(waterTarget / 1000).toLocaleString('nl-NL')} l</span>
+        </div>
+        <div class="actions">
+          <button class="small" data-water="250">+250 ml</button>
+          <button class="small" data-water="500">+500 ml</button>
+          <button class="small ghost" data-water="-250">−250 ml</button>
+        </div>
+      </div>` +
+
+      `<div class="eyebrow">Deze week</div>` +
+      (week ? `<div class="card">
+        <div class="sub" style="margin-bottom:8px">Gemiddelde over ${week.days} gelogde dag${week.days === 1 ? '' : 'en'}</div>
+        ${MACROS.map((m) => {
+          const target = plan ? plan[m.key] : 0;
+          const pct = target > 0 ? Math.min(100, Math.round((week.avg[m.key] / target) * 100)) : 0;
+          return `<div class="bar-row"><span>${m.label}</span>
+            <span class="track"><span class="fill" style="width:${pct}%"></span></span>
+            <span class="val">${week.avg[m.key]}${target ? ' / ' + Math.round(target) : ''} ${m.unit}</span></div>`;
+        }).join('')}
+      </div>` : '<p class="mut">Nog geen gegevens deze week.</p>') +
+
+      `<div class="eyebrow">Voedingsplan</div>
+      <form class="card" id="plan-form">
+        <div class="row">
+          ${MACROS.map((m) => `<label class="field grow"><span>${m.label} (${m.unit})</span>
+            <input name="${m.key}" type="text" inputmode="decimal" value="${plan ? (plan[m.key] || '') : ''}"></label>`).join('')}
+        </div>
+        <div class="row" style="margin-bottom:10px">
+          <span class="mut">Verdeling</span>
+          ${[[40, 30, 30], [50, 25, 25], [30, 40, 30]].map(([pc, pp, pf]) =>
+            `<button type="button" class="small" data-split="${pc}.${pp}.${pf}">${pc}/${pp}/${pf} K/E/V</button>`).join('')}
+        </div>
+        <label class="field"><span>Richtlijnen</span>
+          <textarea name="guidelines" rows="3" placeholder="bijv. 3 maaltijden + 1 snack, 2 liter water, eiwit bij elke maaltijd">${plan ? esc(plan.guidelines || '') : ''}</textarea></label>
+        <div class="actions">
+          <button class="primary" type="submit">Plan opslaan</button>
+          ${suggestion ? `<button type="button" class="small" id="plan-suggest">Voorstel (${esc(fmtNum(suggestion.weight))} ${unitLbl()})</button>` : ''}
+        </div>
+        ${suggestion ? `<p class="mut" style="margin:8px 0 0">Voorstel: ${suggestion.kcal} kcal · ${suggestion.protein} g eiwit · ${suggestion.carbs} g koolhydraten · ${suggestion.fat} g vet — een ruwe richtlijn op basis van lichaamsgewicht.</p>` : ''}
+      </form>
+      <div class="card">
+        <div class="row">
+          <label class="field grow" style="margin:0"><span>Verbranding per trainingsminuut (kcal)</span>
+            <input id="kcal-min" type="number" min="0" max="20" value="${db.settings.kcalPerMin}"></label>
+          <label class="field grow" style="margin:0"><span>Waterdoel (ml)</span>
+            <input id="water-target" type="number" min="0" step="250" value="${waterTarget}"></label>
+          <button class="small" id="burn-toggle" aria-pressed="${!!db.settings.countTrainingBurn}">Beweging meetellen</button>
+        </div>
+        <p class="mut" style="margin:8px 0 0">De verbranding is een schatting op basis van de trainingsduur, niet een meting.</p>
+      </div>`;
+
+    bindNav();
+    const setUi = (patch) => { uiState.nutri = { ...uiState.nutri, ...patch }; render(); };
+
+    document.querySelectorAll('[data-nutri-day]').forEach((b) => b.addEventListener('click', () => {
+      uiState.nutri = { moment: null, query: '', results: [], message: '' };
+      location.hash = `/klant/${clientId}/voeding/${b.dataset.nutriDay}`;
+    }));
+    document.getElementById('nutri-date').addEventListener('change', (ev) => {
+      location.hash = `/klant/${clientId}/voeding/${ev.target.value}`;
+    });
+    document.querySelectorAll('[data-add-to]').forEach((b) => b.addEventListener('click', () => {
+      setUi({ moment: b.dataset.addTo, results: [], message: '', query: '' });
+    }));
+    document.querySelectorAll('[data-meal-del]').forEach((b) => b.addEventListener('click', () => {
+      db.meals = db.meals.filter((m) => m.id !== b.dataset.mealDel);
+      save(); render();
+    }));
+    document.querySelectorAll('[data-water]').forEach((b) => b.addEventListener('click', () => {
+      addWater(clientId, date, Number(b.dataset.water));
+      render();
+    }));
+    document.getElementById('copy-yesterday').addEventListener('click', () => {
+      const n = copyDay(clientId, addDays(date, -1), date);
+      if (!n) alert('Gisteren is niets gelogd.');
+      render();
+    });
+    document.querySelectorAll('[data-freq]').forEach((b) => b.addEventListener('click', () => {
+      const f = freq[Number(b.dataset.freq)];
+      db.meals.push({ ...f.last, id: uid(), date, note: '' });
+      save(); render();
+    }));
+
+    // add panel
+    const closeBtn = document.getElementById('add-close');
+    if (closeBtn) closeBtn.addEventListener('click', () => setUi({ moment: null, results: [], message: '' }));
+
+    const runSearch = async () => {
+      const term = document.getElementById('food-search').value.trim();
+      if (!term) return;
+      const local = db.foods
+        .filter((f) => f.name.toLowerCase().includes(term.toLowerCase()))
+        .map((f) => ({ ...f, source: 'lokaal' }));
+      setUi({ query: term, results: local, message: 'Zoeken in productendatabase…' });
+      try {
+        const found = await searchProducts(term);
+        uiState.nutri.results = [...local, ...found];
+        uiState.nutri.message = found.length ? `${found.length} producten gevonden.` : 'Geen producten gevonden — vul hieronder handmatig in.';
+      } catch (e) {
+        uiState.nutri.message = `Online zoeken lukte niet (${e.message}). Je eigen lijst en handmatig invoeren werken gewoon.`;
+      }
+      render();
+    };
+    const searchBtn = document.getElementById('food-search-btn');
+    if (searchBtn) {
+      searchBtn.addEventListener('click', runSearch);
+      document.getElementById('food-search').addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); runSearch(); } });
+    }
+    const scanBtn = document.getElementById('scan-btn');
+    if (scanBtn) scanBtn.addEventListener('click', async () => {
+      const video = document.getElementById('scan-video');
+      video.hidden = false;
+      document.getElementById('search-msg').textContent = 'Richt de camera op de barcode…';
+      try {
+        const code = await scanBarcode(video);
+        video.hidden = true;
+        document.getElementById('search-msg').textContent = 'Product ophalen…';
+        const food = await productByBarcode(code);
+        uiState.nutri.results = food ? [food] : [];
+        uiState.nutri.message = food ? `Gevonden: ${food.name}` : 'Product niet gevonden.';
+      } catch (e) {
+        video.hidden = true;
+        uiState.nutri.message = 'Scannen mislukt: ' + e.message;
+      }
+      render();
+    });
+    document.querySelectorAll('[data-pick]').forEach((b) => b.addEventListener('click', () => {
+      const idx = Number(b.dataset.pick);
+      const food = (uiState.nutri.results || [])[idx];
+      if (!food) return;
+      const amount = num(document.querySelector(`.pick-amount[data-idx="${idx}"]`).value) || 100;
+      const macros = macrosFor(food, amount);
+      db.meals.push({
+        id: uid(), clientId, date, moment: uiState.nutri.moment || 'Snack',
+        name: food.name, amount, per: food.per || '100g', ...macros,
+      });
+      if (!foodByName(food.name)) {
+        db.foods.push({ id: uid(), name: food.name, per: food.per || '100g', code: food.code || '',
+          kcal: food.kcal, protein: food.protein, carbs: food.carbs, fat: food.fat });
+      }
+      save();
+      setUi({ results: [], message: `${food.name} toegevoegd.` });
+    }));
+    const quick = document.getElementById('quick-form');
+    if (quick) quick.addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      const f = new FormData(ev.target);
+      const name = String(f.get('name')).trim();
+      if (!name) return;
+      db.meals.push({
+        id: uid(), clientId, date, moment: uiState.nutri.moment || 'Snack', name,
+        kcal: num(f.get('kcal')), protein: num(f.get('protein')), carbs: num(f.get('carbs')), fat: num(f.get('fat')),
+      });
+      save();
+      setUi({ message: `${name} toegevoegd.` });
+    });
+
+    // plan
+    document.getElementById('plan-form').addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      const f = new FormData(ev.target);
+      const next = { guidelines: String(f.get('guidelines')).trim(), updatedAt: todayIso() };
+      for (const { key } of MACROS) next[key] = num(f.get(key));
+      db.nutritionPlans[clientId] = next;
+      save(); render();
+    });
+    document.querySelectorAll('[data-split]').forEach((b) => b.addEventListener('click', () => {
+      const form = document.getElementById('plan-form');
+      const kcal = num(form.querySelector('[name="kcal"]').value) || (suggestion ? suggestion.kcal : 2000);
+      const [pc, pp, pf] = b.dataset.split.split('.').map(Number);
+      const next = planFromPercents(kcal, pp, pc, pf);
+      for (const { key } of MACROS) form.querySelector(`[name="${key}"]`).value = next[key];
+    }));
+    const sug = document.getElementById('plan-suggest');
+    if (sug) sug.addEventListener('click', () => {
+      const form = document.getElementById('plan-form');
+      for (const { key } of MACROS) form.querySelector(`[name="${key}"]`).value = suggestion[key];
+    });
+    document.getElementById('kcal-min').addEventListener('change', (ev) => {
+      db.settings.kcalPerMin = Math.max(0, Math.min(20, num(ev.target.value)));
+      save(); render();
+    });
+    document.getElementById('water-target').addEventListener('change', (ev) => {
+      db.settings.waterTargetMl = Math.max(0, num(ev.target.value));
+      save(); render();
+    });
+    document.getElementById('burn-toggle').addEventListener('click', () => {
+      db.settings.countTrainingBurn = !db.settings.countTrainingBurn;
+      save(); render();
+    });
+  }
+
+  // --- food registry ---
+  function viewFoods() {
+    const q = uiState.foodQuery.trim().toLowerCase();
+    const list = db.foods
+      .filter((f) => !q || f.name.toLowerCase().includes(q))
+      .sort((a, b) => byName(a.name, b.name));
+
+    $app.innerHTML = topbar('Voedingsmiddelen', '/') +
+      `<p class="sub" style="margin:0 0 10px">Waarden per 100 gram of per portie. Bij het loggen vul je alleen de hoeveelheid in.</p>
+      <input id="food-q" placeholder="Zoeken…" value="${esc(uiState.foodQuery)}" style="margin-bottom:12px">
+      <form class="card" id="food-form">
+        <div class="row">
+          <label class="field grow" style="flex:2"><span>Naam</span><input name="name" required placeholder="bijv. Havermout"></label>
+          <label class="field grow"><span>Per</span><select name="per"><option value="100g">100 gram</option><option value="portie">portie</option></select></label>
+        </div>
+        <div class="row">
+          ${MACROS.map((m) => `<label class="field grow"><span>${m.label}</span><input name="${m.key}" type="text" inputmode="decimal"></label>`).join('')}
+        </div>
+        <button class="primary" type="submit">Toevoegen</button>
+      </form>` +
+      (list.length ? list.map((f) => `<div class="card"><div class="row"><div class="grow">
+          <div class="title">${esc(f.name)} <span class="badge">${f.per === 'portie' ? 'per portie' : 'per 100 g'}</span></div>
+          <div class="sub">${Math.round(f.kcal || 0)} kcal · E ${fmtNum(f.protein || 0)} g · K ${fmtNum(f.carbs || 0)} g · V ${fmtNum(f.fat || 0)} g</div>
+        </div><button class="small danger ghost" data-food-del="${f.id}" aria-label="Verwijder">✕</button></div></div>`).join('')
+        : '<p class="mut">Nog geen voedingsmiddelen.</p>');
+
+    bindNav();
+    const qIn = document.getElementById('food-q');
+    qIn.addEventListener('input', () => {
+      uiState.foodQuery = qIn.value;
+      const pos = qIn.selectionStart;
+      render();
+      const again = document.getElementById('food-q');
+      again.focus();
+      again.setSelectionRange(pos, pos);
+    });
+    document.getElementById('food-form').addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      const f = new FormData(ev.target);
+      const name = String(f.get('name')).trim();
+      if (!name || foodByName(name)) { if (name) alert('Dit voedingsmiddel bestaat al.'); return; }
+      const rec = { id: uid(), name, per: String(f.get('per')) };
+      for (const { key } of MACROS) rec[key] = num(f.get(key));
+      db.foods.push(rec);
+      save(); render();
+    });
+    document.querySelectorAll('[data-food-del]').forEach((b) => b.addEventListener('click', () => {
+      db.foods = db.foods.filter((f) => f.id !== b.dataset.foodDel);
+      save(); render();
+    }));
+  }
+
   // --- client overview: months, attendance, muscle groups ---
   function viewOverview(clientId) {
     const c = clientById(clientId);
@@ -2954,6 +3488,16 @@
         <tbody>${meas.map((m) => `<tr><td>${esc(fmtDate(m.date))}</td>${MEAS_FIELDS.map((f) =>
           `<td class="num">${m[f.key] != null ? esc(fmtNum(m[f.key]) + ' ' + f.unit()) : '–'}</td>`).join('')}</tr>`).join('')}</tbody>
       </table></div>` : '') +
+      (() => {
+        const plan = planOf(clientId);
+        const week = nutritionAverages(clientId, 7);
+        if (!plan && !week) return '';
+        return `<div class="eyebrow">Voeding</div><div class="card">
+          ${plan ? `<div class="sub">Doel: ${MACROS.map((m) => `${Math.round(plan[m.key] || 0)} ${m.unit} ${m.label.toLowerCase()}`).join(' · ')}</div>` : ''}
+          ${week ? `<div class="sub">Gemiddeld (${week.days} dagen): ${MACROS.map((m) => `${week.avg[m.key]} ${m.unit}`).join(' · ')}</div>` : ''}
+          ${plan && plan.guidelines ? `<div class="mut" style="white-space:pre-wrap;margin-top:6px">${esc(plan.guidelines)}</div>` : ''}
+        </div>`;
+      })() +
       (c.goals && c.goals.length ? `<div class="eyebrow">Doelen</div>
       <div class="card">${c.goals.map((g) => {
         const p = goalProgress(c, g);

@@ -77,8 +77,17 @@ Nog open op dit vlak: echte meerdere-coaches-rechten en vingerafdruk/gezicht
 (WebAuthn) vragen een backend of aanzienlijk meer complexiteit. Nu deelt een
 tweede coach hetzelfde sync-token, wat volledige toegang geeft.
 
-### Later te verkennen
-37. Voeding (maaltijden, macro's, dagtotalen, koppeling aan doelen)
+### Voeding — gebouwd (37)
+Voeding-tabblad per klant, opgezet naar het model van de grote voedingsapps:
+"resterend" bovenaan (doel − gegeten + beweging), dagboek per maaltijdmoment,
+productzoeken en barcode scannen via Open Food Facts (met eigen lijst als
+terugval), snel toevoegen, vaak gebruikt, kopieer gisteren, water bijhouden,
+weekgemiddelden, en een plan met macroverdeling (40/30/30 e.d.) of een voorstel
+op basis van lichaamsgewicht. Verbranding uit trainingsduur is een schatting en
+uit te zetten. Voeding verschijnt ook in het rapport en de klant-inzagepagina.
+
+Nog open hier: recepten (meerdere producten als één item), maaltijdsjablonen,
+en een offline productendatabase (nu vereist zoeken/scannen internet).
 
 ## Aanbevolen volgorde (advies, niet vastgelegd)
 
