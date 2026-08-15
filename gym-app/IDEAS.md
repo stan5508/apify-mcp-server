@@ -89,6 +89,19 @@ uit te zetten. Voeding verschijnt ook in het rapport en de klant-inzagepagina.
 Nog open hier: recepten (meerdere producten als één item), maaltijdsjablonen,
 en een offline productendatabase (nu vereist zoeken/scannen internet).
 
+### Klantaccounts — gebouwd
+`sporter.html` is de app voor klanten: inloggen met een magic link, koppelen aan de
+coach met een uitnodigingscode, en zelf trainingen en voeding (incl. water en
+productzoeken) loggen. De coach ziet het binnenkomen onder **Van klanten** en kan een
+training met één tik overnemen in de eigen administratie (zonder dubbelen).
+
+Vereist een gratis Supabase-project; opzet staat in [SUPABASE.md](./SUPABASE.md).
+Toegang wordt afgedwongen met row level security: klanten zien alleen hun eigen
+gegevens, de coach die van zijn eigen klanten.
+
+Nog open: klanten die hun schema van de coach zien, meldingen ("je coach heeft een
+nieuw schema klaargezet"), en het terugsturen van coach-schema's naar de sporter-app.
+
 ## Aanbevolen volgorde (advies, niet vastgelegd)
 
 Voor dagelijks gebruik: 1 (rusttimer), 27 (sessietegoed), 20 (intake), 12 (periodefilter),
