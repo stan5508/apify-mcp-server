@@ -63,7 +63,7 @@ Sidebar-groep "Planning" met Agenda (dagweergave, afspraken voor klant of duo,
 statussen gepland/geweest/no-show/geannuleerd) en Tegoeden & betalingen
 (strippenkaarten per klant, restant met waarschuwing, openstaande betalingen,
 omzet per maand). Tegoed telt één sessie per training plus no-shows (uit te
-zetten). Dagoverzicht op de startpagina; herinneringen 15 minuten vooraf zolang
+zetten). Dagoverzicht op Vandaag; herinneringen 15 minuten vooraf zolang
 de app open staat (een gesloten PWA kan de browser hier niet wekken).
 
 ### Techniek & veiligheid — gebouwd (32 t/m 36)
@@ -101,6 +101,22 @@ gegevens, de coach die van zijn eigen klanten.
 
 Nog open: klanten die hun schema van de coach zien, meldingen ("je coach heeft een
 nieuw schema klaargezet"), en het terugsturen van coach-schema's naar de sporter-app.
+
+## Restyling — gekozen richting
+
+Voorstel met alle varianten: <https://claude.ai/code/artifact/c23a1539-2e36-4f1a-84d4-b900b144d764>
+
+Gekozen: **donker als standaard** (richting B) met de **schijfkleuren** als categoriepalet
+(richting C) — rood 25 `#C8102E`, blauw 20 `#0057B8`, geel 15 `#F2C200`, groen 10 `#009639`
+voor spiergroepen, grafieklijnen en de schijvenrekenmachine. Basis `#0B0D0F` / `#15181C`,
+accent amber `#F2A93B`, tekst `#F5F7F8`.
+
+Volgorde: pagina-indeling (gebouwd) → kleur → oefeningplaatjes → tabbalk op de telefoon →
+logo → kleine dingen (lege schermen, `tabular-nums`, trilling, 48 px raakvlakken,
+klantfoto in de zijbalk, PWA-startscherm).
+
+Oefeningplaatjes: Free Exercise DB (publiek domein, ~800 oefeningen met foto's) en wger
+voor de Nederlandse uitleg. ExerciseDB/GymVisual-GIF's zijn commercieel — niet gebruiken.
 
 ## Aanbevolen volgorde (advies, niet vastgelegd)
 

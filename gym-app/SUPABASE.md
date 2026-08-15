@@ -147,21 +147,20 @@ Ga in Supabase naar **Project Settings → API** en kopieer:
 
 Staat er `/rest/v1` achter de URL, dan is dat geen probleem: de app haalt dat er zelf af.
 
-Open in Coachlog de zijbalk → **Planning → Cloud-accounts** (of ga naar
-`https://stan5508.github.io/apify-mcp-server/#/cloud`). Hetzelfde blok staat ook op de
-startpagina, onder "Toegang". Plak beide waarden en klik **Verbinden**.
-Log daarna in met je e-mailadres; je krijgt een inloglink toegestuurd.
+Open in Coachlog de zijbalk → **Instellingen**, blok "Cloud-accounts" (of ga rechtstreeks
+naar `https://stan5508.github.io/apify-mcp-server/#/cloud`). Plak beide waarden en klik
+**Verbinden**. Log daarna in met je e-mailadres; je krijgt een inloglink toegestuurd.
 
-Zie je Cloud-accounts nergens staan? Dan draait je tablet nog een oude versie. Onderaan de
-startpagina staat het versienummer; dat moet 23 of hoger zijn. Sluit de app helemaal af,
-open hem opnieuw met internet, en ververs.
+Zie je Cloud-accounts nergens staan? Dan draait je tablet nog een oude versie. Onderaan
+Vandaag staat het versienummer; dat moet 25 of hoger zijn. Sluit de app helemaal af, open
+hem opnieuw met internet, en ververs.
 
 De anon-sleutel is bedoeld om openbaar te zijn: wie wat mag zien wordt bepaald door de
 toegangsregels hierboven, niet door de sleutel.
 
 ## 5. Klanten uitnodigen
 
-1. Maak in Coachlog onder **Planning → Cloud-accounts** een uitnodigingscode per klant.
+1. Maak in Coachlog onder **Instellingen → Cloud-accounts** een uitnodigingscode per klant.
 2. Stuur je klant de link `https://stan5508.github.io/apify-mcp-server/sporter.html`
    en de code.
 3. De klant logt in met het eigen e-mailadres, vult de code één keer in, en is aan jou
