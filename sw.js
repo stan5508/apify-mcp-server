@@ -1,9 +1,12 @@
-const CACHE = 'coachlog-v26';
+const CACHE = 'coachlog-v27';
+const PHOTOS = 'coachlog-photos';
+const PHOTO_HOSTS = ['cdn.jsdelivr.net', 'raw.githubusercontent.com'];
 const ASSETS = [
     './',
     './index.html',
     './klant.html',
     './sporter.html',
+    './oefeningen.json',
     './manifest.webmanifest',
     './icon-512.png',
     './icon-180.png',
@@ -23,7 +26,7 @@ self.addEventListener('activate', (event) => {
     event.waitUntil(
         (async () => {
             const keys = await caches.keys();
-            await Promise.all(keys.filter((key) => key !== CACHE).map(async (key) => caches.delete(key)));
+            await Promise.all(keys.filter((key) => key !== CACHE && key !== PHOTOS).map(async (key) => caches.delete(key)));
             await self.clients.claim();
         })(),
     );
@@ -31,9 +34,19 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
     if (event.request.method !== 'GET') return;
-    const isPage = event.request.mode === 'navigate' || new URL(event.request.url).pathname.endsWith('/index.html');
+    const url = new URL(event.request.url);
+    const isPage = event.request.mode === 'navigate' || url.pathname.endsWith('/index.html');
     event.respondWith(
         (async () => {
+            // exercise photos live on another host: keep every one we have shown, so they work offline
+            if (PHOTO_HOSTS.includes(url.hostname)) {
+                const cache = await caches.open(PHOTOS);
+                const hit = await cache.match(event.request);
+                if (hit) return hit;
+                const fresh = await fetch(event.request);
+                if (fresh.ok) await cache.put(event.request, fresh.clone());
+                return fresh;
+            }
             // page: network first so updates arrive on the first online open; cache when offline
             if (isPage) {
                 try {

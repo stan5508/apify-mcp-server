@@ -299,6 +299,13 @@
   .bar-row { display: grid; grid-template-columns: 110px 1fr 78px; gap: 10px; align-items: center; margin-bottom: 8px; font-size: 14px; }
   .bar-row .track { display: block; background: var(--grid); border-radius: 4px; height: 14px; overflow: hidden; }
   .bar-row .fill { display: block; background: var(--data); height: 100%; border-radius: 4px; min-width: 2px; }
+  .ex-thumb { object-fit: cover; border-radius: 8px; background: var(--raised); flex: none; }
+  .shots { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+  .shots img { width: 100%; border-radius: 8px; display: block; background: var(--raised); }
+  .photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; margin-top: 10px; }
+  .photo-pick { padding: 0; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--surface); text-align: left; }
+  .photo-pick img { width: 100%; aspect-ratio: 3 / 2; object-fit: cover; display: block; background: var(--raised); }
+  .photo-pick span { display: block; padding: 6px 8px; font-size: 12px; line-height: 1.3; color: var(--ink-2); }
   .plate { display: inline-block; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 999px;
     border: 1px solid rgba(11, 13, 15, 0.22); font-variant-numeric: tabular-nums; }
   .bar-row .val { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink-2); }
@@ -368,7 +375,7 @@
 <script>
 (() => {
   'use strict';
-  const APP_VERSION = 26; // bump when publishing; shown on the home screen
+  const APP_VERSION = 27; // bump when publishing; shown on the home screen
   const KEY = 'coachlog-v1';
   const $app = document.getElementById('app');
 
@@ -700,7 +707,7 @@
       .sort((a, b) => (b.uses - a.uses) || byName(a.name, b.name))
       .map((e) => e.name);
   }
-  const hasInfo = (rec) => !!(rec && (rec.instructions || rec.cues || rec.videoUrl || rec.imageUrl));
+  const hasInfo = (rec) => !!(rec && (rec.instructions || rec.cues || rec.videoUrl || rec.imageUrl || rec.photoId));
   const clientNote = (clientId, name) => ((db.clientNotes[clientId] || {})[exKey(name)] || '');
   function setClientNote(clientId, name, text) {
     const notes = db.clientNotes[clientId] || (db.clientNotes[clientId] = {});
@@ -715,13 +722,138 @@
     const rec = exerciseByName(name);
     const note = clientId ? clientNote(clientId, name) : '';
     if (!hasInfo(rec) && !note) return '<p class="mut">Nog geen uitleg. Vul die in via de bibliotheek.</p>';
+    const shots = rec && rec.photoId ? (rec.photos || ['0.jpg']).map((_, n) => photoPath(rec, n)) : [];
     const img = safeUrl(rec && rec.imageUrl);
     const vid = safeUrl(rec && rec.videoUrl);
     return (note ? `<div class="note-box"><strong>Voor deze klant:</strong> ${esc(note)}</div>` : '') +
       (rec && rec.instructions ? `<p class="sub" style="white-space:pre-wrap;margin:0 0 8px">${esc(rec.instructions)}</p>` : '') +
       (rec && rec.cues ? `<div class="note-box"><strong>Aandachtspunten:</strong> ${esc(rec.cues)}</div>` : '') +
+      (shots.length ? `<div class="shots">${shots.map((path) => photoImg(path)).join('')}</div>` : '') +
       (img ? `<img src="${esc(img)}" alt="" loading="lazy" style="max-width:100%;border-radius:8px;margin-top:8px">` : '') +
       (vid ? `<p style="margin:8px 0 0"><a href="${esc(vid)}" target="_blank" rel="noopener">Video bekijken ↗</a></p>` : '');
+  }
+
+
+  // ---------- exercise photos (Free Exercise DB, public domain) ----------
+  // jsDelivr is the CDN for the same repo; raw.githubusercontent is the fallback
+  const PHOTO_BASE = 'https://cdn.jsdelivr.net/gh/yuhonas/free-exercise-db@main/exercises/';
+  const PHOTO_BASE_ALT = 'https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/';
+  const photoPath = (rec, n = 0) => rec && rec.photoId ? `${rec.photoId}/${(rec.photos || ['0.jpg'])[n] || ''}` : '';
+  const photoUrl = (rec, n = 0) => photoPath(rec, n) ? PHOTO_BASE + photoPath(rec, n) : '';
+  const photoImg = (path, attrs = '') =>
+    `<img src="${esc(PHOTO_BASE + path)}" data-fallback="${esc(PHOTO_BASE_ALT + path)}" alt="" loading="lazy" ${attrs}>`;
+  const photoThumb = (rec, size = 44) => {
+    const path = photoPath(rec);
+    if (path) return photoImg(path, `class="ex-thumb" style="width:${size}px;height:${size}px"`);
+    const url = safeUrl(rec && rec.imageUrl);
+    return url ? `<img class="ex-thumb" src="${esc(url)}" alt="" loading="lazy" style="width:${size}px;height:${size}px">` : '';
+  };
+  // one listener beats an inline onerror on every tag
+  document.addEventListener('error', (ev) => {
+    const t = ev.target;
+    if (t instanceof HTMLImageElement && t.dataset.fallback && t.src !== t.dataset.fallback) t.src = t.dataset.fallback;
+  }, true);
+
+  // the catalogue is english; map the dutch words a coach actually types
+  const PHOTO_TERMS = {
+    bankdrukken: 'bench press', schuinbankdrukken: 'incline bench press', roeien: 'row', roeimachine: 'rowing',
+    kuitheffen: 'calf raise', schouderdrukken: 'shoulder press', zijwaartseheffing: 'lateral raise',
+    optrekken: 'pull up', opdrukken: 'push up', hurkzit: 'squat', beenpers: 'leg press', beenstrekken: 'leg extension',
+    beencurl: 'leg curl', buikspieren: 'crunch', planken: 'plank', hardlopen: 'running', fietsen: 'cycling',
+    heupbrug: 'hip thrust', dips: 'dips', kniebuiging: 'squat', borst: 'chest', rug: 'back', benen: 'leg',
+    schouders: 'shoulder', armen: 'arm', triceps: 'triceps', biceps: 'biceps', buik: 'abs', billen: 'glute',
+  };
+  const photoTokens = (text) => String(text || '').toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/).filter(Boolean)
+    .flatMap((w) => (PHOTO_TERMS[w] || w).split(' '));
+
+  let photoCatalog = null;
+  async function loadPhotoCatalog() {
+    if (!photoCatalog) photoCatalog = await (await fetch('./oefeningen.json')).json();
+    return photoCatalog;
+  }
+  // rank on how many of the typed words appear, then prefer the plainest name
+  function searchPhotos(query, limit = 24) {
+    if (!photoCatalog) return [];
+    const words = photoTokens(query);
+    if (!words.length) return photoCatalog.slice(0, limit);
+    return photoCatalog
+      .map((c) => {
+        const name = c.n.toLowerCase();
+        let score = 0;
+        for (const w of words) if (name.includes(w)) score += w.length > 3 ? 3 : 1;
+        if (name === words.join(' ')) score += 10;
+        return { c, score };
+      })
+      .filter((x) => x.score > 0)
+      .sort((a, b) => b.score - a.score || a.c.n.length - b.c.n.length)
+      .slice(0, limit)
+      .map((x) => x.c);
+  }
+
+
+  // ---------- photo picker ----------
+  function photoCurrentHtml(rec) {
+    return `${photoThumb(rec, 56)}
+      <div class="grow ${rec.photoId ? 'sub' : 'mut'}">${rec.photoId ? esc(rec.photoName || rec.photoId) : 'Nog geen foto gekozen.'}</div>
+      <button type="button" class="small" data-photo-find="${rec.id}">Foto zoeken</button>
+      <button type="button" class="small ghost" data-photo-clear="${rec.id}" ${rec.photoId ? '' : 'hidden'}>Verwijderen</button>`;
+  }
+  function bindPhotoPicker() {
+    const current = document.getElementById('photo-current');
+    const box = document.getElementById('photo-box');
+    if (!current || !box) return;
+    const refresh = (rec) => {
+      current.innerHTML = photoCurrentHtml(rec);
+      bindPhotoPicker();
+    };
+    const findBtn = current.querySelector('[data-photo-find]');
+    const clearBtn = current.querySelector('[data-photo-clear]');
+    clearBtn.addEventListener('click', () => {
+      const rec = exerciseById(clearBtn.dataset.photoClear);
+      delete rec.photoId; delete rec.photos; delete rec.photoName;
+      save();
+      box.innerHTML = '';
+      refresh(rec);
+    });
+    findBtn.addEventListener('click', async () => {
+      const rec = exerciseById(findBtn.dataset.photoFind);
+      box.innerHTML = '<p class="mut" style="margin:10px 0 0">Fotolijst laden…</p>';
+      try {
+        await loadPhotoCatalog();
+      } catch {
+        box.innerHTML = '<p class="mut" style="margin:10px 0 0">Fotolijst laden mislukt. Probeer het opnieuw met internet.</p>';
+        return;
+      }
+      box.innerHTML = `<div class="row" style="margin-top:10px">
+          <input id="photo-q" class="grow" value="${esc(rec.name)}" placeholder="Zoek op naam, bijv. bench press">
+          <button type="button" class="small ghost" id="photo-close">Sluiten</button>
+        </div>
+        <p class="mut" style="margin:6px 0 0">Foto's uit Free Exercise DB (publiek domein). Zoeken gaat op Engelse namen; gangbare Nederlandse termen worden vertaald.</p>
+        <div id="photo-results"></div>`;
+      const results = document.getElementById('photo-results');
+      const draw = (q) => {
+        const hits = searchPhotos(q);
+        results.innerHTML = hits.length
+          ? `<div class="photo-grid">${hits.map((c) => `<button type="button" class="photo-pick" data-photo-id="${esc(c.i)}">
+              ${photoImg(c.i + '/' + c.p[0])}
+              <span>${esc(c.n)}<br><span class="mut">${esc(c.g)} · ${esc(c.e)}</span></span></button>`).join('')}</div>`
+          : '<p class="mut" style="margin:10px 0 0">Niets gevonden. Probeer een Engelse term, bijvoorbeeld "bench press" of "row".</p>';
+        results.querySelectorAll('[data-photo-id]').forEach((b) => b.addEventListener('click', () => {
+          const pick = photoCatalog.find((c) => c.i === b.dataset.photoId);
+          rec.photoId = pick.i; rec.photos = pick.p; rec.photoName = pick.n;
+          save();
+          box.innerHTML = '';
+          refresh(rec);
+        }));
+      };
+      const qIn = document.getElementById('photo-q');
+      let t = null;
+      qIn.addEventListener('input', () => { clearTimeout(t); t = setTimeout(() => draw(qIn.value), 150); });
+      document.getElementById('photo-close').addEventListener('click', () => { box.innerHTML = ''; });
+      draw(rec.name);
+    });
   }
 
   const restFor = (name) => {
@@ -2794,6 +2926,11 @@
               <label class="field grow"><span>Video-link</span><input name="videoUrl" type="url" value="${esc(rec.videoUrl || '')}" placeholder="https://…"></label>
               <label class="field grow"><span>Afbeelding-link</span><input name="imageUrl" type="url" value="${esc(rec.imageUrl || '')}" placeholder="https://…"></label>
             </div>
+            <div class="card" style="margin:0 0 10px;background:transparent">
+              <div class="eyebrow" style="margin-top:0">Foto</div>
+              <div class="row" id="photo-current">${photoCurrentHtml(rec)}</div>
+              <div id="photo-box"></div>
+            </div>
             ${hasInfo(rec) ? `<div class="info-panel">${exerciseInfoHtml(rec.name, null)}</div>` : ''}
             <div class="actions">
               <button class="primary" type="submit">Opslaan</button>
@@ -2821,6 +2958,7 @@
           </form>`
         : `<div class="card">
             <div class="row">
+              ${photoThumb(rec)}
               <div class="grow">
                 <div class="title">${esc(rec.name)}${rec.archived ? ' <span class="badge">gearchiveerd</span>' : ''}${hasInfo(rec) ? ' <span class="badge">uitleg</span>' : ''}</div>
                 <div class="sub">${esc(rec.group)} · ${esc(rec.equipment)}${rec.kind !== 'kracht' ? ' · ' + KIND_LABELS[rec.kind] : ''}${rec.restSeconds ? ' · rust ' + rec.restSeconds + 's' : ''}</div>
@@ -2880,6 +3018,7 @@
       uiState.libEditing = null;
       save(); render();
     }));
+    bindPhotoPicker();
     document.querySelectorAll('[data-edit-form]').forEach((form) => form.addEventListener('submit', (ev) => {
       ev.preventDefault();
       const rec = exerciseById(form.dataset.editForm);
@@ -4922,6 +5061,7 @@
             const linked = ex.superset && draft.some((d, i) => i !== xi && d.superset === ex.superset);
             return `<div class="card${linked ? ' ss-mark' : ''}">
             <div class="row" style="margin-bottom:2px">
+              ${photoThumb(exerciseByName(ex.name), 38)}
               <div class="title grow">${esc(ex.name)}${linked ? ` <span class="badge">Superset ${esc(ex.superset)}</span>` : ''}${ex.kind !== 'kracht' ? ` <span class="badge">${KIND_LABELS[ex.kind]}</span>` : ''}</div>
               <button type="button" class="small ghost" data-up="${xi}" aria-label="Omhoog" ${xi === 0 ? 'disabled' : ''}>↑</button>
               <button type="button" class="small ghost" data-down="${xi}" aria-label="Omlaag" ${xi === draft.length - 1 ? 'disabled' : ''}>↓</button>
