@@ -26,7 +26,9 @@ self.addEventListener('activate', (event) => {
     event.waitUntil(
         (async () => {
             const keys = await caches.keys();
-            await Promise.all(keys.filter((key) => key !== CACHE && key !== PHOTOS).map(async (key) => caches.delete(key)));
+            await Promise.all(
+                keys.filter((key) => key !== CACHE && key !== PHOTOS).map(async (key) => caches.delete(key)),
+            );
             await self.clients.claim();
         })(),
     );
