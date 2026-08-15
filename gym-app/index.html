@@ -375,7 +375,7 @@
 <script>
 (() => {
   'use strict';
-  const APP_VERSION = 27; // bump when publishing; shown on the home screen
+  const APP_VERSION = 28; // bump when publishing; shown on the home screen
   const KEY = 'coachlog-v1';
   const $app = document.getElementById('app');
 
@@ -2420,9 +2420,31 @@
         <input type="file" id="import-file" accept="application/json" hidden>
       </div>
       <p class="mut">Alles wordt lokaal op dit apparaat bewaard. Maak regelmatig een back-up.</p>
-      <p class="mut" style="margin-top:16px">Coachlog versie ${APP_VERSION}</p>`;
+      <div class="eyebrow">Versie</div>
+      <div class="card">
+        <p class="sub" style="margin:0 0 8px">Coachlog versie ${APP_VERSION}.</p>
+        <div class="actions"><button id="app-update">Nieuwe versie ophalen</button></div>
+        <p class="mut" id="update-msg" style="margin:8px 0 0">Werkt alleen met internet. Je gegevens blijven staan; alleen de app zelf wordt opnieuw opgehaald.</p>
+      </div>`;
 
     bindNav();
+    document.getElementById('app-update').addEventListener('click', async (ev) => {
+      const msg = document.getElementById('update-msg');
+      ev.target.disabled = true;
+      msg.textContent = 'Ophalen…';
+      try {
+        const regs = 'serviceWorker' in navigator ? await navigator.serviceWorker.getRegistrations() : [];
+        await Promise.all(regs.map(async (r) => r.update()));
+        const keys = await caches.keys();
+        // keep the photo cache: those stay valid and are expensive to fetch again
+        await Promise.all(keys.filter((k) => k !== 'coachlog-photos').map(async (k) => caches.delete(k)));
+        msg.textContent = 'Klaar. De app wordt opnieuw geladen…';
+        setTimeout(() => location.reload(), 700);
+      } catch (e) {
+        msg.textContent = 'Bijwerken mislukt: ' + e.message;
+        ev.target.disabled = false;
+      }
+    });
     if (scrollToId) document.getElementById(scrollToId)?.scrollIntoView({ block: 'center' });
     document.getElementById('export-btn').addEventListener('click', exportJson);
     document.getElementById('csv-all').addEventListener('click', () => downloadCsv(null));
