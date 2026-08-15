@@ -1,0 +1,611 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#2a78d6">
+<title>Coachlog — mijn training</title>
+<link rel="icon" href="icon-180.png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Coachlog">
+<style>
+  :root {
+    --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+    --grid: #e1e0d9; --baseline: #c3c2b7; --border: rgba(11, 11, 11, 0.10);
+    --accent: #2a78d6; --accent-strong: #1c5cab; --wash: rgba(42, 120, 214, 0.10);
+    --good: #006300; --danger: #d03b3b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --page: #0d0d0d; --surface: #1a1a19; --ink: #ffffff; --ink-2: #c3c2b7; --muted: #898781;
+      --grid: #2c2c2a; --baseline: #383835; --border: rgba(255, 255, 255, 0.10);
+      --accent: #3987e5; --accent-strong: #6da7ec; --wash: rgba(57, 135, 229, 0.12);
+      --good: #0ca30c; --danger: #d03b3b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page); color: var(--ink); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 560px; margin: 0 auto; padding: 14px 14px 80px; }
+  h1 { font-size: 19px; margin: 0 0 12px; }
+  .sub { color: var(--ink-2); font-size: 14px; }
+  .mut { color: var(--muted); font-size: 13px; }
+  .eyebrow { font-size: 12px; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 22px 0 8px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-bottom: 10px; }
+  .row { display: flex; align-items: center; gap: 8px; }
+  .grow { flex: 1; min-width: 0; }
+  .title { font-weight: 650; }
+  button { font: inherit; cursor: pointer; border: 1px solid var(--border); background: var(--surface); color: var(--ink); border-radius: 8px; padding: 9px 14px; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  button.small { padding: 6px 10px; font-size: 14px; }
+  button.ghost { background: transparent; }
+  button.danger { color: var(--danger); }
+  button.wide { width: 100%; padding: 12px; }
+  button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  input, select, textarea { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--baseline); border-radius: 8px; padding: 9px 10px; width: 100%; }
+  label.field { display: block; margin-bottom: 10px; }
+  label.field span { display: block; font-size: 13px; color: var(--ink-2); margin-bottom: 4px; }
+  .tabs { display: flex; gap: 6px; margin-bottom: 14px; }
+  .tabs button { flex: 1; }
+  .tabs button[aria-pressed="true"] { background: var(--wash); border-color: var(--accent); color: var(--accent-strong); font-weight: 650; }
+  .set-row { display: grid; grid-template-columns: 26px 1fr 1fr 34px; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .set-row .n { color: var(--muted); font-size: 13px; }
+  .col-head { font-size: 12px; color: var(--muted); }
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; }
+  .stat { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+  .stat .lbl { font-size: 12px; color: var(--muted); }
+  .stat .val { font-size: 20px; font-weight: 650; }
+  .bar-row { display: grid; grid-template-columns: 96px 1fr 74px; gap: 8px; align-items: center; margin-bottom: 8px; font-size: 14px; }
+  .track { display: block; background: var(--grid); border-radius: 4px; height: 12px; overflow: hidden; }
+  .fill { display: block; background: var(--accent); height: 100%; border-radius: 4px; }
+  .val { text-align: right; color: var(--ink-2); }
+  .status { position: fixed; left: 0; right: 0; bottom: 0; padding: 8px 14px calc(8px + env(safe-area-inset-bottom)); background: var(--ink); color: var(--page); font-size: 13px; }
+  .status[hidden] { display: none; }
+</style>
+</head>
+<body>
+<main id="app"><p class="mut">Laden…</p></main>
+<div class="status" id="status" hidden></div>
+<script>
+(() => {
+  'use strict';
+  const $app = document.getElementById('app');
+  const $status = document.getElementById('status');
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const num = (v) => { const n = parseFloat(String(v).replace(',', '.')); return Number.isFinite(n) ? n : 0; };
+  const todayIso = () => new Date().toISOString().slice(0, 10);
+  const addDays = (iso, n) => { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
+  const fmtDateFull = (iso) => new Date(iso + 'T12:00:00').toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' });
+  const fmtNum = (n) => (Math.round(n * 10) / 10).toLocaleString('nl-NL');
+  const MOMENTS = ['Ontbijt', 'Lunch', 'Diner', 'Snack'];
+
+  function toast(msg, ms = 2500) {
+    $status.textContent = msg;
+    $status.hidden = false;
+    clearTimeout(toast.t);
+    toast.t = setTimeout(() => { $status.hidden = true; }, ms);
+  }
+
+  // ---------- cloud accounts (Supabase REST, no SDK) ----------
+  const cloud = (() => {
+    const CFG_KEY = 'coachlog-cloud';
+    const SESSION_KEY = 'coachlog-session';
+    let cfg = null;
+    let session = null;
+    try { cfg = JSON.parse(localStorage.getItem(CFG_KEY) || 'null'); } catch { cfg = null; }
+    try { session = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'); } catch { session = null; }
+
+    const configured = () => !!(cfg && cfg.url && cfg.key);
+    const signedIn = () => !!(session && session.access_token);
+    const setConfig = (url, key) => {
+      cfg = { url: String(url).replace(/\/+$/, ''), key: String(key).trim() };
+      localStorage.setItem(CFG_KEY, JSON.stringify(cfg));
+    };
+    const clearConfig = () => { cfg = null; localStorage.removeItem(CFG_KEY); };
+    const setSession = (s) => {
+      session = s;
+      if (s) localStorage.setItem(SESSION_KEY, JSON.stringify(s));
+      else localStorage.removeItem(SESSION_KEY);
+    };
+
+    async function call(path, opts = {}, auth = true) {
+      if (!configured()) throw new Error('cloud niet ingesteld');
+      const headers = { apikey: cfg.key, 'Content-Type': 'application/json', ...(opts.headers || {}) };
+      if (auth && session) headers.Authorization = 'Bearer ' + session.access_token;
+      const res = await fetch(cfg.url + path, { ...opts, headers, signal: AbortSignal.timeout(15000) });
+      if (res.status === 401 && auth && session && session.refresh_token) {
+        await refresh();
+        return call(path, opts, auth);
+      }
+      const text = await res.text();
+      const body = text ? JSON.parse(text) : null;
+      if (!res.ok) throw new Error((body && (body.msg || body.message || body.error_description)) || `fout ${res.status}`);
+      return body;
+    }
+
+    async function refresh() {
+      const body = await call('/auth/v1/token?grant_type=refresh_token', {
+        method: 'POST', body: JSON.stringify({ refresh_token: session.refresh_token }),
+      }, false);
+      setSession(body);
+    }
+
+    // magic link: no passwords for clients to forget
+    async function sendLink(email, redirectTo) {
+      await call(`/auth/v1/otp?redirect_to=${encodeURIComponent(redirectTo)}`, {
+        method: 'POST', body: JSON.stringify({ email, create_user: true }),
+      }, false);
+    }
+    function captureSessionFromUrl() {
+      const hash = location.hash.startsWith('#') ? location.hash.slice(1) : '';
+      if (!hash.includes('access_token=')) return false;
+      const params = new URLSearchParams(hash);
+      setSession({
+        access_token: params.get('access_token'),
+        refresh_token: params.get('refresh_token'),
+        expires_at: Date.now() + Number(params.get('expires_in') || 3600) * 1000,
+      });
+      history.replaceState(null, '', location.pathname + location.search);
+      return true;
+    }
+    const signOut = () => setSession(null);
+    const userId = () => {
+      if (!signedIn()) return null;
+      try { return JSON.parse(atob(session.access_token.split('.')[1])).sub; } catch { return null; }
+    };
+    const userEmail = () => {
+      if (!signedIn()) return null;
+      try { return JSON.parse(atob(session.access_token.split('.')[1])).email; } catch { return null; }
+    };
+
+    const select = (table, query) => call(`/rest/v1/${table}?${query}`, { method: 'GET' });
+    const insert = (table, rows) => call(`/rest/v1/${table}`, {
+      method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify(rows),
+    });
+    const upsert = (table, rows, onConflict) => call(`/rest/v1/${table}?on_conflict=${onConflict}`, {
+      method: 'POST', headers: { Prefer: 'resolution=merge-duplicates,return=representation' }, body: JSON.stringify(rows),
+    });
+    const remove = (table, query) => call(`/rest/v1/${table}?${query}`, { method: 'DELETE' });
+    const rpc = (fn, args) => call(`/rest/v1/rpc/${fn}`, { method: 'POST', body: JSON.stringify(args || {}) });
+
+    // make sure this account has a profile row
+    async function ensureProfile(role, name) {
+      const id = userId();
+      if (!id) throw new Error('niet ingelogd');
+      const rows = await select('profiles', `id=eq.${id}&select=*`);
+      if (rows.length) {
+        if (name && rows[0].name !== name) {
+          await call(`/rest/v1/profiles?id=eq.${id}`, { method: 'PATCH', body: JSON.stringify({ name }) });
+          rows[0].name = name;
+        }
+        return rows[0];
+      }
+      const created = await insert('profiles', [{ id, role, name: name || (userEmail() || '').split('@')[0] }]);
+      return created[0];
+    }
+
+    return {
+      configured, signedIn, setConfig, clearConfig, config: () => cfg,
+      sendLink, captureSessionFromUrl, signOut, userId, userEmail,
+      select, insert, upsert, remove, rpc, ensureProfile,
+    };
+  })();
+
+  // ---------- local state ----------
+  const LOCAL_KEY = 'coachlog-sporter';
+  const load = () => { try { return JSON.parse(localStorage.getItem(LOCAL_KEY) || 'null') || {}; } catch { return {}; } };
+  let local = load();
+  const saveLocal = () => localStorage.setItem(LOCAL_KEY, JSON.stringify(local));
+
+  let ui = { tab: 'training', date: todayIso(), draft: null, meals: [], workouts: [], water: 0, profile: null, busy: false };
+
+  // ---------- views ----------
+  function setupView(message) {
+    $app.innerHTML = `
+      <h1>Coachlog</h1>
+      <p class="sub">Log je trainingen en voeding. Je coach kijkt mee; andere sporters zien niets van jou.</p>
+      <div class="card">
+        <label class="field"><span>Project-URL van je coach</span><input id="s-url" placeholder="https://xxxx.supabase.co"></label>
+        <label class="field"><span>Anon-sleutel</span><input id="s-key" placeholder="eyJhbGciOi…"></label>
+        <button class="primary wide" id="s-save">Verbinden</button>
+        <p class="mut" style="margin:8px 0 0">Deze twee waarden krijg je van je coach, samen met een uitnodigingscode.</p>
+        ${message ? `<p class="mut">${esc(message)}</p>` : ''}
+      </div>`;
+    document.getElementById('s-save').addEventListener('click', () => {
+      const url = document.getElementById('s-url').value.trim();
+      const key = document.getElementById('s-key').value.trim();
+      if (!/^https:\/\/.+/.test(url) || key.length < 20) { alert('Controleer de gegevens van je coach.'); return; }
+      cloud.setConfig(url, key);
+      start();
+    });
+  }
+
+  function loginView() {
+    $app.innerHTML = `
+      <h1>Inloggen</h1>
+      <p class="sub">Vul je e-mailadres in. Je krijgt een link waarmee je inlogt — geen wachtwoord nodig.</p>
+      <div class="card">
+        <label class="field"><span>E-mailadres</span><input id="l-email" type="email" placeholder="jij@voorbeeld.nl"></label>
+        <button class="primary wide" id="l-send">Stuur inloglink</button>
+        <p class="mut" id="l-msg" style="margin:10px 0 0"></p>
+      </div>
+      <button class="small ghost" id="l-reset">Andere coach-gegevens invullen</button>`;
+    document.getElementById('l-send').addEventListener('click', async () => {
+      const email = document.getElementById('l-email').value.trim();
+      const msg = document.getElementById('l-msg');
+      if (!email) return;
+      msg.textContent = 'Versturen…';
+      try {
+        await cloud.sendLink(email, location.origin + location.pathname);
+        msg.textContent = 'Gelukt. Open de link in je mail op dit apparaat.';
+      } catch (e) {
+        msg.textContent = 'Versturen mislukt: ' + e.message;
+      }
+    });
+    document.getElementById('l-reset').addEventListener('click', () => { cloud.clearConfig(); start(); });
+  }
+
+  function inviteView() {
+    $app.innerHTML = `
+      <h1>Koppelen aan je coach</h1>
+      <p class="sub">Vul je naam en de uitnodigingscode in die je van je coach kreeg.</p>
+      <div class="card">
+        <label class="field"><span>Je naam</span><input id="i-name" placeholder="Voornaam Achternaam"></label>
+        <label class="field"><span>Uitnodigingscode</span><input id="i-code" placeholder="ABCD1234" style="text-transform:uppercase"></label>
+        <button class="primary wide" id="i-go">Koppelen</button>
+        <p class="mut" id="i-msg" style="margin:10px 0 0"></p>
+      </div>
+      <button class="small ghost" id="i-out">Uitloggen</button>`;
+    document.getElementById('i-go').addEventListener('click', async () => {
+      const name = document.getElementById('i-name').value.trim();
+      const code = document.getElementById('i-code').value.trim().toUpperCase();
+      const msg = document.getElementById('i-msg');
+      if (!name || !code) { msg.textContent = 'Vul allebei de velden in.'; return; }
+      msg.textContent = 'Bezig…';
+      try {
+        await cloud.ensureProfile('client', name);
+        await cloud.rpc('redeem_invite', { p_code: code });
+        toast('Gekoppeld aan je coach.');
+        start();
+      } catch (e) {
+        msg.textContent = 'Koppelen mislukt: ' + e.message;
+      }
+    });
+    document.getElementById('i-out').addEventListener('click', () => { cloud.signOut(); start(); });
+  }
+
+  function dayHeader() {
+    return `<div class="row" style="margin-bottom:12px">
+      <button class="small" data-day="${addDays(ui.date, -1)}">‹</button>
+      <input type="date" id="day-date" class="grow" value="${ui.date}">
+      <button class="small" data-day="${addDays(ui.date, 1)}">›</button>
+    </div>`;
+  }
+
+  function trainingTab() {
+    const draft = ui.draft;
+    const done = ui.workouts.filter((w) => w.date === ui.date);
+    return `
+      ${dayHeader()}
+      ${done.map((w) => `<div class="card">
+        <div class="row"><div class="grow"><div class="title">Training opgeslagen</div>
+          <div class="sub">${(w.entries || []).map((e) => esc(e.name)).join(' · ')}</div>
+          ${w.duration_min ? `<div class="mut">${w.duration_min} minuten</div>` : ''}</div>
+          <button class="small danger ghost" data-del-workout="${w.id}">✕</button></div>
+      </div>`).join('')}
+      ${draft ? `<div class="card">
+        <div class="title" style="margin-bottom:8px">Training bezig</div>
+        ${draft.entries.map((e, xi) => `<div class="card" style="margin-bottom:8px">
+          <div class="row" style="margin-bottom:6px"><div class="grow title">${esc(e.name)}</div>
+            <button class="small danger ghost" data-del-ex="${xi}">✕</button></div>
+          <div class="set-row"><span></span><span class="col-head">Gewicht</span><span class="col-head">Herh.</span><span></span></div>
+          ${e.sets.map((st, si) => `<div class="set-row">
+            <span class="n">${si + 1}</span>
+            <input data-set="${xi}.${si}" data-f="weight" type="text" inputmode="decimal" value="${st.weight || ''}" placeholder="kg">
+            <input data-set="${xi}.${si}" data-f="reps" type="number" inputmode="numeric" value="${st.reps || ''}" placeholder="herh.">
+            <button class="small danger ghost" data-del-set="${xi}.${si}">✕</button>
+          </div>`).join('')}
+          <button class="small" data-add-set="${xi}">+ Set</button>
+        </div>`).join('')}
+        <div class="row" style="margin-top:8px">
+          <input id="new-ex" class="grow" placeholder="Oefening toevoegen" list="known-ex">
+          <button class="small" id="add-ex">+</button>
+        </div>
+        <datalist id="known-ex">${(local.knownExercises || []).map((n) => `<option value="${esc(n)}">`).join('')}</datalist>
+        <label class="field" style="margin-top:10px"><span>Notitie</span><input id="w-note" value="${esc(draft.notes || '')}" placeholder="hoe ging het?"></label>
+        <button class="primary wide" id="save-workout">Training opslaan</button>
+      </div>`
+      : `<button class="primary wide" id="start-workout">Training starten</button>`}`;
+  }
+
+  function foodTab() {
+    const meals = ui.meals.filter((m) => m.date === ui.date);
+    const totals = meals.reduce((t, m) => ({
+      kcal: t.kcal + Number(m.kcal || 0), protein: t.protein + Number(m.protein || 0),
+      carbs: t.carbs + Number(m.carbs || 0), fat: t.fat + Number(m.fat || 0),
+    }), { kcal: 0, protein: 0, carbs: 0, fat: 0 });
+    const group = (moment) => {
+      const items = meals.filter((m) => m.moment === moment);
+      return `<div class="card">
+        <div class="row" style="margin-bottom:6px"><div class="title grow">${moment}</div>
+          <div class="mut">${Math.round(items.reduce((t, m) => t + Number(m.kcal || 0), 0))} kcal</div>
+          <button class="small" data-add-meal="${moment}">+</button></div>
+        ${items.length ? items.map((m) => `<div class="row" style="margin-bottom:4px">
+          <div class="grow"><div class="sub">${esc(m.name)}</div>
+            <div class="mut">${Math.round(m.kcal || 0)} kcal · E ${fmtNum(m.protein || 0)} · K ${fmtNum(m.carbs || 0)} · V ${fmtNum(m.fat || 0)}</div></div>
+          <button class="small danger ghost" data-del-meal="${m.id}">✕</button></div>`).join('')
+          : '<div class="mut">Niets gelogd.</div>'}
+      </div>`;
+    };
+    return `
+      ${dayHeader()}
+      <div class="card">
+        <div class="stat-grid">
+          ${[['Calorieën', Math.round(totals.kcal)], ['Eiwit', Math.round(totals.protein) + ' g'],
+             ['Koolhydraten', Math.round(totals.carbs) + ' g'], ['Vet', Math.round(totals.fat) + ' g']]
+            .map(([l, v]) => `<div class="stat"><div class="lbl">${l}</div><div class="val">${v}</div></div>`).join('')}
+        </div>
+      </div>
+      ${ui.addMoment ? `<div class="card">
+        <div class="row" style="margin-bottom:8px"><div class="title grow">Toevoegen aan ${esc(ui.addMoment)}</div>
+          <button class="small ghost" id="meal-close">Sluiten</button></div>
+        <div class="row" style="margin-bottom:8px">
+          <input id="food-q" class="grow" placeholder="Zoek een product…">
+          <button class="small" id="food-search">Zoek</button>
+        </div>
+        <p class="mut" id="food-msg" style="margin:0 0 8px">${esc(ui.foodMsg || '')}</p>
+        <div id="food-results">${(ui.foodResults || []).map((f, i) => `<div class="row" style="margin-bottom:8px">
+          <div class="grow"><div class="sub">${esc(f.name)}</div><div class="mut">${Math.round(f.kcal)} kcal / 100 g</div></div>
+          <input class="pick-amount" data-idx="${i}" type="text" inputmode="decimal" value="100" style="width:72px">
+          <button class="small primary" data-pick="${i}">+</button>
+        </div>`).join('')}</div>
+        <form id="quick-meal">
+          <div class="row" style="margin-bottom:8px">
+            <input name="name" class="grow" placeholder="Zelf invullen: wat at je?" required>
+            <input name="kcal" type="text" inputmode="decimal" placeholder="kcal" style="width:80px" required>
+          </div>
+          <div class="row">
+            <input name="protein" type="text" inputmode="decimal" placeholder="eiwit" class="grow">
+            <input name="carbs" type="text" inputmode="decimal" placeholder="koolh." class="grow">
+            <input name="fat" type="text" inputmode="decimal" placeholder="vet" class="grow">
+            <button class="small primary" type="submit">+</button>
+          </div>
+        </form>
+      </div>` : ''}
+      ${MOMENTS.map(group).join('')}
+      <div class="eyebrow">Water</div>
+      <div class="card">
+        <div class="bar-row"><span>Vandaag</span>
+          <span class="track"><span class="fill" style="width:${Math.min(100, Math.round((ui.water / 2000) * 100))}%"></span></span>
+          <span class="val">${(ui.water / 1000).toLocaleString('nl-NL')} l</span></div>
+        <div class="row"><button class="small" data-water="250">+250 ml</button>
+          <button class="small" data-water="500">+500 ml</button>
+          <button class="small ghost" data-water="-250">−250</button></div>
+      </div>`;
+  }
+
+  function appView() {
+    $app.innerHTML = `
+      <div class="row" style="margin-bottom:10px">
+        <h1 class="grow" style="margin:0">Hoi ${esc((ui.profile && ui.profile.name) || '')}</h1>
+        <button class="small ghost" id="sign-out">Uitloggen</button>
+      </div>
+      <div class="tabs">
+        <button data-tab="training" aria-pressed="${ui.tab === 'training'}">Training</button>
+        <button data-tab="voeding" aria-pressed="${ui.tab === 'voeding'}">Voeding</button>
+      </div>
+      <p class="sub" style="margin:0 0 12px">${esc(fmtDateFull(ui.date))}</p>
+      ${ui.tab === 'training' ? trainingTab() : foodTab()}`;
+    bindApp();
+  }
+
+  // ---------- interactions ----------
+  function bindApp() {
+    document.getElementById('sign-out').addEventListener('click', () => { cloud.signOut(); start(); });
+    document.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => { ui.tab = b.dataset.tab; appView(); }));
+    document.querySelectorAll('[data-day]').forEach((b) => b.addEventListener('click', async () => {
+      ui.date = b.dataset.day; await loadDay(); appView();
+    }));
+    const dayInput = document.getElementById('day-date');
+    if (dayInput) dayInput.addEventListener('change', async (ev) => { ui.date = ev.target.value; await loadDay(); appView(); });
+
+    // training
+    const start = document.getElementById('start-workout');
+    if (start) start.addEventListener('click', () => {
+      ui.draft = { entries: [], notes: '', startedAt: Date.now() };
+      appView();
+    });
+    const addEx = document.getElementById('add-ex');
+    if (addEx) addEx.addEventListener('click', () => {
+      const input = document.getElementById('new-ex');
+      const name = input.value.trim();
+      if (!name) return;
+      syncDraft();
+      ui.draft.entries.push({ name, kind: 'kracht', sets: [{ weight: 0, reps: 0 }] });
+      local.knownExercises = [...new Set([...(local.knownExercises || []), name])];
+      saveLocal();
+      appView();
+    });
+    document.querySelectorAll('[data-add-set]').forEach((b) => b.addEventListener('click', () => {
+      syncDraft();
+      const e = ui.draft.entries[Number(b.dataset.addSet)];
+      const last = e.sets[e.sets.length - 1];
+      e.sets.push(last ? { ...last } : { weight: 0, reps: 0 });
+      appView();
+    }));
+    document.querySelectorAll('[data-del-set]').forEach((b) => b.addEventListener('click', () => {
+      syncDraft();
+      const [xi, si] = b.dataset.delSet.split('.').map(Number);
+      ui.draft.entries[xi].sets.splice(si, 1);
+      appView();
+    }));
+    document.querySelectorAll('[data-del-ex]').forEach((b) => b.addEventListener('click', () => {
+      syncDraft();
+      ui.draft.entries.splice(Number(b.dataset.delEx), 1);
+      appView();
+    }));
+    const saveW = document.getElementById('save-workout');
+    if (saveW) saveW.addEventListener('click', saveWorkout);
+    document.querySelectorAll('[data-del-workout]').forEach((b) => b.addEventListener('click', async () => {
+      if (!confirm('Deze training verwijderen?')) return;
+      try {
+        await cloud.remove('client_workouts', `id=eq.${b.dataset.delWorkout}`);
+        await loadDay(); appView(); toast('Verwijderd.');
+      } catch (e) { toast('Verwijderen mislukt: ' + e.message, 4000); }
+    }));
+
+    // nutrition
+    document.querySelectorAll('[data-add-meal]').forEach((b) => b.addEventListener('click', () => {
+      ui.addMoment = b.dataset.addMeal; ui.foodResults = []; ui.foodMsg = ''; appView();
+    }));
+    const mealClose = document.getElementById('meal-close');
+    if (mealClose) mealClose.addEventListener('click', () => { ui.addMoment = null; appView(); });
+    const foodSearch = document.getElementById('food-search');
+    if (foodSearch) foodSearch.addEventListener('click', async () => {
+      const term = document.getElementById('food-q').value.trim();
+      if (!term) return;
+      ui.foodMsg = 'Zoeken…'; appView();
+      try {
+        ui.foodResults = await searchProducts(term);
+        ui.foodMsg = ui.foodResults.length ? '' : 'Niets gevonden — vul het hieronder zelf in.';
+      } catch (e) {
+        ui.foodMsg = 'Zoeken lukte niet (' + e.message + '). Vul het hieronder zelf in.';
+      }
+      appView();
+    });
+    document.querySelectorAll('[data-pick]').forEach((b) => b.addEventListener('click', () => {
+      const idx = Number(b.dataset.pick);
+      const food = (ui.foodResults || [])[idx];
+      if (!food) return;
+      const amount = num(document.querySelector(`.pick-amount[data-idx="${idx}"]`).value) || 100;
+      const factor = amount / 100;
+      addMeal({
+        name: food.name, amount,
+        kcal: Math.round(food.kcal * factor), protein: Math.round(food.protein * factor * 10) / 10,
+        carbs: Math.round(food.carbs * factor * 10) / 10, fat: Math.round(food.fat * factor * 10) / 10,
+      });
+    }));
+    const quick = document.getElementById('quick-meal');
+    if (quick) quick.addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      const f = new FormData(ev.target);
+      const name = String(f.get('name')).trim();
+      if (!name) return;
+      addMeal({ name, kcal: num(f.get('kcal')), protein: num(f.get('protein')), carbs: num(f.get('carbs')), fat: num(f.get('fat')) });
+    });
+    document.querySelectorAll('[data-del-meal]').forEach((b) => b.addEventListener('click', async () => {
+      try {
+        await cloud.remove('client_meals', `id=eq.${b.dataset.delMeal}`);
+        await loadDay(); appView();
+      } catch (e) { toast('Verwijderen mislukt: ' + e.message, 4000); }
+    }));
+    document.querySelectorAll('[data-water]').forEach((b) => b.addEventListener('click', async () => {
+      const ml = Math.max(0, ui.water + Number(b.dataset.water));
+      try {
+        await cloud.upsert('client_water', [{ client_id: cloud.userId(), date: ui.date, ml }], 'client_id,date');
+        ui.water = ml; appView();
+      } catch (e) { toast('Opslaan mislukt: ' + e.message, 4000); }
+    }));
+  }
+
+  function syncDraft() {
+    if (!ui.draft) return;
+    document.querySelectorAll('[data-set]').forEach((inp) => {
+      const [xi, si] = inp.dataset.set.split('.').map(Number);
+      ui.draft.entries[xi].sets[si][inp.dataset.f] = num(inp.value);
+    });
+    const note = document.getElementById('w-note');
+    if (note) ui.draft.notes = note.value;
+  }
+
+  async function saveWorkout() {
+    syncDraft();
+    const entries = ui.draft.entries
+      .map((e) => ({ name: e.name, kind: 'kracht', sets: e.sets.filter((s) => s.weight > 0 || s.reps > 0) }))
+      .filter((e) => e.sets.length);
+    if (!entries.length) { toast('Vul minstens één set in.'); return; }
+    try {
+      await cloud.insert('client_workouts', [{
+        client_id: cloud.userId(), date: ui.date, entries,
+        duration_min: Math.max(1, Math.round((Date.now() - ui.draft.startedAt) / 60000)),
+        notes: ui.draft.notes || '',
+      }]);
+      ui.draft = null;
+      await loadDay();
+      appView();
+      toast('Opgeslagen. Je coach ziet dit.');
+    } catch (e) {
+      toast('Opslaan mislukt: ' + e.message, 5000);
+    }
+  }
+
+  async function addMeal(meal) {
+    try {
+      await cloud.insert('client_meals', [{ client_id: cloud.userId(), date: ui.date, moment: ui.addMoment || 'Snack', ...meal }]);
+      ui.foodResults = [];
+      ui.foodMsg = `${meal.name} toegevoegd.`;
+      await loadDay();
+      appView();
+    } catch (e) {
+      toast('Opslaan mislukt: ' + e.message, 5000);
+    }
+  }
+
+  // ---------- product search ----------
+  async function searchProducts(term) {
+    const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(term)}` +
+      '&search_simple=1&action=process&json=1&page_size=12&fields=code,product_name,brands,nutriments';
+    const res = await fetch(url, { signal: AbortSignal.timeout(12000) });
+    if (!res.ok) throw new Error('status ' + res.status);
+    const data = await res.json();
+    return (data.products || []).map((p) => {
+      const n = p.nutriments || {};
+      const name = [p.product_name, p.brands ? p.brands.split(',')[0].trim() : ''].filter(Boolean).join(' — ');
+      if (!name) return null;
+      return {
+        name,
+        kcal: Math.round(n['energy-kcal_100g'] || (n.energy_100g ? n.energy_100g / 4.184 : 0)),
+        protein: Math.round((n.proteins_100g || 0) * 10) / 10,
+        carbs: Math.round((n.carbohydrates_100g || 0) * 10) / 10,
+        fat: Math.round((n.fat_100g || 0) * 10) / 10,
+      };
+    }).filter((f) => f && f.kcal > 0);
+  }
+
+  // ---------- data ----------
+  async function loadDay() {
+    const id = cloud.userId();
+    const [workouts, meals, water] = await Promise.all([
+      cloud.select('client_workouts', `client_id=eq.${id}&date=eq.${ui.date}&select=*`),
+      cloud.select('client_meals', `client_id=eq.${id}&date=eq.${ui.date}&select=*`),
+      cloud.select('client_water', `client_id=eq.${id}&date=eq.${ui.date}&select=*`),
+    ]);
+    ui.workouts = workouts;
+    ui.meals = meals;
+    ui.water = water.length ? water[0].ml : 0;
+  }
+
+  async function start() {
+    if (!cloud.configured()) { setupView(); return; }
+    cloud.captureSessionFromUrl();
+    if (!cloud.signedIn()) { loginView(); return; }
+    $app.innerHTML = '<p class="mut">Laden…</p>';
+    try {
+      const profile = await cloud.ensureProfile('client', '');
+      ui.profile = profile;
+      if (!profile.coach_id) { inviteView(); return; }
+      await loadDay();
+      appView();
+    } catch (e) {
+      $app.innerHTML = `<div class="card"><p class="sub">Verbinden mislukt: ${esc(e.message)}</p>
+        <button class="small" id="retry">Opnieuw</button> <button class="small ghost" id="out">Uitloggen</button></div>`;
+      document.getElementById('retry').addEventListener('click', start);
+      document.getElementById('out').addEventListener('click', () => { cloud.signOut(); start(); });
+    }
+  }
+
+  start();
+})();
+</script>
+</body>
+</html>

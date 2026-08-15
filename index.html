@@ -349,7 +349,7 @@
 <script>
 (() => {
   'use strict';
-  const APP_VERSION = 21; // bump when publishing; shown on the home screen
+  const APP_VERSION = 22; // bump when publishing; shown on the home screen
   const KEY = 'coachlog-v1';
   const $app = document.getElementById('app');
 
@@ -408,6 +408,111 @@
     localStorage.setItem(KEY, JSON.stringify(db));
     scheduleSync();
   }
+
+  // ---------- cloud accounts (Supabase REST, no SDK) ----------
+  const cloud = (() => {
+    const CFG_KEY = 'coachlog-cloud';
+    const SESSION_KEY = 'coachlog-session';
+    let cfg = null;
+    let session = null;
+    try { cfg = JSON.parse(localStorage.getItem(CFG_KEY) || 'null'); } catch { cfg = null; }
+    try { session = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'); } catch { session = null; }
+
+    const configured = () => !!(cfg && cfg.url && cfg.key);
+    const signedIn = () => !!(session && session.access_token);
+    const setConfig = (url, key) => {
+      cfg = { url: String(url).replace(/\/+$/, ''), key: String(key).trim() };
+      localStorage.setItem(CFG_KEY, JSON.stringify(cfg));
+    };
+    const clearConfig = () => { cfg = null; localStorage.removeItem(CFG_KEY); };
+    const setSession = (s) => {
+      session = s;
+      if (s) localStorage.setItem(SESSION_KEY, JSON.stringify(s));
+      else localStorage.removeItem(SESSION_KEY);
+    };
+
+    async function call(path, opts = {}, auth = true) {
+      if (!configured()) throw new Error('cloud niet ingesteld');
+      const headers = { apikey: cfg.key, 'Content-Type': 'application/json', ...(opts.headers || {}) };
+      if (auth && session) headers.Authorization = 'Bearer ' + session.access_token;
+      const res = await fetch(cfg.url + path, { ...opts, headers, signal: AbortSignal.timeout(15000) });
+      if (res.status === 401 && auth && session && session.refresh_token) {
+        await refresh();
+        return call(path, opts, auth);
+      }
+      const text = await res.text();
+      const body = text ? JSON.parse(text) : null;
+      if (!res.ok) throw new Error((body && (body.msg || body.message || body.error_description)) || `fout ${res.status}`);
+      return body;
+    }
+
+    async function refresh() {
+      const body = await call('/auth/v1/token?grant_type=refresh_token', {
+        method: 'POST', body: JSON.stringify({ refresh_token: session.refresh_token }),
+      }, false);
+      setSession(body);
+    }
+
+    // magic link: no passwords for clients to forget
+    async function sendLink(email, redirectTo) {
+      await call(`/auth/v1/otp?redirect_to=${encodeURIComponent(redirectTo)}`, {
+        method: 'POST', body: JSON.stringify({ email, create_user: true }),
+      }, false);
+    }
+    function captureSessionFromUrl() {
+      const hash = location.hash.startsWith('#') ? location.hash.slice(1) : '';
+      if (!hash.includes('access_token=')) return false;
+      const params = new URLSearchParams(hash);
+      setSession({
+        access_token: params.get('access_token'),
+        refresh_token: params.get('refresh_token'),
+        expires_at: Date.now() + Number(params.get('expires_in') || 3600) * 1000,
+      });
+      history.replaceState(null, '', location.pathname + location.search);
+      return true;
+    }
+    const signOut = () => setSession(null);
+    const userId = () => {
+      if (!signedIn()) return null;
+      try { return JSON.parse(atob(session.access_token.split('.')[1])).sub; } catch { return null; }
+    };
+    const userEmail = () => {
+      if (!signedIn()) return null;
+      try { return JSON.parse(atob(session.access_token.split('.')[1])).email; } catch { return null; }
+    };
+
+    const select = (table, query) => call(`/rest/v1/${table}?${query}`, { method: 'GET' });
+    const insert = (table, rows) => call(`/rest/v1/${table}`, {
+      method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify(rows),
+    });
+    const upsert = (table, rows, onConflict) => call(`/rest/v1/${table}?on_conflict=${onConflict}`, {
+      method: 'POST', headers: { Prefer: 'resolution=merge-duplicates,return=representation' }, body: JSON.stringify(rows),
+    });
+    const remove = (table, query) => call(`/rest/v1/${table}?${query}`, { method: 'DELETE' });
+    const rpc = (fn, args) => call(`/rest/v1/rpc/${fn}`, { method: 'POST', body: JSON.stringify(args || {}) });
+
+    // make sure this account has a profile row
+    async function ensureProfile(role, name) {
+      const id = userId();
+      if (!id) throw new Error('niet ingelogd');
+      const rows = await select('profiles', `id=eq.${id}&select=*`);
+      if (rows.length) {
+        if (name && rows[0].name !== name) {
+          await call(`/rest/v1/profiles?id=eq.${id}`, { method: 'PATCH', body: JSON.stringify({ name }) });
+          rows[0].name = name;
+        }
+        return rows[0];
+      }
+      const created = await insert('profiles', [{ id, role, name: name || (userEmail() || '').split('@')[0] }]);
+      return created[0];
+    }
+
+    return {
+      configured, signedIn, setConfig, clearConfig, config: () => cfg,
+      sendLink, captureSessionFromUrl, signOut, userId, userEmail,
+      select, insert, upsert, remove, rpc, ensureProfile,
+    };
+  })();
 
   // ---------- exercise registry ----------
   const EQUIPMENT = ['Onbekend', 'Barbell', 'Dumbbell', 'Machine', 'Kabel', 'Lichaamsgewicht', 'Kettlebell', 'Band', 'Cardio-apparaat'];
@@ -1887,6 +1992,7 @@
         <a class="navlink${hash.startsWith('/agenda') ? ' active' : ''}" href="#/agenda">Agenda</a>
         <a class="navlink${hash.startsWith('/zakelijk') ? ' active' : ''}" href="#/zakelijk">Tegoeden &amp; betalingen${openInvoices().length ? ` (${openInvoices().length})` : ''}</a>
         <a class="navlink${hash.startsWith('/voedingsmiddelen') ? ' active' : ''}" href="#/voedingsmiddelen">Voedingsmiddelen</a>
+        <a class="navlink${hash.startsWith('/vanklanten') ? ' active' : ''}" href="#/vanklanten">Van klanten</a>
       </details>
       <details class="navgrp" data-key="Library" ${uiState.navLibrary ? 'open' : ''}>
         <summary>Oefeningen <span class="chev">▾</span></summary>
@@ -1940,6 +2046,7 @@
     if (parts[0] === 'agenda') return viewAgenda(parts[1] || todayIso());
     if (parts[0] === 'zakelijk') return viewBusiness();
     if (parts[0] === 'voedingsmiddelen') return viewFoods();
+    if (parts[0] === 'vanklanten') return viewClientFeed(parts[1] || null);
     if (parts[0] === 'bibliotheek') return viewLibrary(parts[1] ? decodeURIComponent(parts[1]) : null);
     if (parts[0] === 'duo' && parts[2] === 'vrij') return viewDuoPick(parts[1]);
     if (parts[0] === 'duo' && parts[2] === 'sjabloon') return viewTemplatePick('duo', parts[1]);
@@ -2042,6 +2149,29 @@
            </div>`) +
       `<p class="mut" style="margin:8px 0 0">Let op: dit is een schermslot. De gegevens zelf blijven leesbaar voor wie toegang heeft tot de browseropslag van dit apparaat.</p>
       </div>
+      <div class="eyebrow">Cloud-accounts</div>
+      <div class="card" id="cloud-card">` +
+      (!cloud.configured()
+        ? `<p class="sub" style="margin:0 0 8px">Laat klanten zelf hun trainingen en voeding loggen op hun telefoon; alles komt hier binnen. Volg eerst de stappen in SUPABASE.md en plak dan de twee waarden.</p>
+           <label class="field"><span>Project-URL</span><input id="cloud-url" placeholder="https://xxxx.supabase.co"></label>
+           <label class="field"><span>Anon-sleutel</span><input id="cloud-key" placeholder="eyJhbGciOi…"></label>
+           <button class="primary" id="cloud-save">Verbinden</button>`
+        : !cloud.signedIn()
+          ? `<p class="sub" style="margin:0 0 8px">Verbonden met ${esc(cloud.config().url.replace('https://', ''))}. Log in met je e-mail; je krijgt een inloglink.</p>
+             <div class="row">
+               <input id="cloud-email" type="email" class="grow" placeholder="jij@voorbeeld.nl">
+               <button class="primary" id="cloud-login">Stuur inloglink</button>
+             </div>
+             <p class="mut" id="cloud-msg" style="margin:8px 0 0"></p>
+             <button class="small ghost" id="cloud-forget" style="margin-top:8px">Andere instellingen</button>`
+          : `<p class="sub" style="margin:0 0 8px">Ingelogd als ${esc(cloud.userEmail() || '')}.</p>
+             <div class="actions">
+               <button data-nav="/vanklanten">Van klanten ›</button>
+               <button id="invite-new">Nieuwe uitnodigingscode</button>
+               <button class="ghost" id="cloud-logout">Uitloggen</button>
+             </div>
+             <div id="invite-box"></div>`) +
+      `</div>
       <div class="eyebrow">Synchronisatie</div>
       <div class="card">` +
       (syncCfg && syncCfg.gistId
@@ -2156,6 +2286,48 @@
     });
     document.getElementById('set-sound').addEventListener('click', () => {
       db.settings.sound = !db.settings.sound; save(); if (db.settings.sound) beep(); render();
+    });
+    const cloudSave = document.getElementById('cloud-save');
+    if (cloudSave) cloudSave.addEventListener('click', () => {
+      const url = document.getElementById('cloud-url').value.trim();
+      const key = document.getElementById('cloud-key').value.trim();
+      if (!/^https:\/\/.+/.test(url) || key.length < 20) { alert('Vul een geldige project-URL en anon-sleutel in.'); return; }
+      cloud.setConfig(url, key);
+      render();
+    });
+    const cloudForget = document.getElementById('cloud-forget');
+    if (cloudForget) cloudForget.addEventListener('click', () => { cloud.clearConfig(); render(); });
+    const cloudLogin = document.getElementById('cloud-login');
+    if (cloudLogin) cloudLogin.addEventListener('click', async () => {
+      const email = document.getElementById('cloud-email').value.trim();
+      const msg = document.getElementById('cloud-msg');
+      if (!email) return;
+      cloudLogin.disabled = true;
+      msg.textContent = 'Versturen…';
+      try {
+        await cloud.sendLink(email, location.origin + location.pathname);
+        msg.textContent = 'Inloglink verstuurd. Open hem op dit apparaat.';
+      } catch (e) {
+        msg.textContent = 'Versturen mislukt: ' + e.message;
+        cloudLogin.disabled = false;
+      }
+    });
+    const cloudLogout = document.getElementById('cloud-logout');
+    if (cloudLogout) cloudLogout.addEventListener('click', () => { cloud.signOut(); render(); });
+    const inviteNew = document.getElementById('invite-new');
+    if (inviteNew) inviteNew.addEventListener('click', async () => {
+      const label = prompt('Voor welke klant is deze code?') || '';
+      const box = document.getElementById('invite-box');
+      box.innerHTML = '<p class="mut">Aanmaken…</p>';
+      try {
+        await cloud.ensureProfile('coach', db.settings.coachName || '');
+        const code = (Math.random().toString(36).slice(2, 6) + Math.random().toString(36).slice(2, 6)).toUpperCase();
+        await cloud.insert('invites', [{ code, coach_id: cloud.userId(), label: label.trim() }]);
+        box.innerHTML = `<div class="note-box" style="margin-top:10px"><strong>Code voor ${esc(label.trim() || 'nieuwe klant')}:</strong> ${esc(code)}<br>
+          Stuur samen met de link: ${esc(location.origin + location.pathname.replace(/[^/]*$/, ''))}sporter.html</div>`;
+      } catch (e) {
+        box.innerHTML = `<p class="mut">Aanmaken mislukt: ${esc(e.message)}</p>`;
+      }
     });
     const syncStatusEl = document.getElementById('sync-status');
     const connectBtn = document.getElementById('sync-connect');
@@ -3253,6 +3425,103 @@
       db.settings.countTrainingBurn = !db.settings.countTrainingBurn;
       save(); render();
     });
+  }
+
+  // --- data that clients logged themselves ---
+  function viewClientFeed(clientKey) {
+    if (!cloud.configured() || !cloud.signedIn()) {
+      $app.innerHTML = topbar('Van klanten', '/') +
+        `<div class="empty"><p>Nog niet verbonden met de cloud. Stel dat in op de startpagina.</p>
+        <button class="primary" data-nav="/">Naar instellingen</button></div>`;
+      bindNav();
+      return;
+    }
+    $app.innerHTML = topbar('Van klanten', '/') + '<p class="mut">Ophalen…</p>';
+
+    (async () => {
+      try {
+        const coachId = cloud.userId();
+        const profiles = await cloud.select('profiles', `coach_id=eq.${coachId}&select=id,name,created_at&order=name`);
+        if (!profiles.length) {
+          $app.innerHTML = topbar('Van klanten', '/') +
+            `<div class="empty"><p>Nog geen gekoppelde klanten. Maak een uitnodigingscode aan op de startpagina en stuur je klant de link naar de sporter-app.</p></div>`;
+          bindNav();
+          return;
+        }
+        const active = profiles.find((p) => p.id === clientKey) || profiles[0];
+        const since = addDays(todayIso(), -30);
+        const [workouts, meals, water] = await Promise.all([
+          cloud.select('client_workouts', `client_id=eq.${active.id}&date=gte.${since}&select=*&order=date.desc`),
+          cloud.select('client_meals', `client_id=eq.${active.id}&date=gte.${since}&select=*&order=date.desc`),
+          cloud.select('client_water', `client_id=eq.${active.id}&date=gte.${since}&select=*&order=date.desc`),
+        ]);
+        const byDate = new Map();
+        for (const w of workouts) {
+          const d = byDate.get(w.date) || { date: w.date, workouts: [], meals: [], water: 0 };
+          d.workouts.push(w); byDate.set(w.date, d);
+        }
+        for (const m of meals) {
+          const d = byDate.get(m.date) || { date: m.date, workouts: [], meals: [], water: 0 };
+          d.meals.push(m); byDate.set(m.date, d);
+        }
+        for (const w of water) {
+          const d = byDate.get(w.date) || { date: w.date, workouts: [], meals: [], water: 0 };
+          d.water = w.ml; byDate.set(w.date, d);
+        }
+        const days = [...byDate.values()].sort((a, b) => b.date.localeCompare(a.date));
+        const localClient = db.clients.find((c) => c.name.toLowerCase() === (active.name || '').toLowerCase());
+
+        $app.innerHTML = topbar('Van klanten', '/') +
+          `<div class="chips" style="margin-bottom:12px">${profiles.map((p) =>
+            `<button class="chip" data-feed-client="${p.id}" aria-pressed="${p.id === active.id}">${esc(p.name || 'naamloos')}</button>`).join('')}</div>` +
+          `<p class="sub" style="margin:0 0 12px">Laatste 30 dagen van ${esc(active.name || 'deze klant')}.${localClient ? '' : ' <span class="mut">Nog geen klant met deze naam in je eigen administratie.</span>'}</p>` +
+          (days.length ? days.map((d) => {
+            const kcal = d.meals.reduce((t, m) => t + Number(m.kcal || 0), 0);
+            const protein = d.meals.reduce((t, m) => t + Number(m.protein || 0), 0);
+            return `<div class="card">
+              <div class="row"><div class="grow"><div class="title">${esc(fmtDateFull(d.date))}</div></div>
+                ${d.workouts.length && localClient ? `<button class="small" data-import="${d.date}">Neem training over</button>` : ''}</div>
+              ${d.workouts.map((w) => `<div class="sub">🏋️ ${w.entries.map((e) => esc(e.name)).join(' · ') || 'training'}${w.duration_min ? ` <span class="mut">${w.duration_min} min</span>` : ''}</div>`).join('')}
+              ${d.meals.length ? `<div class="sub">🍽️ ${Math.round(kcal)} kcal · ${Math.round(protein)} g eiwit <span class="mut">(${d.meals.length} items)</span></div>` : ''}
+              ${d.water ? `<div class="sub">💧 ${(d.water / 1000).toLocaleString('nl-NL')} l</div>` : ''}
+              ${d.meals.length ? `<div class="mut">${d.meals.map((m) => esc(m.name)).join(', ')}</div>` : ''}
+            </div>`;
+          }).join('') : '<p class="mut">Deze klant heeft nog niets gelogd.</p>');
+
+        bindNav();
+        document.querySelectorAll('[data-feed-client]').forEach((b) => b.addEventListener('click', () => {
+          location.hash = `/vanklanten/${b.dataset.feedClient}`;
+        }));
+        document.querySelectorAll('[data-import]').forEach((b) => b.addEventListener('click', () => {
+          const day = byDate.get(b.dataset.import);
+          if (!day || !localClient) return;
+          let added = 0;
+          for (const w of day.workouts) {
+            const entries = (w.entries || [])
+              .map((e) => ({
+                name: e.name, exerciseId: ensureExercise(e.name, e.kind || 'kracht').id,
+                kind: e.kind || 'kracht', superset: null,
+                sets: (e.sets || []).filter((x) => filledSet(x, e.kind || 'kracht')),
+              }))
+              .filter((e) => e.sets.length);
+            if (!entries.length) continue;
+            if (db.workouts.some((x) => x.clientId === localClient.id && x.date === w.date && x.fromCloudId === w.id)) continue;
+            db.workouts.push({
+              id: uid(), clientId: localClient.id, schemaId: null, date: w.date,
+              notes: w.notes || '', durationMin: w.duration_min || undefined,
+              fromCloudId: w.id, coach: 'klant zelf', entries,
+            });
+            added++;
+          }
+          save();
+          alert(added ? `${added} training${added === 1 ? '' : 'en'} overgenomen in ${localClient.name}.` : 'Deze training stond er al in.');
+          render();
+        }));
+      } catch (e) {
+        $app.innerHTML = topbar('Van klanten', '/') + `<p class="mut">Ophalen mislukt: ${esc(e.message)}</p>`;
+        bindNav();
+      }
+    })();
   }
 
   // --- food registry ---
@@ -4828,6 +5097,7 @@
   // persist a one-off migration (e.g. the exercise registry) so it survives a reload
   if (db._needsSave) { delete db._needsSave; save(); }
 
+  if (cloud.configured()) cloud.captureSessionFromUrl();
   applyTheme();
   watchIdleLock();
   bindTimerBar();
