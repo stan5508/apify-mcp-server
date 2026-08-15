@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="theme-color" content="#2a78d6">
+<meta name="theme-color" content="#0b0d0f">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-180.png">
 <link rel="apple-touch-icon" href="icon-180.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Coachlog">
 <title>Coachlog — schema's & progressie</title>
 </head>
@@ -16,85 +16,102 @@
 <!-- APP START -->
 <style>
   :root {
-    --page: #f9f9f7;
-    --surface: #fcfcfb;
-    --ink: #0b0b0b;
-    --ink-2: #52514e;
-    --muted: #898781;
-    --grid: #e1e0d9;
-    --baseline: #c3c2b7;
-    --border: rgba(11, 11, 11, 0.10);
-    --accent: #2a78d6;
-    --accent-strong: #1c5cab;
-    --wash: rgba(42, 120, 214, 0.10);
-    --good: #006300;
-    --danger: #d03b3b;
-    --shadow: 0 1px 2px rgba(11, 11, 11, 0.06);
-    --series-1: #2a78d6;
-    --series-2: #1baf7a;
-    --series-3: #eda100;
-    --series-4: #4a3aa7;
+    --page: #f2f2f0;
+    --surface: #ffffff;
+    --raised: #ececeb;
+    --ink: #16181a;
+    --ink-2: #4d545c;
+    --muted: #666d76;
+    --grid: #e0e0dd;
+    --baseline: #c2c2be;
+    --border: rgba(22, 24, 26, 0.12);
+    --accent: #e39418;
+    --accent-strong: #8a5200;
+    --on-accent: #17130a;
+    --wash: rgba(227, 148, 24, 0.16);
+    --good: #0f7b4f;
+    --danger: #c0392b;
+    --shadow: 0 1px 2px rgba(22, 24, 26, 0.07);
+    --data: #c8102e;
+    --data-wash: rgba(200, 16, 46, 0.12);
+    --series-1: #c8102e;
+    --series-2: #0057b8;
+    --series-3: #a87c00;
+    --series-4: #007a2f;
   }
   @media (prefers-color-scheme: dark) {
-    :root {
-      --page: #0d0d0d;
-      --surface: #1a1a19;
-      --ink: #ffffff;
-      --ink-2: #c3c2b7;
-      --muted: #898781;
-      --grid: #2c2c2a;
-      --baseline: #383835;
-      --border: rgba(255, 255, 255, 0.10);
-      --accent: #3987e5;
-      --accent-strong: #6da7ec;
-      --wash: rgba(57, 135, 229, 0.12);
-      --good: #0ca30c;
+    :root:not([data-theme="light"]) {
+      --page: #0b0d0f;
+      --surface: #15181c;
+      --raised: #22272f;
+      --ink: #f5f7f8;
+      --ink-2: #96a0ac;
+      --muted: #8a939f;
+      --grid: #262b33;
+      --baseline: #39414c;
+      --border: rgba(255, 255, 255, 0.11);
+      --accent: #f2a93b;
+      --accent-strong: #ffc163;
+      --on-accent: #0b0d0f;
+      --wash: rgba(242, 169, 59, 0.14);
+      --good: #3f9e6c;
+      --danger: #e5645c;
       --shadow: none;
-      --series-1: #3987e5;
-      --series-2: #199e70;
-      --series-3: #c98500;
-      --series-4: #9085e9;
+      --data: #e8384f;
+      --data-wash: rgba(232, 56, 79, 0.16);
+      --series-1: #e8384f;
+      --series-2: #3d8bff;
+      --series-3: #f2c200;
+      --series-4: #2fbf62;
     }
   }
   :root[data-theme="light"] {
-    --page: #f9f9f7;
-    --surface: #fcfcfb;
-    --ink: #0b0b0b;
-    --ink-2: #52514e;
-    --muted: #898781;
-    --grid: #e1e0d9;
-    --baseline: #c3c2b7;
-    --border: rgba(11, 11, 11, 0.10);
-    --accent: #2a78d6;
-    --accent-strong: #1c5cab;
-    --wash: rgba(42, 120, 214, 0.10);
-    --good: #006300;
-    --danger: #d03b3b;
-    --shadow: 0 1px 2px rgba(11, 11, 11, 0.06);
-    --series-1: #2a78d6;
-    --series-2: #1baf7a;
-    --series-3: #eda100;
-    --series-4: #4a3aa7;
+    --page: #f2f2f0;
+    --surface: #ffffff;
+    --raised: #ececeb;
+    --ink: #16181a;
+    --ink-2: #4d545c;
+    --muted: #666d76;
+    --grid: #e0e0dd;
+    --baseline: #c2c2be;
+    --border: rgba(22, 24, 26, 0.12);
+    --accent: #e39418;
+    --accent-strong: #8a5200;
+    --on-accent: #17130a;
+    --wash: rgba(227, 148, 24, 0.16);
+    --good: #0f7b4f;
+    --danger: #c0392b;
+    --shadow: 0 1px 2px rgba(22, 24, 26, 0.07);
+    --data: #c8102e;
+    --data-wash: rgba(200, 16, 46, 0.12);
+    --series-1: #c8102e;
+    --series-2: #0057b8;
+    --series-3: #a87c00;
+    --series-4: #007a2f;
   }
   :root[data-theme="dark"] {
-    --page: #0d0d0d;
-    --surface: #1a1a19;
-    --ink: #ffffff;
-    --ink-2: #c3c2b7;
-    --muted: #898781;
-    --grid: #2c2c2a;
-    --baseline: #383835;
-    --border: rgba(255, 255, 255, 0.10);
-    --accent: #3987e5;
-    --accent-strong: #6da7ec;
-    --wash: rgba(57, 135, 229, 0.12);
-    --good: #0ca30c;
-    --danger: #d03b3b;
+    --page: #0b0d0f;
+    --surface: #15181c;
+    --raised: #22272f;
+    --ink: #f5f7f8;
+    --ink-2: #96a0ac;
+    --muted: #8a939f;
+    --grid: #262b33;
+    --baseline: #39414c;
+    --border: rgba(255, 255, 255, 0.11);
+    --accent: #f2a93b;
+    --accent-strong: #ffc163;
+    --on-accent: #0b0d0f;
+    --wash: rgba(242, 169, 59, 0.14);
+    --good: #3f9e6c;
+    --danger: #e5645c;
     --shadow: none;
-    --series-1: #3987e5;
-    --series-2: #199e70;
-    --series-3: #c98500;
-    --series-4: #9085e9;
+    --data: #e8384f;
+    --data-wash: rgba(232, 56, 79, 0.16);
+    --series-1: #e8384f;
+    --series-2: #3d8bff;
+    --series-3: #f2c200;
+    --series-4: #2fbf62;
   }
 
   * { box-sizing: border-box; }
@@ -184,7 +201,7 @@
   button:focus-visible, input:focus-visible, select:focus-visible {
     outline: 2px solid var(--accent); outline-offset: 1px;
   }
-  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
   button.primary:hover { background: var(--accent-strong); border-color: var(--accent-strong); }
   button.ghost { background: transparent; }
   button.danger { color: var(--danger); }
@@ -281,7 +298,9 @@
 
   .bar-row { display: grid; grid-template-columns: 110px 1fr 78px; gap: 10px; align-items: center; margin-bottom: 8px; font-size: 14px; }
   .bar-row .track { display: block; background: var(--grid); border-radius: 4px; height: 14px; overflow: hidden; }
-  .bar-row .fill { display: block; background: var(--accent); height: 100%; border-radius: 4px; min-width: 2px; }
+  .bar-row .fill { display: block; background: var(--data); height: 100%; border-radius: 4px; min-width: 2px; }
+  .plate { display: inline-block; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 999px;
+    border: 1px solid rgba(11, 13, 15, 0.22); font-variant-numeric: tabular-nums; }
   .bar-row .val { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink-2); }
 
   @media print {
@@ -349,7 +368,7 @@
 <script>
 (() => {
   'use strict';
-  const APP_VERSION = 25; // bump when publishing; shown on the home screen
+  const APP_VERSION = 26; // bump when publishing; shown on the home screen
   const KEY = 'coachlog-v1';
   const $app = document.getElementById('app');
 
@@ -363,9 +382,9 @@
   function loadDb() {
     try {
       const raw = localStorage.getItem(KEY);
-      if (!raw) return emptyDb();
+      if (!raw) return normalizeDb(emptyDb());
       return normalizeDb(JSON.parse(raw));
-    } catch { return emptyDb(); }
+    } catch { return normalizeDb(emptyDb()); }
   }
   function normalizeDb(d) {
     const out = {
@@ -375,7 +394,7 @@
       appointments: d.appointments || [], packages: d.packages || [],
       nutritionPlans: d.nutritionPlans || {}, meals: d.meals || [], foods: d.foods || [], water: d.water || {},
       muscleGroups: d.muscleGroups || {},
-      settings: { unit: 'kg', restSeconds: 90, autoRest: true, sound: true, barWeight: 20, noShowCounts: true, currency: '€', theme: 'system', pin: null, lockMinutes: 15, coachName: '', lastBackupAt: null,
+      settings: { unit: 'kg', restSeconds: 90, autoRest: true, sound: true, barWeight: 20, noShowCounts: true, currency: '€', theme: 'dark', pin: null, lockMinutes: 15, coachName: '', lastBackupAt: null,
         countTrainingBurn: true, kcalPerMin: 6, waterTargetMl: 2000, ...(d.settings || {}) },
       updatedAt: d.updatedAt || 0,
     };
@@ -388,6 +407,12 @@
       c.goals = c.goals || [];
       c.photos = c.photos || [];
       c.archived = !!c.archived;
+    }
+    // dark is the standard now; switch existing installs over once
+    if (out.settings.theme === 'system' && !out.settings.themePicked) {
+      out.settings.theme = 'dark';
+      out.settings.themePicked = true;
+      out._needsSave = true;
     }
     // build the exercise registry from whatever names already exist
     const before = out.exercises.length;
@@ -1505,6 +1530,7 @@
   const inPeriod = (iso, period) => { const s = periodStart(period); return !s || iso >= s; };
 
   const MUSCLE_GROUPS = ['Borst', 'Rug', 'Benen', 'Schouders', 'Armen', 'Core', 'Cardio', 'Overig'];
+  const groupColor = (group) => `var(--series-${(Math.max(0, MUSCLE_GROUPS.indexOf(group)) % 4) + 1})`;
   const groupKey = (name) => name.trim().toLowerCase();
   const groupOf = (name, kind) => {
     const rec = exerciseByName(name);
@@ -1719,15 +1745,23 @@
     }
     return { ok: true, plates: out, rest: Math.round(perSide * 100) / 100 };
   }
-  function plateText(total) {
+  const PLATE_COLORS = {
+    25: ['#c8102e', '#ffffff'], 20: ['#0057b8', '#ffffff'], 15: ['#f2c200', '#17130a'],
+    10: ['#009639', '#17130a'], 5: ['#f2f2f0', '#17130a'], 2.5: ['#c8102e', '#ffffff'], 1.25: ['#a8adb4', '#17130a'],
+  };
+  function plateHtml(total) {
     const bar = db.settings.barWeight || 20;
     const r = platesFor(total, bar);
     if (!total) return 'Vul een gewicht in.';
-    if (!r.ok) return `${fmtKg(total)} is lichter dan de stang (${fmtKg(bar)}).`;
-    if (!r.plates.length) return `Alleen de stang (${fmtKg(bar)}).`;
+    if (!r.ok) return `${esc(fmtKg(total))} is lichter dan de stang (${esc(fmtKg(bar))}).`;
+    if (!r.plates.length) return `Alleen de stang (${esc(fmtKg(bar))}).`;
     const fmtP = (v) => v.toLocaleString('nl-NL', { maximumFractionDigits: 2 });
-    return `Per kant: ${r.plates.map((p) => `${p.n}×${fmtP(p.plate)}`).join(' + ')}` +
-      (r.rest > 0 ? ` (${fmtP(r.rest)} ${unitLbl()} rest)` : '');
+    const pill = (pl) => {
+      const [bg, fg] = PLATE_COLORS[pl.plate] || ['var(--raised)', 'var(--ink)'];
+      return `<span class="plate" style="background:${bg};color:${fg}">${pl.n}×${fmtP(pl.plate)}</span>`;
+    };
+    return `Per kant: ${r.plates.map(pill).join(' ')}` +
+      (r.rest > 0 ? ` <span class="mut">(${fmtP(r.rest)} ${esc(unitLbl())} rest)</span>` : '');
   }
 
   // ---------- session tools panel (plates + interval timer) ----------
@@ -1742,7 +1776,7 @@
           <label class="field" style="margin:0;width:120px"><span>Stang (${unitLbl()})</span>
             <input id="bar-weight" type="text" inputmode="decimal" value="${db.settings.barWeight}"></label>
         </div>
-        <div class="tool-out" id="plate-out">${esc(plateText(plateWeight))}</div>
+        <div class="tool-out" id="plate-out">${plateHtml(plateWeight)}</div>
       </div>`;
     }
     if (tool === 'interval') {
@@ -1771,7 +1805,7 @@
       plateWeight = num(pw.value);
       const bar = num(bw.value);
       if (bar > 0 && bar !== db.settings.barWeight) { db.settings.barWeight = bar; save(); }
-      out.textContent = plateText(plateWeight);
+      out.innerHTML = plateHtml(plateWeight);
     };
     if (pw && bw && out) { pw.addEventListener('input', recalc); bw.addEventListener('input', recalc); }
 
@@ -1828,7 +1862,7 @@
     ).join('');
 
     const dots = points.map((p, i) =>
-      `<circle cx="${x(i)}" cy="${y(p.value)}" r="4" fill="var(--accent)" stroke="var(--surface)" stroke-width="2"/>`
+      `<circle cx="${x(i)}" cy="${y(p.value)}" r="4" fill="var(--data)" stroke="var(--surface)" stroke-width="2"/>`
     ).join('');
 
     const last = points[points.length - 1];
@@ -1838,8 +1872,8 @@
       `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Progressiegrafiek">` +
       grid +
       `<line x1="${padL}" y1="${padT + ih}" x2="${W - padR}" y2="${padT + ih}" stroke="var(--baseline)" stroke-width="1"/>` +
-      (areaD ? `<path d="${areaD}" fill="var(--wash)"/>` : '') +
-      (points.length > 1 ? `<path d="${lineD}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>` : '') +
+      (areaD ? `<path d="${areaD}" fill="var(--data-wash)"/>` : '') +
+      (points.length > 1 ? `<path d="${lineD}" fill="none" stroke="var(--data)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>` : '') +
       `<line class="xh" x1="0" y1="${padT}" x2="0" y2="${padT + ih}" stroke="var(--baseline)" stroke-width="1" visibility="hidden"/>` +
       dots + endLabel + xLabels +
       `</svg><div class="tooltip"></div>`;
@@ -1928,7 +1962,7 @@
     const bars = points.map((p, i) => {
       const x0 = bx(i), yv = y(p.value), h = padT + ih - yv;
       const r = Math.min(4, bw / 2, h);
-      return `<path d="M${x0.toFixed(1)},${padT + ih} L${x0.toFixed(1)},${(yv + r).toFixed(1)} Q${x0.toFixed(1)},${yv.toFixed(1)} ${(x0 + r).toFixed(1)},${yv.toFixed(1)} L${(x0 + bw - r).toFixed(1)},${yv.toFixed(1)} Q${(x0 + bw).toFixed(1)},${yv.toFixed(1)} ${(x0 + bw).toFixed(1)},${(yv + r).toFixed(1)} L${(x0 + bw).toFixed(1)},${padT + ih} Z" fill="var(--accent)"/>`;
+      return `<path d="M${x0.toFixed(1)},${padT + ih} L${x0.toFixed(1)},${(yv + r).toFixed(1)} Q${x0.toFixed(1)},${yv.toFixed(1)} ${(x0 + r).toFixed(1)},${yv.toFixed(1)} L${(x0 + bw - r).toFixed(1)},${yv.toFixed(1)} Q${(x0 + bw).toFixed(1)},${yv.toFixed(1)} ${(x0 + bw).toFixed(1)},${(yv + r).toFixed(1)} L${(x0 + bw).toFixed(1)},${padT + ih} Z" fill="var(--data)"/>`;
     }).join('');
 
     const xLabels =
@@ -2276,7 +2310,7 @@
       db.settings.autoRest = !db.settings.autoRest; save(); render();
     });
     ['system', 'light', 'dark'].forEach((t) => document.getElementById('theme-' + t).addEventListener('click', () => {
-      db.settings.theme = t; save(); applyTheme(); render();
+      db.settings.theme = t; db.settings.themePicked = true; save(); applyTheme(); render();
     }));
     document.getElementById('coach-name').addEventListener('change', (ev) => {
       db.settings.coachName = ev.target.value.trim(); save();
@@ -3672,14 +3706,14 @@
       <div class="card">
         <div class="cal">${['m', 'd', 'w', 'd', 'v', 'z', 'z'].map((d) => `<div class="head">${d}</div>`).join('')}
         ${days.map((d) => `<div class="${d.on ? 'on' : ''}" title="${d.iso}"></div>`).join('')}</div>
-        <p class="mut" style="margin:10px 0 0">Elke stip is een dag; blauw = getraind.</p>
+        <p class="mut" style="margin:10px 0 0">Elke stip is een dag; gekleurd = getraind.</p>
       </div>` +
 
       `<div class="eyebrow">Spiergroepen</div>
       <div class="card">
         ${groups.length ? groups.map((g) => `<div class="bar-row">
           <span>${esc(g.group)}</span>
-          <span class="track"><span class="fill" style="width:${barPct(g)}%"></span></span>
+          <span class="track"><span class="fill" style="width:${barPct(g)}%;background:${groupColor(g.group)}"></span></span>
           <span class="val">${g.volume ? esc(fmtKg(g.volume)) : g.minutes ? fmtNum(g.minutes) + ' min' : g.sets + ' sets'}</span>
         </div>`).join('') : '<p class="mut">Nog geen gegevens.</p>'}
         <p class="mut" style="margin:10px 0 0">Stel de spiergroep per oefening in op de oefeningpagina.</p>
