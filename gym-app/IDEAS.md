@@ -111,12 +111,18 @@ Gekozen: **donker als standaard** (richting B) met de **schijfkleuren** als cate
 voor spiergroepen, grafieklijnen en de schijvenrekenmachine. Basis `#0B0D0F` / `#15181C`,
 accent amber `#F2A93B`, tekst `#F5F7F8`.
 
-Volgorde: pagina-indeling (gebouwd) → kleur → oefeningplaatjes → tabbalk op de telefoon →
-logo → kleine dingen (lege schermen, `tabular-nums`, trilling, 48 px raakvlakken,
-klantfoto in de zijbalk, PWA-startscherm).
+Volgorde: pagina-indeling (gebouwd) → kleur (gebouwd) → oefeningplaatjes (gebouwd) →
+tabbalk op de telefoon → logo → kleine dingen (lege schermen, `tabular-nums`, trilling,
+48 px raakvlakken, klantfoto in de zijbalk, PWA-startscherm).
 
-Oefeningplaatjes: Free Exercise DB (publiek domein, ~800 oefeningen met foto's) en wger
-voor de Nederlandse uitleg. ExerciseDB/GymVisual-GIF's zijn commercieel — niet gebruiken.
+Oefeningplaatjes komen uit **Free Exercise DB** (publiek domein). `oefeningen.json` is de
+uitgedunde catalogus (873 oefeningen, 106 kB) en wordt meegeleverd; de foto's zelf staan op
+`raw.githubusercontent.com` en worden pas opgehaald als je ze bekijkt. De service worker
+bewaart elke opgehaalde foto in een aparte cache (`coachlog-photos`), dus na één keer
+bekijken werken ze offline. Koppelen gaat handmatig via de bibliotheek — automatisch matchen
+op naam is te onbetrouwbaar, wel wordt de naam als zoekterm voorgesteld en worden gangbare
+Nederlandse termen vertaald. ExerciseDB/GymVisual-GIF's zijn commercieel — niet gebruiken.
+wger blijft de kandidaat voor Nederlandse uitleg.
 
 ## Aanbevolen volgorde (advies, niet vastgelegd)
 
