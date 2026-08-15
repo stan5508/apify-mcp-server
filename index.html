@@ -349,7 +349,7 @@
 <script>
 (() => {
   'use strict';
-  const APP_VERSION = 22; // bump when publishing; shown on the home screen
+  const APP_VERSION = 23; // bump when publishing; shown on the home screen
   const KEY = 'coachlog-v1';
   const $app = document.getElementById('app');
 
@@ -1993,6 +1993,7 @@
         <a class="navlink${hash.startsWith('/zakelijk') ? ' active' : ''}" href="#/zakelijk">Tegoeden &amp; betalingen${openInvoices().length ? ` (${openInvoices().length})` : ''}</a>
         <a class="navlink${hash.startsWith('/voedingsmiddelen') ? ' active' : ''}" href="#/voedingsmiddelen">Voedingsmiddelen</a>
         <a class="navlink${hash.startsWith('/vanklanten') ? ' active' : ''}" href="#/vanklanten">Van klanten</a>
+        <a class="navlink${hash.startsWith('/cloud') ? ' active' : ''}" href="#/cloud">Cloud-accounts</a>
       </details>
       <details class="navgrp" data-key="Library" ${uiState.navLibrary ? 'open' : ''}>
         <summary>Oefeningen <span class="chev">▾</span></summary>
@@ -2047,6 +2048,7 @@
     if (parts[0] === 'zakelijk') return viewBusiness();
     if (parts[0] === 'voedingsmiddelen') return viewFoods();
     if (parts[0] === 'vanklanten') return viewClientFeed(parts[1] || null);
+    if (parts[0] === 'cloud') return viewHome('cloud-card');
     if (parts[0] === 'bibliotheek') return viewLibrary(parts[1] ? decodeURIComponent(parts[1]) : null);
     if (parts[0] === 'duo' && parts[2] === 'vrij') return viewDuoPick(parts[1]);
     if (parts[0] === 'duo' && parts[2] === 'sjabloon') return viewTemplatePick('duo', parts[1]);
@@ -2064,7 +2066,7 @@
   }
 
   // --- home: client list ---
-  function viewHome() {
+  function viewHome(scrollToId) {
     const clients = sortedClients().filter((c) => !c.archived);
     const archivedCount = db.clients.length - clients.length;
     const lowCredit = clients.map((c) => ({ c, l: creditLedger(c.id) })).filter((x) => x.l && x.l.low);
@@ -2203,6 +2205,7 @@
       <p class="mut" style="margin-top:16px">Coachlog versie ${APP_VERSION}</p>`;
 
     bindNav();
+    if (scrollToId) document.getElementById(scrollToId)?.scrollIntoView({ block: 'center' });
     document.getElementById('add-client').addEventListener('submit', (ev) => {
       ev.preventDefault();
       const f = new FormData(ev.target);
