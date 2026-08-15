@@ -145,6 +145,8 @@ Ga in Supabase naar **Project Settings → API** en kopieer:
 - **Project URL** (bijv. `https://abcdefgh.supabase.co`)
 - **anon public** sleutel (een lange tekst)
 
+Staat er `/rest/v1` achter de URL, dan is dat geen probleem: de app haalt dat er zelf af.
+
 Open in Coachlog de zijbalk → **Planning → Cloud-accounts** (of ga naar
 `https://stan5508.github.io/apify-mcp-server/#/cloud`). Hetzelfde blok staat ook op de
 startpagina, onder "Toegang". Plak beide waarden en klik **Verbinden**.
