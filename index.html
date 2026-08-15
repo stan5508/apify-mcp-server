@@ -245,6 +245,11 @@
     box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.18);
   }
   #timer-bar[hidden] { display: none; }
+  #lock-screen { position: fixed; inset: 0; z-index: 50; background: var(--page); display: flex; align-items: center; justify-content: center; padding: 24px; }
+  #lock-screen[hidden] { display: none; }
+  .lock-box { width: 100%; max-width: 280px; text-align: center; }
+  .lock-box .brand { font-size: 15px; margin-bottom: 12px; }
+  .lock-box input { text-align: center; font-size: 22px; letter-spacing: 0.3em; margin-bottom: 10px; }
   body.timer-on #app { padding-bottom: 160px; }
   #timer-bar .t-label { flex: 1; min-width: 0; font-size: 14px; }
   #timer-bar .t-time { font-size: 22px; font-weight: 650; font-variant-numeric: tabular-nums; }
@@ -332,6 +337,7 @@
   <aside id="side"></aside>
   <main id="app"></main>
 </div>
+<div id="lock-screen" hidden></div>
 <div id="timer-bar" hidden>
   <span class="t-label"></span>
   <span class="t-time"></span>
@@ -343,7 +349,7 @@
 <script>
 (() => {
   'use strict';
-  const APP_VERSION = 19; // bump when publishing; shown on the home screen
+  const APP_VERSION = 20; // bump when publishing; shown on the home screen
   const KEY = 'coachlog-v1';
   const $app = document.getElementById('app');
 
@@ -366,7 +372,7 @@
       duoSchemas: d.duoSchemas || [], templates: d.templates || [], measurements: d.measurements || [],
       exercises: d.exercises || [], clientNotes: d.clientNotes || {},
       appointments: d.appointments || [], packages: d.packages || [], muscleGroups: d.muscleGroups || {},
-      settings: { unit: 'kg', restSeconds: 90, autoRest: true, sound: true, barWeight: 20, noShowCounts: true, currency: '€', ...(d.settings || {}) },
+      settings: { unit: 'kg', restSeconds: 90, autoRest: true, sound: true, barWeight: 20, noShowCounts: true, currency: '€', theme: 'system', pin: null, lockMinutes: 15, coachName: '', lastBackupAt: null, ...(d.settings || {}) },
       updatedAt: d.updatedAt || 0,
     };
     for (const c of out.clients) {
@@ -690,7 +696,16 @@
           if (el0) el0.textContent = syncStatus;
           return;
         }
-        await gh('/gists/' + syncCfg.gistId, { method: 'PATCH', body: JSON.stringify({ files: { 'coachlog.json': { content: payload } } }) });
+        const files = { 'coachlog.json': { content: payload } };
+        const today = todayIso();
+        if (db.settings.lastBackupAt !== today) {
+          files[`backup-${today}.json`] = { content: payload };
+          const old = Object.keys(g.files || {}).filter((n) => n.startsWith('backup-')).sort();
+          for (const name of old.slice(0, Math.max(0, old.length - 6))) files[name] = null;
+          db.settings.lastBackupAt = today;
+          localStorage.setItem(KEY, JSON.stringify(db));
+        }
+        await gh('/gists/' + syncCfg.gistId, { method: 'PATCH', body: JSON.stringify({ files }) });
         syncStatus = 'opgeslagen naar cloud · ' + syncTime();
       } else {
         syncStatus = 'up-to-date · ' + syncTime();
@@ -1028,6 +1043,127 @@
     });
   }
   const dbSizeKb = () => Math.round(JSON.stringify(db).length / 1024);
+
+  // ---------- backups and sharing ----------
+  async function listBackups() {
+    if (!syncCfg || !syncCfg.gistId) return [];
+    const g = await gh('/gists/' + syncCfg.gistId);
+    return Object.keys(g.files || {}).filter((n) => n.startsWith('backup-')).sort().reverse();
+  }
+  async function restoreBackup(name) {
+    const g = await gh('/gists/' + syncCfg.gistId);
+    const file = g.files[name];
+    const content = file.truncated ? await (await fetch(file.raw_url)).text() : file.content;
+    db = normalizeDb(JSON.parse(content));
+    delete db._needsSave;
+    save();
+    render();
+  }
+
+  // a read-only snapshot for one client, published as a secret gist
+  function clientSnapshot(clientId) {
+    const c = clientById(clientId);
+    const exercises = loggedExercises(clientId).map((name) => {
+      const ss = exerciseSessions(clientId, name);
+      const kind = ss[ss.length - 1].kind || 'kracht';
+      return {
+        name, kind,
+        sessions: ss.map((x) => ({ date: x.date, top: x.top, volume: x.volume, sets: x.sets })),
+      };
+    });
+    return {
+      version: 1, generated: todayIso(), unit: unitLbl(), coach: db.settings.coachName || '',
+      client: { name: c.name, goal: c.goal || '' },
+      goals: (c.goals || []).map((g) => ({ text: g.text, exercise: g.exercise, target: g.target, date: g.date, done: g.done })),
+      measurements: db.measurements.filter((m) => m.clientId === clientId),
+      workouts: workoutsOf(clientId).map((w) => ({ date: w.date, durationMin: w.durationMin, entries: w.entries })),
+      exercises,
+    };
+  }
+  async function shareClient(clientId) {
+    const c = clientById(clientId);
+    const content = JSON.stringify(clientSnapshot(clientId));
+    if (c.shareGistId) {
+      await gh('/gists/' + c.shareGistId, { method: 'PATCH', body: JSON.stringify({ files: { 'client.json': { content } } }) });
+    } else {
+      const g = await gh('/gists', {
+        method: 'POST',
+        body: JSON.stringify({ description: `Coachlog inzage — ${c.name}`, public: false, files: { 'client.json': { content } } }),
+      });
+      c.shareGistId = g.id;
+    }
+    c.sharedAt = todayIso();
+    save();
+    return shareLink(c);
+  }
+  const shareLink = (c) => `${location.origin}${location.pathname.replace(/[^/]*$/, '')}klant.html#${c.shareGistId}`;
+  async function stopSharing(clientId) {
+    const c = clientById(clientId);
+    if (!c.shareGistId) return;
+    try { await gh('/gists/' + c.shareGistId, { method: 'DELETE' }); } catch { /* already gone */ }
+    delete c.shareGistId;
+    delete c.sharedAt;
+    save();
+  }
+
+  // ---------- theme ----------
+  function applyTheme() {
+    const t = db.settings.theme || 'system';
+    if (t === 'system') document.documentElement.removeAttribute('data-theme');
+    else document.documentElement.setAttribute('data-theme', t);
+  }
+
+  // ---------- screen lock ----------
+  // A PIN keeps the app closed to whoever picks up the tablet. It is a screen
+  // lock, not encryption: the data itself stays readable in browser storage.
+  async function hashPin(pin, salt) {
+    const buf = new TextEncoder().encode(salt + ':' + pin);
+    const digest = await crypto.subtle.digest('SHA-256', buf);
+    return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+  }
+  let unlocked = false;
+  let hiddenSince = null;
+  const lockNeeded = () => !!(db.settings.pin && !unlocked);
+
+  function showLock() {
+    const el = document.getElementById('lock-screen');
+    el.hidden = false;
+    el.innerHTML = `<div class="lock-box">
+      <div class="brand">Coachlog</div>
+      <p class="sub">Voer je pincode in.</p>
+      <input id="lock-pin" type="password" inputmode="numeric" autocomplete="off" placeholder="••••" maxlength="12">
+      <p class="mut" id="lock-msg"></p>
+      <button class="primary wide" id="lock-ok">Ontgrendelen</button>
+    </div>`;
+    const input = document.getElementById('lock-pin');
+    input.focus();
+    const tryUnlock = async () => {
+      const ok = await hashPin(input.value, db.settings.pin.salt) === db.settings.pin.hash;
+      if (ok) {
+        unlocked = true;
+        el.hidden = true;
+        render();
+      } else {
+        document.getElementById('lock-msg').textContent = 'Onjuiste pincode.';
+        input.value = '';
+        input.focus();
+      }
+    };
+    document.getElementById('lock-ok').addEventListener('click', tryUnlock);
+    input.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') tryUnlock(); });
+  }
+
+  function watchIdleLock() {
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) { hiddenSince = Date.now(); return; }
+      const mins = db.settings.lockMinutes || 0;
+      if (db.settings.pin && mins > 0 && hiddenSince && Date.now() - hiddenSince > mins * 60000) {
+        unlocked = false;
+        showLock();
+      }
+      hiddenSince = null;
+    });
+  }
 
   // ---------- appointments, credits and payments ----------
   const APPT_STATUS = { gepland: 'Gepland', geweest: 'Geweest', noshow: 'No-show', geannuleerd: 'Geannuleerd' };
@@ -1710,6 +1846,31 @@
           <button id="set-sound" aria-pressed="${!!db.settings.sound}">Geluid en trilling</button>
         </div>
       </div>
+      <div class="card">
+        <label class="field"><span>Weergave</span></label>
+        <div class="seg" role="group" aria-label="Thema" style="max-width:300px">
+          ${[['system', 'Systeem'], ['light', 'Licht'], ['dark', 'Donker']].map(([k, l]) =>
+            `<button id="theme-${k}" aria-pressed="${(db.settings.theme || 'system') === k}">${l}</button>`).join('')}
+        </div>
+        <label class="field" style="margin:12px 0 0"><span>Naam coach (komt bij nieuwe trainingen te staan)</span>
+          <input id="coach-name" value="${esc(db.settings.coachName || '')}" placeholder="bijv. Stan"></label>
+      </div>
+      <div class="eyebrow">Toegang</div>
+      <div class="card">` +
+      (db.settings.pin
+        ? `<p class="sub" style="margin:0 0 8px">Pincode staat aan. De app vergrendelt zichzelf na ${db.settings.lockMinutes} minuten in de achtergrond.</p>
+           <div class="row">
+             <label class="field grow" style="margin:0"><span>Vergrendelen na (min)</span>
+               <input id="lock-min" type="number" min="0" max="240" value="${db.settings.lockMinutes}"></label>
+             <button class="danger ghost" id="pin-off">Pincode uitzetten</button>
+           </div>`
+        : `<p class="sub" style="margin:0 0 8px">Zet een pincode op de app, zodat klantgegevens niet open en bloot op je tablet staan.</p>
+           <div class="row">
+             <input id="pin-new" type="password" inputmode="numeric" placeholder="Nieuwe pincode" maxlength="12" class="grow">
+             <button class="primary" id="pin-on">Instellen</button>
+           </div>`) +
+      `<p class="mut" style="margin:8px 0 0">Let op: dit is een schermslot. De gegevens zelf blijven leesbaar voor wie toegang heeft tot de browseropslag van dit apparaat.</p>
+      </div>
       <div class="eyebrow">Synchronisatie</div>
       <div class="card">` +
       (syncCfg && syncCfg.gistId
@@ -1721,6 +1882,14 @@
            <button class="primary" id="sync-connect">Verbinden</button>
            <p class="mut" id="sync-status" style="margin:8px 0 0">${esc(syncStatus)}</p>
            <p class="mut" style="margin:8px 0 0">Eenmalig: maak op github.com → Settings → Developer settings een token met alleen <strong>Gists: read &amp; write</strong>. Plak hetzelfde token op je andere apparaat en de gegevens lopen automatisch gelijk (nieuwste versie wint). Het token blijft op dit apparaat en zit niet in je back-upbestand.</p>`) +
+      `</div>
+      <div class="eyebrow">Back-ups</div>
+      <div class="card">` +
+      (syncCfg && syncCfg.gistId
+        ? `<p class="sub" style="margin:0 0 8px">Er wordt automatisch één keer per dag een momentopname in de cloud bewaard; de laatste zeven blijven staan.${db.settings.lastBackupAt ? ` Laatste: ${esc(fmtDate(db.settings.lastBackupAt))}.` : ''}</p>
+           <div class="actions"><button id="backup-list">Toon back-ups</button></div>
+           <div id="backup-box"></div>`
+        : `<p class="sub" style="margin:0">Zet synchronisatie aan voor automatische dagelijkse back-ups, of exporteer hieronder handmatig.</p>`) +
       `</div>
       <div class="eyebrow">Gegevens</div>
       <div class="actions">
@@ -1770,6 +1939,49 @@
     });
     document.getElementById('set-autorest').addEventListener('click', () => {
       db.settings.autoRest = !db.settings.autoRest; save(); render();
+    });
+    ['system', 'light', 'dark'].forEach((t) => document.getElementById('theme-' + t).addEventListener('click', () => {
+      db.settings.theme = t; save(); applyTheme(); render();
+    }));
+    document.getElementById('coach-name').addEventListener('change', (ev) => {
+      db.settings.coachName = ev.target.value.trim(); save();
+    });
+    const pinOn = document.getElementById('pin-on');
+    if (pinOn) pinOn.addEventListener('click', async () => {
+      const pin = document.getElementById('pin-new').value.trim();
+      if (pin.length < 4) { alert('Kies een pincode van minstens 4 tekens.'); return; }
+      const salt = uid();
+      db.settings.pin = { salt, hash: await hashPin(pin, salt) };
+      unlocked = true;
+      save(); render();
+    });
+    const pinOff = document.getElementById('pin-off');
+    if (pinOff) pinOff.addEventListener('click', () => {
+      if (!confirm('Pincode uitzetten?')) return;
+      db.settings.pin = null; save(); render();
+    });
+    const lockMin = document.getElementById('lock-min');
+    if (lockMin) lockMin.addEventListener('change', (ev) => {
+      db.settings.lockMinutes = Math.max(0, Math.min(240, num(ev.target.value)));
+      save();
+    });
+    const backupList = document.getElementById('backup-list');
+    if (backupList) backupList.addEventListener('click', async () => {
+      const box = document.getElementById('backup-box');
+      box.innerHTML = '<p class="mut">Ophalen…</p>';
+      try {
+        const names = await listBackups();
+        box.innerHTML = names.length
+          ? names.map((n) => `<div class="row" style="margin-top:8px"><div class="grow sub">${esc(n.replace('backup-', '').replace('.json', ''))}</div>
+              <button class="small" data-restore="${esc(n)}">Terugzetten</button></div>`).join('')
+          : '<p class="mut">Nog geen back-ups; die verschijnen na de eerste synchronisatie van vandaag.</p>';
+        box.querySelectorAll('[data-restore]').forEach((b) => b.addEventListener('click', async () => {
+          if (!confirm(`Alles terugzetten naar ${b.dataset.restore.replace('backup-', '').replace('.json', '')}? De huidige gegevens worden overschreven.`)) return;
+          await restoreBackup(b.dataset.restore);
+        }));
+      } catch (e) {
+        box.innerHTML = `<p class="mut">Ophalen mislukt (${esc(e.message)}).</p>`;
+      }
     });
     document.getElementById('set-sound').addEventListener('click', () => {
       db.settings.sound = !db.settings.sound; save(); if (db.settings.sound) beep(); render();
@@ -2412,7 +2624,21 @@
             <button class="small danger ghost" data-photo-del="${ph.id}">Verwijderen</button></div>
         </div>`).join('')}</div>` : '<p class="mut">Nog geen foto\'s.</p>') +
 
-      `<hr class="divider">
+      `<div class="eyebrow">Inzage voor de klant</div>
+      <div class="card">` +
+      (c.shareGistId
+        ? `<p class="sub" style="margin:0 0 8px">Gedeeld${c.sharedAt ? ' op ' + esc(fmtDate(c.sharedAt)) : ''}. Iedereen met de link kan de voortgang van ${esc(c.name)} bekijken (alleen lezen).</p>
+           <input readonly id="share-link" value="${esc(shareLink(c))}" style="margin-bottom:8px">
+           <div class="actions">
+             <button id="share-copy">Link kopiëren</button>
+             <button id="share-update">Bijwerken</button>
+             <button class="danger ghost" id="share-stop">Stoppen met delen</button>
+           </div>`
+        : `<p class="sub" style="margin:0 0 8px">Deel een alleen-lezen pagina met ${esc(c.name)}: grafieken, records en doelen. Werkt alleen met synchronisatie aan, want de gegevens gaan naar een verborgen gist.</p>
+           <button ${syncCfg && syncCfg.token ? '' : 'disabled'} id="share-start">Inzage aanzetten</button>
+           ${syncCfg && syncCfg.token ? '' : '<p class="mut" style="margin:8px 0 0">Zet eerst synchronisatie aan op de startpagina.</p>'}`) +
+      `</div>
+      <hr class="divider">
       <div class="actions">
         <button id="archive-client">${c.archived ? 'Klant terugzetten' : 'Klant archiveren'}</button>
         <button class="danger ghost" id="delete-client">Klant verwijderen</button>
@@ -2508,6 +2734,30 @@
       c.photos = c.photos.filter((p) => p.id !== b.dataset.photoDel);
       save(); render();
     }));
+    const shareStart = document.getElementById('share-start');
+    if (shareStart) shareStart.addEventListener('click', async () => {
+      shareStart.disabled = true;
+      try { await shareClient(clientId); render(); }
+      catch (e) { alert('Delen mislukt: ' + e.message); shareStart.disabled = false; }
+    });
+    const shareUpdate = document.getElementById('share-update');
+    if (shareUpdate) shareUpdate.addEventListener('click', async () => {
+      try { await shareClient(clientId); alert('Bijgewerkt.'); }
+      catch (e) { alert('Bijwerken mislukt: ' + e.message); }
+    });
+    const shareCopy = document.getElementById('share-copy');
+    if (shareCopy) shareCopy.addEventListener('click', async () => {
+      const input = document.getElementById('share-link');
+      input.select();
+      try { await navigator.clipboard.writeText(input.value); shareCopy.textContent = 'Gekopieerd'; }
+      catch { document.execCommand('copy'); }
+    });
+    const shareStop = document.getElementById('share-stop');
+    if (shareStop) shareStop.addEventListener('click', async () => {
+      if (!confirm('Stoppen met delen? De link werkt daarna niet meer.')) return;
+      await stopSharing(clientId);
+      render();
+    });
     document.getElementById('archive-client').addEventListener('click', () => {
       c.archived = !c.archived;
       save(); render();
@@ -3590,7 +3840,7 @@
           if (!entries.length) continue;
           db.workouts.push({
             id: uid(), clientId: mem.client.id, schemaId: duoSchema ? duoSchema.id : null,
-            duoId, date, notes, durationMin, entries,
+            duoId, date, notes, durationMin, coach: db.settings.coachName || undefined, entries,
           });
           saved++;
         }
@@ -3947,6 +4197,7 @@
             date: String(f.get('date')),
             notes: String(f.get('notes')).trim(),
             durationMin: Math.max(1, Math.round((Date.now() - startedAt) / 60000)),
+            coach: db.settings.coachName || undefined,
             entries,
           });
         }
@@ -3966,6 +4217,8 @@
     a.href = URL.createObjectURL(blob);
     a.download = `coachlog-backup-${todayIso()}.json`;
     a.click();
+    db.settings.lastBackupAt = todayIso();
+    localStorage.setItem(KEY, JSON.stringify(db));
     URL.revokeObjectURL(a.href);
   }
   function importJson(ev) {
@@ -4031,8 +4284,11 @@
   // persist a one-off migration (e.g. the exercise registry) so it survives a reload
   if (db._needsSave) { delete db._needsSave; save(); }
 
+  applyTheme();
+  watchIdleLock();
   bindTimerBar();
   scheduleReminders();
+  if (lockNeeded()) showLock();
   window.addEventListener('hashchange', render);
   render();
   if (syncCfg && syncCfg.gistId && navigator.onLine) syncNow();
