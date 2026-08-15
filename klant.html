@@ -122,6 +122,12 @@
         <p class="mut" style="margin:6px 0 0">${pick.kind === 'cardio' ? 'Afstand per training.' : pick.kind === 'lichaamsgewicht' ? 'Extra gewicht per training.' : 'Zwaarste set per training.'}</p>
       </div>` : '<p class="mut">Nog geen trainingen gelogd.</p>'}
 
+      ${data.nutrition ? `<div class="eyebrow">Voeding</div><div class="card">
+        ${data.nutrition.plan ? `<div class="sub">Dagdoel: ${Math.round(data.nutrition.plan.kcal || 0)} kcal · ${Math.round(data.nutrition.plan.protein || 0)} g eiwit · ${Math.round(data.nutrition.plan.carbs || 0)} g koolhydraten · ${Math.round(data.nutrition.plan.fat || 0)} g vet</div>` : ''}
+        ${data.nutrition.week ? `<div class="sub">Gemiddeld (${data.nutrition.week.days} dagen): ${data.nutrition.week.avg.kcal} kcal · ${data.nutrition.week.avg.protein} g eiwit</div>` : ''}
+        ${data.nutrition.plan && data.nutrition.plan.guidelines ? `<div class="mut" style="white-space:pre-wrap;margin-top:6px">${esc(data.nutrition.plan.guidelines)}</div>` : ''}
+      </div>` : ''}
+
       ${prs.length ? `<div class="eyebrow">Records</div><div class="card">${prs.map((p) => `<div class="row" style="margin-bottom:4px">
         <div class="grow sub">${esc(p.name)}</div><div class="title">${p.kind === 'cardio' ? fmtNum(p.best) + ' km' : fmtKg(p.best)}</div></div>`).join('')}</div>` : ''}
 
