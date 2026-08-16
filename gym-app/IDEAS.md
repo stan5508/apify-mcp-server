@@ -77,6 +77,22 @@ Nog open op dit vlak: echte meerdere-coaches-rechten en vingerafdruk/gezicht
 (WebAuthn) vragen een backend of aanzienlijk meer complexiteit. Nu deelt een
 tweede coach hetzelfde sync-token, wat volledige toegang geeft.
 
+### Abonnementen — gebouwd
+
+Zijbalk → Planning → **Abonnementen**. Twee lagen: **vormen** (je eigen sjablonen: naam,
+prijs per maand, looptijd, sessies per week, opzegtermijn, voorwaardentekst en zelf toe te
+voegen velden) en **contracten** per klant, die je vanuit een vorm opstelt en daarna nog
+mag aanpassen — het origineel blijft ongewijzigd.
+
+Ondertekenen gebeurt op de tablet: klant en coach zetten allebei met hun vinger een
+handtekening, daarna staat het contract vast en is alleen nog opzeggen mogelijk (met de
+opzegtermijn wordt de einddatum berekend). Het contract is te printen of als PDF te
+bewaren; de printstijl is meteen rechtgetrokken, want in het donkere thema kwam er witte
+tekst op wit papier uit.
+
+Let op: handtekeningen worden verkleind opgeslagen (~11 kB per stuk, dus ~22 kB per
+contract) en gaan mee in de synchronisatie, net als de progressiefoto's.
+
 ### Voeding — gebouwd (37)
 Voeding-tabblad per klant, opgezet naar het model van de grote voedingsapps:
 "resterend" bovenaan (doel − gegeten + beweging), dagboek per maaltijdmoment,

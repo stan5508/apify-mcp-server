@@ -351,6 +351,11 @@
   #wo-form .row > button.small, #duo-form .row > button.small { min-width: 44px; min-height: 44px; }
   /* the row you are typing in lifts out, so you never lose your place mid-set */
   .set-row:focus-within { background: var(--raised); border-radius: 8px; }
+  .sig-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+  .sig-grid .lbl { display: block; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+  .sig-pad { width: 100%; height: 150px; display: block; background: #ffffff; border: 1px solid var(--baseline);
+    border-radius: 8px; touch-action: none; cursor: crosshair; }
+  .sig-shot { width: 100%; max-width: 320px; display: block; background: #ffffff; border: 1px solid var(--baseline); border-radius: 8px; }
   .avatar {
     width: 22px; height: 22px; border-radius: 50%; flex: none; object-fit: cover;
     display: inline-flex; align-items: center; justify-content: center;
@@ -362,11 +367,13 @@
   .bar-row .val { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink-2); }
 
   @media print {
-    #side, #timer-bar, .topbar button, button, .no-print { display: none !important; }
+    #side, #tabbar, #nav-backdrop, #timer-bar, .topbar button, button, .no-print { display: none !important; }
     .layout { display: block; }
     #app { max-width: none; padding: 0; }
-    .card { break-inside: avoid; box-shadow: none; }
-    body { background: #fff; }
+    .card { break-inside: avoid; box-shadow: none; background: #fff; border-color: #ccc; }
+    body { background: #fff; color: #111; }
+    .sub, .mut, .eyebrow, .title, td, th, .stat .val, .stat .lbl { color: #111 !important; }
+    .badge { color: #111 !important; background: #eee !important; }
   }
   .prev-hint { margin: -4px 0 8px 32px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
   .pr-live {
@@ -438,14 +445,14 @@
 <script>
 (() => {
   'use strict';
-  const APP_VERSION = 32; // bump when publishing; shown on the home screen
+  const APP_VERSION = 33; // bump when publishing; shown on the home screen
   const KEY = 'coachlog-v1';
   const $app = document.getElementById('app');
 
   // ---------- data ----------
   const emptyDb = () => ({
     clients: [], schemas: [], workouts: [], duos: [], duoSchemas: [], templates: [], measurements: [],
-    exercises: [], clientNotes: {}, appointments: [], packages: [],
+    exercises: [], clientNotes: {}, appointments: [], packages: [], subTypes: [], subscriptions: [],
     nutritionPlans: {}, meals: [], foods: [], water: {}, muscleGroups: {}, settings: { unit: 'kg', restSeconds: 90, autoRest: true, sound: true, barWeight: 20 }, updatedAt: 0,
   });
   let db = loadDb();
@@ -462,6 +469,7 @@
       duoSchemas: d.duoSchemas || [], templates: d.templates || [], measurements: d.measurements || [],
       exercises: d.exercises || [], clientNotes: d.clientNotes || {},
       appointments: d.appointments || [], packages: d.packages || [],
+      subTypes: d.subTypes || [], subscriptions: d.subscriptions || [],
       nutritionPlans: d.nutritionPlans || {}, meals: d.meals || [], foods: d.foods || [], water: d.water || {},
       muscleGroups: d.muscleGroups || {},
       settings: { unit: 'kg', restSeconds: 90, autoRest: true, sound: true, barWeight: 20, noShowCounts: true, currency: '€', theme: 'dark', pin: null, lockMinutes: 15, coachName: '', lastBackupAt: null,
@@ -1701,6 +1709,33 @@
     const used = trainings + noShows;
     return { from, bought, used, trainings, noShows, remaining: bought - used, low: bought - used <= 2 };
   }
+  // ---------- subscriptions ----------
+  const SUB_STATUS = { concept: 'Concept', getekend: 'Getekend', opgezegd: 'Opgezegd', afgelopen: 'Afgelopen' };
+  const addMonths = (iso, n) => {
+    const d = new Date(iso + 'T12:00:00');
+    const day = d.getDate();
+    d.setMonth(d.getMonth() + n);
+    if (d.getDate() < day) d.setDate(0); // 31 jan + 1 maand blijft in februari
+    return d.toISOString().slice(0, 10);
+  };
+  const subTypeById = (id) => db.subTypes.find((t) => t.id === id);
+  const subById = (id) => db.subscriptions.find((s) => s.id === id);
+  const subsOf = (clientId) => db.subscriptions.filter((s) => s.clientId === clientId)
+    .sort((a, b) => (b.startDate || '').localeCompare(a.startDate || ''));
+  const subEnd = (s) => s.endDate || (s.months > 0 && s.startDate ? addMonths(s.startDate, s.months) : '');
+  const subRunning = (s) => {
+    if (s.status !== 'getekend') return false;
+    const end = subEnd(s);
+    return !end || end >= todayIso();
+  };
+  const subStatusLabel = (s) => {
+    const end = subEnd(s);
+    if (s.status === 'getekend' && end && end < todayIso()) return SUB_STATUS.afgelopen;
+    return SUB_STATUS[s.status];
+  };
+  const subMonthlyTotal = () => db.subscriptions.filter(subRunning).reduce((t, s) => t + (s.pricePerMonth || 0), 0);
+  const activeSubTypes = () => db.subTypes.filter((t) => !t.archived).sort((a, b) => byName(a.name, b.name));
+
   const openInvoices = () => db.packages.filter((p) => !p.paid).sort((a, b) => a.date.localeCompare(b.date));
   function revenueByMonth() {
     const months = new Map();
@@ -2243,6 +2278,7 @@
         <summary>Planning <span class="chev">▾</span></summary>
         <a class="navlink${hash.startsWith('/agenda') ? ' active' : ''}" href="#/agenda">Agenda</a>
         <a class="navlink${hash.startsWith('/zakelijk') ? ' active' : ''}" href="#/zakelijk">Tegoeden &amp; betalingen${openInvoices().length ? ` (${openInvoices().length})` : ''}</a>
+        <a class="navlink${hash.startsWith('/abonnement') ? ' active' : ''}" href="#/abonnementen">Abonnementen</a>
         <a class="navlink${hash.startsWith('/voedingsmiddelen') ? ' active' : ''}" href="#/voedingsmiddelen">Voedingsmiddelen</a>
         <a class="navlink${hash.startsWith('/vanklanten') ? ' active' : ''}" href="#/vanklanten">Van klanten</a>
         <a class="navlink${hash.startsWith('/cloud') ? ' active' : ''}" href="#/cloud">Cloud-accounts</a>
@@ -2340,6 +2376,8 @@
     if (parts[0] === 'sjabloon') return viewTemplate(parts[1]);
     if (parts[0] === 'agenda') return viewAgenda(parts[1] || todayIso());
     if (parts[0] === 'zakelijk') return viewBusiness();
+    if (parts[0] === 'abonnementen') return parts[1] === 'vormen' ? viewSubTypes() : viewSubscriptions();
+    if (parts[0] === 'abonnement') return viewSubscription(parts[1]);
     if (parts[0] === 'voedingsmiddelen') return viewFoods();
     if (parts[0] === 'vanklanten') return viewClientFeed(parts[1] || null);
     if (parts[0] === 'instellingen') return viewSettings();
@@ -2710,7 +2748,7 @@
   const uiState = {
     metric: 'top', navClients: true, navDuos: true, navTemplates: true, measMetric: 'weight',
     period: 'all', comparePicks: [], compareMetric: 'top',
-    navQuery: '', navArchived: false, foodQuery: '',
+    navQuery: '', navArchived: false, foodQuery: '', subTypeEditing: null,
     nutri: { moment: null, query: '', results: [], message: '' }, navBusiness: true, navLibrary: true, libQuery: '', libEquipment: '', libKind: '', libShowArchived: false, libEditing: null, libSort: 'used',
   };
   let pendingFree = []; // exercises picked for a free session, set by viewPickExercises
@@ -2942,6 +2980,386 @@
   }
 
   // --- credits and payments ---
+
+  // --- abonnementen: overzicht en nieuw contract ---
+  function viewSubscriptions() {
+    const clients = sortedClients().filter((c) => !c.archived);
+    const types = activeSubTypes();
+    const all = [...db.subscriptions].sort((a, b) => (b.startDate || '').localeCompare(a.startDate || ''));
+    const running = all.filter(subRunning);
+    const card = (s) => {
+      const c = clientById(s.clientId);
+      const end = subEnd(s);
+      return `<div class="card tappable" data-nav="/abonnement/${s.id}" role="link" tabindex="0">
+        <div class="row">
+          <div class="grow">
+            <div class="title">${esc((c || {}).name || 'Onbekende klant')} — ${esc(s.name)}</div>
+            <div class="sub">${esc(money(s.pricePerMonth || 0))} per maand${s.sessionsPerWeek ? ` · ${fmtNum(s.sessionsPerWeek)}× per week` : ''}</div>
+            <div class="mut">${esc(fmtDate(s.startDate))}${end ? ' t/m ' + esc(fmtDate(end)) : ' · doorlopend'}</div>
+          </div>
+          <span class="badge${subRunning(s) ? ' pr' : ''}">${esc(subStatusLabel(s))}</span>
+        </div>
+      </div>`;
+    };
+
+    $app.innerHTML = topbar('Abonnementen', '/') +
+      `<div class="stat-grid">
+        <div class="stat"><div class="lbl">Lopend</div><div class="val">${running.length}</div></div>
+        <div class="stat"><div class="lbl">Per maand</div><div class="val">${esc(money(subMonthlyTotal()))}</div><div class="mut">bij elkaar</div></div>
+        <div class="stat"><div class="lbl">Vormen</div><div class="val">${types.length}</div></div>
+      </div>
+      <div class="actions"><button data-nav="/abonnementen/vormen">Abonnementsvormen beheren ›</button></div>` +
+
+      `<div class="eyebrow">Nieuw abonnement</div>` +
+      (!clients.length ? '<p class="mut">Voeg eerst een klant toe.</p>'
+        : !types.length ? `<div class="empty"><p>Maak eerst een abonnementsvorm: naam, looptijd, prijs en je eigen voorwaarden. Daarna koppel je hem in twee tikken aan een klant.</p>
+            <button class="primary" data-nav="/abonnementen/vormen">Eerste vorm maken</button></div>`
+        : `<form class="card" id="sub-new">
+            <div class="row">
+              <label class="field grow"><span>Klant</span><select name="client">${clients.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select></label>
+              <label class="field grow"><span>Vorm</span><select name="type">${types.map((t) => `<option value="${t.id}">${esc(t.name)}</option>`).join('')}</select></label>
+              <label class="field" style="width:170px"><span>Ingangsdatum</span><input type="date" name="start" value="${todayIso()}" required></label>
+            </div>
+            <button class="primary wide" type="submit">Contract opstellen</button>
+          </form>`) +
+
+      `<div class="eyebrow">Alle abonnementen</div>` +
+      (all.length ? all.map(card).join('')
+        : '<p class="mut">Nog geen abonnementen.</p>');
+
+    bindNav();
+    const form = document.getElementById('sub-new');
+    if (form) form.addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      const f = new FormData(ev.target);
+      const t = subTypeById(String(f.get('type')));
+      if (!t) return;
+      const s = {
+        id: uid(), clientId: String(f.get('client')), typeId: t.id, name: t.name,
+        startDate: String(f.get('start')), months: t.months || 0, pricePerMonth: t.pricePerMonth || 0,
+        sessionsPerWeek: t.sessionsPerWeek || 0, noticeMonths: t.noticeMonths || 0,
+        terms: t.terms || '', fields: (t.fields || []).map((x) => ({ label: x.label, value: x.value })),
+        status: 'concept', signature: null, endDate: '', note: '',
+      };
+      db.subscriptions.push(s); save();
+      location.hash = `/abonnement/${s.id}`;
+    });
+  }
+
+  // --- abonnementsvormen: de sjablonen die je zelf inricht ---
+  function viewSubTypes() {
+    const list = [...db.subTypes].sort((a, b) => byName(a.name, b.name));
+    const editing = uiState.subTypeEditing;
+    const fieldRows = (t) => (t.fields || []).map((f, i) => `<div class="row" style="margin-bottom:6px">
+        <input class="grow" data-fld-label="${i}" value="${esc(f.label)}" placeholder="Naam van het veld">
+        <input class="grow" data-fld-value="${i}" value="${esc(f.value)}" placeholder="Standaardwaarde">
+        <button type="button" class="small danger ghost" data-fld-del="${i}" aria-label="Veld verwijderen">✕</button>
+      </div>`).join('');
+    const editForm = (t) => `<form class="card" data-type-form="${t.id}">
+        <label class="field"><span>Naam</span><input name="name" value="${esc(t.name)}" required placeholder="bijv. 1× per week, 3 maanden"></label>
+        <div class="row">
+          <label class="field grow"><span>Prijs per maand (${esc(db.settings.currency || '€')})</span>
+            <input name="price" type="text" inputmode="decimal" value="${t.pricePerMonth || ''}"></label>
+          <label class="field grow"><span>Looptijd (maanden, 0 = doorlopend)</span>
+            <input name="months" type="number" min="0" max="60" value="${t.months || 0}"></label>
+        </div>
+        <div class="row">
+          <label class="field grow"><span>Sessies per week</span>
+            <input name="perweek" type="text" inputmode="decimal" value="${t.sessionsPerWeek || ''}" placeholder="bijv. 1 of 1,5"></label>
+          <label class="field grow"><span>Opzegtermijn (maanden)</span>
+            <input name="notice" type="number" min="0" max="12" value="${t.noticeMonths || 0}"></label>
+        </div>
+        <label class="field"><span>Voorwaarden (komen op het contract)</span>
+          <textarea name="terms" rows="6" placeholder="bijv. Betaling vooraf per maand. Afzeggen kan tot 24 uur van tevoren, daarna vervalt de sessie.">${esc(t.terms || '')}</textarea></label>
+        <div class="eyebrow" style="margin-top:4px">Eigen velden</div>
+        <p class="mut" style="margin:0 0 8px">Extra regels op het contract, bijvoorbeeld inschrijfgeld of locatie. Je kunt de waarde per klant nog aanpassen.</p>
+        ${fieldRows(t)}
+        <button type="button" class="small" data-fld-add="1">+ Veld toevoegen</button>
+        <div class="actions" style="margin-top:12px">
+          <button class="primary" type="submit">Opslaan</button>
+          <button type="button" class="ghost" data-type-cancel="1">Annuleren</button>
+          <button type="button" class="danger ghost" data-type-archive="${t.id}">${t.archived ? 'Terugzetten' : 'Archiveren'}</button>
+        </div>
+      </form>`;
+
+    $app.innerHTML = topbar('Abonnementsvormen', '/abonnementen') +
+      `<p class="sub">Een vorm is je sjabloon: naam, prijs, looptijd, voorwaarden en eigen velden. Bij een klant kies je de vorm en pas je zo nodig de bedragen aan — het origineel blijft ongewijzigd.</p>
+      <div class="actions"><button class="primary" id="type-add">+ Nieuwe vorm</button></div>` +
+      (list.length ? list.map((t) => editing === t.id ? editForm(t) : `<div class="card${t.archived ? '' : ''}">
+          <div class="row">
+            <div class="grow">
+              <div class="title">${esc(t.name)}${t.archived ? ' <span class="badge">gearchiveerd</span>' : ''}</div>
+              <div class="sub">${esc(money(t.pricePerMonth || 0))} per maand · ${t.months ? (t.months === 1 ? '1 maand' : t.months + ' maanden') : 'doorlopend'}${t.sessionsPerWeek ? ' · ' + fmtNum(t.sessionsPerWeek) + '× per week' : ''}</div>
+              <div class="mut">${(t.fields || []).length ? (t.fields || []).length + ' eigen veld(en) · ' : ''}${t.terms ? 'voorwaarden ingevuld' : 'nog geen voorwaarden'}</div>
+            </div>
+            <button class="small ghost" data-type-edit="${t.id}">Bewerken</button>
+          </div>
+        </div>`).join('')
+        : '<div class="empty"><p>Nog geen vormen. Maak er een aan met de knop hierboven.</p></div>');
+
+    bindNav();
+    document.getElementById('type-add').addEventListener('click', () => {
+      const t = { id: uid(), name: '', pricePerMonth: 0, months: 12, sessionsPerWeek: 1, noticeMonths: 1, terms: '', fields: [], archived: false };
+      db.subTypes.push(t);
+      uiState.subTypeEditing = t.id;
+      save(); render();
+    });
+    document.querySelectorAll('[data-type-edit]').forEach((b) => b.addEventListener('click', () => {
+      uiState.subTypeEditing = b.dataset.typeEdit; render();
+    }));
+    const cancel = document.querySelector('[data-type-cancel]');
+    if (cancel) cancel.addEventListener('click', () => {
+      const t = subTypeById(uiState.subTypeEditing);
+      if (t && !t.name.trim()) db.subTypes = db.subTypes.filter((x) => x.id !== t.id);
+      uiState.subTypeEditing = null;
+      save(); render();
+    });
+    const arch = document.querySelector('[data-type-archive]');
+    if (arch) arch.addEventListener('click', () => {
+      const t = subTypeById(arch.dataset.typeArchive);
+      t.archived = !t.archived;
+      uiState.subTypeEditing = null;
+      save(); render();
+    });
+    const typeForm = document.querySelector('[data-type-form]');
+    // adding or removing a field repaints the form, so keep what is typed
+    const captureType = () => {
+      if (!typeForm) return null;
+      const t = subTypeById(typeForm.dataset.typeForm);
+      const f = new FormData(typeForm);
+      t.name = String(f.get('name')).trim();
+      t.pricePerMonth = num(f.get('price'));
+      t.months = Math.max(0, Math.round(num(f.get('months'))));
+      t.sessionsPerWeek = num(f.get('perweek'));
+      t.noticeMonths = Math.max(0, Math.round(num(f.get('notice'))));
+      t.terms = String(f.get('terms'));
+      t.fields = (t.fields || []).map((_, i) => ({
+        label: typeForm.querySelector(`[data-fld-label="${i}"]`).value.trim(),
+        value: typeForm.querySelector(`[data-fld-value="${i}"]`).value.trim(),
+      }));
+      return t;
+    };
+    const addFld = document.querySelector('[data-fld-add]');
+    if (addFld) addFld.addEventListener('click', () => {
+      const t = captureType();
+      t.fields.push({ label: '', value: '' });
+      save(); render();
+    });
+    document.querySelectorAll('[data-fld-del]').forEach((b) => b.addEventListener('click', () => {
+      const t = captureType();
+      t.fields.splice(Number(b.dataset.fldDel), 1);
+      save(); render();
+    }));
+    if (typeForm) typeForm.addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      const t = captureType();
+      t.fields = t.fields.filter((x) => x.label);
+      uiState.subTypeEditing = null;
+      save(); render();
+    });
+  }
+
+
+  // --- één contract: invullen, ondertekenen, printen ---
+  function viewSubscription(id) {
+    const s = subById(id);
+    if (!s) { location.hash = '/abonnementen'; return; }
+    const c = clientById(s.clientId) || { name: 'Onbekende klant' };
+    const end = subEnd(s);
+    const draft = s.status === 'concept';
+    const line = (label, value) => `<div class="row" style="margin-bottom:4px"><div class="grow sub">${esc(label)}</div><div style="font-variant-numeric:tabular-nums">${esc(value)}</div></div>`;
+
+    $app.innerHTML = topbar('Contract', '/abonnementen') +
+      `<div class="row" style="margin-bottom:12px">
+        <div class="grow"><div class="title">${esc(c.name)} — ${esc(s.name)}</div>
+        <div class="mut">${esc(fmtDate(s.startDate))}${end ? ' t/m ' + esc(fmtDate(end)) : ' · doorlopend'}</div></div>
+        <span class="badge${subRunning(s) ? ' pr' : ''}">${esc(subStatusLabel(s))}</span>
+      </div>` +
+
+      (draft
+        ? `<div class="eyebrow">Afspraken</div>
+          <form class="card" id="sub-form">
+            <label class="field"><span>Naam van het abonnement</span><input name="name" value="${esc(s.name)}" required></label>
+            <div class="row">
+              <label class="field grow"><span>Prijs per maand (${esc(db.settings.currency || '€')})</span>
+                <input name="price" type="text" inputmode="decimal" value="${s.pricePerMonth || ''}"></label>
+              <label class="field grow"><span>Looptijd (maanden, 0 = doorlopend)</span>
+                <input name="months" type="number" min="0" max="60" value="${s.months || 0}"></label>
+            </div>
+            <div class="row">
+              <label class="field grow"><span>Ingangsdatum</span><input name="start" type="date" value="${esc(s.startDate)}" required></label>
+              <label class="field grow"><span>Sessies per week</span>
+                <input name="perweek" type="text" inputmode="decimal" value="${s.sessionsPerWeek || ''}"></label>
+              <label class="field grow"><span>Opzegtermijn (maanden)</span>
+                <input name="notice" type="number" min="0" max="12" value="${s.noticeMonths || 0}"></label>
+            </div>
+            ${(s.fields || []).map((f, i) => `<label class="field"><span>${esc(f.label)}</span>
+              <input data-sfld="${i}" value="${esc(f.value)}"></label>`).join('')}
+            <label class="field"><span>Voorwaarden</span>
+              <textarea name="terms" rows="7">${esc(s.terms || '')}</textarea></label>
+            <div class="actions">
+              <button class="primary" type="submit">Opslaan</button>
+              <button type="button" class="danger ghost" id="sub-del">Verwijderen</button>
+            </div>
+          </form>
+
+          <div class="eyebrow">Ondertekenen</div>
+          <div class="card">
+            <p class="sub" style="margin:0 0 10px">Sla eerst op, laat de klant hieronder tekenen en zet er zelf je handtekening bij. Daarna staat het contract vast.</p>
+            <div class="sig-grid">
+              <div><span class="lbl">${esc(c.name)}</span><canvas class="sig-pad" id="sig-client"></canvas>
+                <button type="button" class="small ghost" data-sig-clear="sig-client">Wissen</button></div>
+              <div><span class="lbl">${esc(db.settings.coachName || 'Coach')}</span><canvas class="sig-pad" id="sig-coach"></canvas>
+                <button type="button" class="small ghost" data-sig-clear="sig-coach">Wissen</button></div>
+            </div>
+            <button class="primary wide" id="sub-sign" style="margin-top:12px">Contract ondertekenen</button>
+            <p class="mut" id="sign-msg" style="margin:8px 0 0"></p>
+          </div>`
+
+        : `<div class="eyebrow">Afspraken</div>
+          <div class="card">
+            ${line('Klant', c.name)}
+            ${line('Abonnement', s.name)}
+            ${line('Prijs per maand', money(s.pricePerMonth || 0))}
+            ${line('Looptijd', s.months ? (s.months === 1 ? '1 maand' : s.months + ' maanden') : 'doorlopend')}
+            ${line('Ingangsdatum', fmtDate(s.startDate))}
+            ${end ? line('Einddatum', fmtDate(end)) : ''}
+            ${s.sessionsPerWeek ? line('Sessies per week', fmtNum(s.sessionsPerWeek)) : ''}
+            ${s.noticeMonths ? line('Opzegtermijn', s.noticeMonths === 1 ? '1 maand' : s.noticeMonths + ' maanden') : ''}
+            ${(s.fields || []).filter((f) => f.value).map((f) => line(f.label, f.value)).join('')}
+          </div>` +
+          (s.terms ? `<div class="eyebrow">Voorwaarden</div>
+            <div class="card"><p class="sub" style="white-space:pre-wrap;margin:0">${esc(s.terms)}</p></div>` : '') +
+          `<div class="eyebrow">Handtekeningen</div>
+          <div class="card">
+            <div class="sig-grid">
+              <div><span class="lbl">${esc((s.signature || {}).clientName || c.name)}</span>
+                <img class="sig-shot" src="${esc((s.signature || {}).client || '')}" alt="Handtekening klant"></div>
+              <div><span class="lbl">${esc((s.signature || {}).coachName || 'Coach')}</span>
+                <img class="sig-shot" src="${esc((s.signature || {}).coach || '')}" alt="Handtekening coach"></div>
+            </div>
+            <p class="mut" style="margin:10px 0 0">Ondertekend op ${esc(fmtDate(((s.signature || {}).signedAt || '').slice(0, 10)))}.</p>
+          </div>
+          <div class="actions no-print">
+            <button id="sub-print">Print / PDF</button>
+            ${s.status === 'getekend' ? '<button class="danger ghost" id="sub-cancel">Opzeggen</button>' : ''}
+          </div>`);
+
+    bindNav();
+    const form = document.getElementById('sub-form');
+    if (form) {
+      const readFields = () => (s.fields || []).map((f, i) => ({
+        label: f.label, value: (form.querySelector(`[data-sfld="${i}"]`) || {}).value || '',
+      }));
+      const apply = () => {
+        const f = new FormData(form);
+        s.name = String(f.get('name')).trim() || s.name;
+        s.pricePerMonth = num(f.get('price'));
+        s.months = Math.max(0, Math.round(num(f.get('months'))));
+        s.startDate = String(f.get('start')) || s.startDate;
+        s.sessionsPerWeek = num(f.get('perweek'));
+        s.noticeMonths = Math.max(0, Math.round(num(f.get('notice'))));
+        s.terms = String(f.get('terms'));
+        s.fields = readFields();
+      };
+      form.addEventListener('submit', (ev) => { ev.preventDefault(); apply(); save(); render(); });
+      document.getElementById('sub-del').addEventListener('click', () => {
+        if (!confirm('Dit concept verwijderen?')) return;
+        db.subscriptions = db.subscriptions.filter((x) => x.id !== s.id);
+        save();
+        location.hash = '/abonnementen';
+      });
+
+      const pads = { client: signaturePad('sig-client'), coach: signaturePad('sig-coach') };
+      document.querySelectorAll('[data-sig-clear]').forEach((b) => b.addEventListener('click', () => {
+        const pad = b.dataset.sigClear === 'sig-client' ? pads.client : pads.coach;
+        if (pad) pad.clear();
+      }));
+      document.getElementById('sub-sign').addEventListener('click', () => {
+        const msg = document.getElementById('sign-msg');
+        const clientSig = pads.client && pads.client.data();
+        const coachSig = pads.coach && pads.coach.data();
+        if (!clientSig || !coachSig) {
+          msg.textContent = 'Beide handtekeningen zijn nodig voordat het contract vaststaat.';
+          return;
+        }
+        apply();
+        s.signature = {
+          client: clientSig, coach: coachSig, clientName: c.name,
+          coachName: db.settings.coachName || 'Coach', signedAt: new Date().toISOString(),
+        };
+        s.status = 'getekend';
+        save(); render();
+      });
+    }
+    const printBtn = document.getElementById('sub-print');
+    if (printBtn) printBtn.addEventListener('click', () => window.print());
+    const cancelBtn = document.getElementById('sub-cancel');
+    if (cancelBtn) cancelBtn.addEventListener('click', () => {
+      const per = s.noticeMonths || 0;
+      const until = addMonths(todayIso(), per);
+      const term = per === 1 ? '1 maand' : `${per} maanden`;
+      if (!confirm(`Opzeggen? Met ${term} opzegtermijn loopt het abonnement door tot ${fmtDate(until)}.`)) return;
+      s.status = 'opgezegd';
+      s.endDate = until;
+      save(); render();
+    });
+  }
+
+  // a finger on a tablet is the signature; keep it dark on white so it also prints
+  function signaturePad(canvasId) {
+    const cv = document.getElementById(canvasId);
+    if (!cv) return null;
+    const ctx = cv.getContext('2d');
+    const scale = Math.min(2, window.devicePixelRatio || 1);
+    const box = cv.getBoundingClientRect();
+    cv.width = Math.max(1, Math.round(box.width * scale));
+    cv.height = Math.max(1, Math.round(box.height * scale));
+    ctx.scale(scale, scale);
+    ctx.lineWidth = 2.2;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = '#111111';
+    let drawing = false;
+    let inked = false;
+    const at = (ev) => {
+      const r = cv.getBoundingClientRect();
+      return [ev.clientX - r.left, ev.clientY - r.top];
+    };
+    cv.addEventListener('pointerdown', (ev) => {
+      drawing = true;
+      cv.setPointerCapture(ev.pointerId);
+      const [x, y] = at(ev);
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+    });
+    cv.addEventListener('pointermove', (ev) => {
+      if (!drawing) return;
+      ev.preventDefault();
+      const [x, y] = at(ev);
+      ctx.lineTo(x, y);
+      ctx.stroke();
+      inked = true;
+    });
+    const stop = () => { drawing = false; };
+    cv.addEventListener('pointerup', stop);
+    cv.addEventListener('pointercancel', stop);
+    cv.addEventListener('pointerleave', stop);
+    return {
+      clear: () => { ctx.clearRect(0, 0, cv.width, cv.height); inked = false; },
+      // shrink before storing: signatures ride along in every sync
+      data: () => {
+        if (!inked) return null;
+        const w = 420;
+        const out = document.createElement('canvas');
+        out.width = w;
+        out.height = Math.round((cv.height / cv.width) * w);
+        out.getContext('2d').drawImage(cv, 0, 0, out.width, out.height);
+        return out.toDataURL('image/png');
+      },
+    };
+  }
+
   function viewBusiness() {
     const rows = sortedClients().map((c) => ({ c, l: creditLedger(c.id) })).filter((x) => x.l || !x.c.archived);
     const open = openInvoices();
@@ -2954,7 +3372,9 @@
         <div class="stat"><div class="lbl">Openstaand</div><div class="val">${esc(money(openTotal))}</div><div class="mut">${open.length} factuur${open.length === 1 ? '' : 'en'}</div></div>
         <div class="stat"><div class="lbl">Betaald</div><div class="val">${esc(money(paidTotal))}</div><div class="mut">totaal</div></div>
         <div class="stat"><div class="lbl">Bijna op</div><div class="val">${rows.filter((x) => x.l && x.l.low && x.l.remaining > 0).length}</div><div class="mut">klanten ≤ 2 sessies</div></div>
-      </div>` +
+        <div class="stat"><div class="lbl">Abonnementen</div><div class="val">${esc(money(subMonthlyTotal()))}</div><div class="mut">per maand, ${db.subscriptions.filter(subRunning).length} lopend</div></div>
+      </div>
+      <div class="actions"><button data-nav="/abonnementen">Abonnementen ›</button></div>` +
 
       `<div class="eyebrow">Sessietegoed per klant</div>` +
       (rows.some((x) => x.l) ? `<div class="card table-wrap"><table class="data">
@@ -3276,6 +3696,22 @@
         </div>
         <button class="primary" type="submit">Doel toevoegen</button>
       </form>` +
+
+      `<div class="eyebrow">Abonnementen</div>` +
+      (() => {
+        const subs = subsOf(clientId);
+        return (subs.length ? subs.map((s) => {
+          const end = subEnd(s);
+          return `<div class="card tappable" data-nav="/abonnement/${s.id}" role="link" tabindex="0">
+            <div class="row"><div class="grow">
+              <div class="title">${esc(s.name)}</div>
+              <div class="sub">${esc(money(s.pricePerMonth || 0))} per maand${s.sessionsPerWeek ? ` · ${fmtNum(s.sessionsPerWeek)}× per week` : ''}</div>
+              <div class="mut">${esc(fmtDate(s.startDate))}${end ? ' t/m ' + esc(fmtDate(end)) : ' · doorlopend'}</div>
+            </div><span class="badge${subRunning(s) ? ' pr' : ''}">${esc(subStatusLabel(s))}</span></div>
+          </div>`;
+        }).join('') : '<p class="mut">Nog geen abonnement.</p>') +
+        `<div class="actions"><button data-nav="/abonnementen">Abonnement afsluiten ›</button></div>`;
+      })() +
 
       `<div class="eyebrow">Sessietegoed</div>` +
       (() => {
