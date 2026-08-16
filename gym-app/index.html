@@ -445,7 +445,7 @@
 <script>
 (() => {
   'use strict';
-  const APP_VERSION = 36; // bump when publishing; shown on the home screen
+  const APP_VERSION = 37; // bump when publishing; shown on the home screen
   const KEY = 'coachlog-v1';
   const $app = document.getElementById('app');
 
@@ -2778,7 +2778,7 @@
         });
         box.textContent = `Verstuurd naar ${to}. Kijk ook even in je spam.`;
       } catch (e) {
-        box.textContent = 'Mislukt: ' + e.message;
+        box.textContent = mailError(e);
       }
       mailTest.disabled = false;
     });
@@ -3236,6 +3236,10 @@
   }
 
   const mailReady = () => cloud.configured() && cloud.signedIn();
+  // the function is set up separately, so say so instead of showing a bare 404
+  const mailError = (e) => /\b404\b|not found/i.test(e.message)
+    ? 'De functie send-contract staat nog niet in je Supabase-project. Zie stap 6 in SUPABASE.md; tot die tijd werkt "Delen als PDF".'
+    : 'Mailen mislukt: ' + e.message;
   const blobBase64 = (blob) => new Promise((res, rej) => {
     const r = new FileReader();
     r.onload = () => res(String(r.result).split(',')[1]);
@@ -3618,7 +3622,7 @@
           s.sentAt = new Date().toISOString();
           save(); render();
         } catch (e) {
-          msg.textContent = 'Mailen mislukt: ' + e.message;
+          msg.textContent = mailError(e);
           mailBtn.disabled = false;
         }
       });

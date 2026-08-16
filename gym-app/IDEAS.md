@@ -137,6 +137,14 @@ gegevens, de coach die van zijn eigen klanten.
 Nog open: klanten die hun schema van de coach zien, meldingen ("je coach heeft een
 nieuw schema klaargezet"), en het terugsturen van coach-schema's naar de sporter-app.
 
+## Nog te doen (niet door de app, door Stan zelf)
+
+- **Contracten automatisch mailen aanzetten** — stap 6 in [SUPABASE.md](./SUPABASE.md):
+  Resend-account, domein verifiëren, de functie `send-contract` in Supabase plakken en
+  twee secrets zetten. Uitgesteld op 16 aug 2026: te veel werk voor dat moment. De code
+  staat klaar; zolang het niet is opgezet legt de knop **Mailen naar klant** zelf uit wat
+  er ontbreekt en werkt **Delen als PDF** gewoon.
+
 ## Restyling — gekozen richting
 
 Voorstel met alle varianten: <https://claude.ai/code/artifact/c23a1539-2e36-4f1a-84d4-b900b144d764>
