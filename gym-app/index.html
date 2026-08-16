@@ -449,7 +449,7 @@
 <script>
 (() => {
   'use strict';
-  const APP_VERSION = 38; // bump when publishing; shown on the home screen
+  const APP_VERSION = 39; // bump when publishing; shown on the home screen
   const KEY = 'coachlog-v1';
   const $app = document.getElementById('app');
 
@@ -807,7 +807,8 @@
       (rec && rec.cues ? `<div class="note-box"><strong>Aandachtspunten:</strong> ${esc(rec.cues)}</div>` : '') +
       (shots.length ? `<div class="shots">${shots.map((path) => photoImg(path)).join('')}</div>` : '') +
       (img ? `<img src="${esc(img)}" alt="" loading="lazy" style="max-width:100%;border-radius:8px;margin-top:8px">` : '') +
-      (vid ? `<p style="margin:8px 0 0"><a href="${esc(vid)}" target="_blank" rel="noopener">Video bekijken ↗</a></p>` : '');
+      (vid ? `<p style="margin:8px 0 0"><a href="${esc(vid)}" target="_blank" rel="noopener">Video bekijken ↗</a></p>` : '') +
+      (rec ? `<p style="margin:8px 0 0"><a href="${esc(youtubeSearch(rec))}" target="_blank" rel="noopener">Zoek uitvoering op YouTube ↗</a></p>` : '');
   }
 
 
@@ -955,6 +956,10 @@
       ? `<img class="avatar" src="${esc(last.data)}" alt="">`
       : `<span class="avatar" style="background:${avatarTint(client && client.name)}">${esc(initials(client && client.name))}</span>`;
   }
+
+  // the photo catalogue has no video, so link a search that lands on the right clips
+  const youtubeSearch = (rec) => 'https://www.youtube.com/results?search_query='
+    + encodeURIComponent(`${rec.photoName || rec.name} proper form`);
 
   const restFor = (name) => {
     const rec = exerciseByName(name);
@@ -3864,6 +3869,7 @@
         <input id="lib-q" class="grow" placeholder="Zoek oefening…" value="${esc(uiState.libQuery)}">
         <button class="small" id="lib-add-toggle">+ Nieuw</button>
         <button class="small" id="lib-photos">Foto's</button>
+        <button class="small" id="lib-import">Fotolijst</button>
       </div>
       <div class="row" style="margin-bottom:12px">
         <select id="lib-kind" class="grow"><option value="">Alle soorten</option>${
@@ -3951,6 +3957,13 @@
         : `<div class="empty"><p>${uiState.libShowArchived ? 'Niets gearchiveerd.' : 'Geen oefeningen die aan de filters voldoen.'}</p>
           ${uiState.libShowArchived ? '' : '<button class="primary" id="lib-clear">Filters wissen</button>'}</div>`) +
 
+      (db.exercises.some((e) => e.fromCatalog)
+        ? `<hr class="divider"><div class="card">
+            <div class="title">Uit de fotolijst</div>
+            <p class="sub">${db.exercises.filter((e) => e.fromCatalog).length} oefeningen komen uit de fotolijst. Wat je nooit hebt gebruikt kun je in één keer weghalen.</p>
+            <button id="lib-drop-import">Ongebruikte verwijderen</button>
+          </div>` : '') +
+
       (activeExercises().length < 20 && !uiState.libShowArchived
         ? `<hr class="divider"><div class="card">
             <div class="title">Standaardlijst</div>
@@ -3976,6 +3989,35 @@
     if (libClear) libClear.addEventListener('click', () => {
       uiState.libQuery = ''; uiState.libKind = ''; uiState.libEquipment = '';
       render();
+    });
+    document.getElementById('lib-import').addEventListener('click', async () => {
+      let catalog;
+      try { catalog = await loadPhotoCatalog(); }
+      catch { alert('Fotolijst laden mislukt. Probeer het opnieuw met internet.'); return; }
+      const known = new Set(db.exercises.flatMap((e) => [exKey(e.name), ...(e.aliases || []).map(exKey)]));
+      const fresh = catalog.filter((c) => !known.has(exKey(c.n)));
+      if (!fresh.length) { alert('Alle oefeningen uit de fotolijst staan er al in.'); return; }
+      if (!confirm(`${fresh.length} oefeningen toevoegen, elk met foto?\n\n`
+        + 'Je bibliotheek en alle keuzelijsten worden daarmee een stuk langer, en de namen zijn Engels. '
+        + 'Ongebruikte kun je later in één keer weer weghalen.')) return;
+      for (const c of fresh) {
+        db.exercises.push({
+          id: uid(), name: c.n, kind: c.g === 'Cardio' ? 'cardio' : 'kracht', group: c.g,
+          equipment: c.e, restSeconds: null, aliases: [], archived: false,
+          photoId: c.i, photos: c.p, photoName: c.n, fromCatalog: true,
+        });
+      }
+      uiState.libQuery = '';
+      save(); render();
+    });
+    const libDrop = document.getElementById('lib-drop-import');
+    if (libDrop) libDrop.addEventListener('click', () => {
+      const unused = db.exercises.filter((e) => e.fromCatalog && !exerciseUsage(e.name).sessions);
+      if (!unused.length) { alert('Er staat niets ongebruikts uit de fotolijst meer in.'); return; }
+      if (!confirm(`${unused.length} ongebruikte oefeningen uit de fotolijst verwijderen? Wat je hebt getraind blijft staan.`)) return;
+      const drop = new Set(unused.map((e) => e.id));
+      db.exercises = db.exercises.filter((e) => !drop.has(e.id));
+      save(); render();
     });
     document.getElementById('lib-photos').addEventListener('click', async () => {
       if (uiState.photoSuggest) { uiState.photoSuggest = null; render(); return; }

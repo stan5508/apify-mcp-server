@@ -194,7 +194,17 @@ automatisch matchen kiest te vaak net de verkeerde variant (Box Squat in plaats 
 Squat), dus de keuze blijft bij de coach — maar dan in één scherm in plaats van per
 oefening. De rangschikking gebruikt de naam, plus het materiaal en de spiergroep die al bij
 de oefening staan; gangbare Nederlandse termen worden vertaald. Per oefening bijstellen kan
-nog steeds via Bewerken. ExerciseDB/GymVisual-GIF's zijn commercieel — niet gebruiken.
+nog steeds via Bewerken.
+
+De knop **Fotolijst** zet in één keer alle 873 oefeningen uit de catalogus in de
+bibliotheek, elk met foto. Dat maakt elke keuzelijst wel lang en de namen zijn Engels, dus
+het is geen aanrader naast een eigen Nederlandse bibliotheek; wie het toch doet kan het
+terugdraaien met "Ongebruikte verwijderen" (alles met `fromCatalog` en nul sessies).
+Opslag groeit dan van enkele kB's naar ~235 kB, wat meetelt in de synchronisatiegrens.
+
+**Video** zit niet in de catalogus — die heeft alleen foto's. Elke oefening krijgt daarom
+een YouTube-zoeklink op naam; wil je een vaste video, plak dan een link bij Bewerken.
+Kant-en-klare videobibliotheken per oefening (Gym Visual e.d.) zijn commercieel. ExerciseDB/GymVisual-GIF's zijn commercieel — niet gebruiken.
 wger blijft de kandidaat voor Nederlandse uitleg.
 
 ## Aanbevolen volgorde (advies, niet vastgelegd)
