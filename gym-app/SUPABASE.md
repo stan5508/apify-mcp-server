@@ -167,6 +167,50 @@ toegangsregels hierboven, niet door de sleutel.
    gekoppeld. Vanaf dan verschijnen zijn trainingen en voeding bij jou onder
    **Van klanten**.
 
+## 6. Contracten automatisch mailen (optioneel, ~15 minuten)
+
+Zonder dit blok maakt Coachlog het contract als PDF en geef je het zelf door via het
+deelvenster van je tablet. Met dit blok verstuurt de app zelf, met de PDF als bijlage.
+
+Er zijn twee dingen nodig: een maildienst die de mail bezorgt, en een klein functietje in
+je Supabase-project dat de sleutel van die maildienst geheim houdt.
+
+### 6a. Maildienst
+
+1. Maak een gratis account op <https://resend.com> (3.000 mails per maand gratis).
+2. **Domains → Add domain**: vul je eigen domein in en zet de DNS-regels die Resend
+   toont bij je domeinprovider. Dit is nodig zodat je mail niet als spam aankomt.
+   Heb je geen domein, dan kun je eerst testen met de afzender `onboarding@resend.dev`;
+   daarmee kun je alleen naar je eigen adres mailen.
+3. **API Keys → Create API Key**, rechten *Sending access*. Kopieer de sleutel; je ziet
+   hem maar één keer.
+
+### 6b. Functie in Supabase
+
+1. Ga in Supabase naar **Edge Functions → Deploy a new function → Via editor**.
+2. Noem de functie exact `send-contract`.
+3. Plak de inhoud van [`supabase/functions/send-contract/index.ts`](./supabase/functions/send-contract/index.ts)
+   en klik **Deploy**.
+4. Ga naar **Edge Functions → Secrets** en voeg twee waarden toe:
+
+   | Naam             | Waarde                                          |
+   | ---------------- | ----------------------------------------------- |
+   | `RESEND_API_KEY` | de sleutel uit stap 6a                          |
+   | `MAIL_FROM`      | `Coachlog <contract@jouwdomein.nl>`             |
+
+### 6c. Uitproberen
+
+In Coachlog: **Instellingen → Contracten mailen → Testmail sturen**. Die stuurt een kort
+bericht naar je eigen adres. Komt hij aan, dan staat het goed.
+
+Vanaf dan heeft elk getekend contract een knop **Mailen naar klant**. De klant krijgt de
+PDF als bijlage; met "Kopie naar mijzelf" aan krijg je zelf een blinde kopie, en antwoorden
+van de klant komen bij jou terecht.
+
+Alleen jouw coach-account kan de functie gebruiken: Supabase controleert de inlog en de
+functie kijkt daarna of het profiel de rol *coach* heeft. Klantaccounts kunnen er dus geen
+mail mee versturen.
+
 ## Wat klanten wel en niet zien
 
 Klanten zien alleen hun eigen gegevens. Ze zien niets van andere klanten, en niets uit

@@ -97,8 +97,12 @@ deelvenster van het apparaat (`navigator.share` met het bestand), zodat Mail, Wh
 Signal het als bijlage krijgen. Kan het apparaat dat niet, dan bewaart de app de PDF en
 opent een vooringevulde mail waar je hem zelf aanhangt. De verstuurdatum wordt vastgelegd.
 
-Nog open: automatisch mailen zonder tussenkomst. Dat vraagt een server — bijvoorbeeld een
-Supabase Edge Function met een maildienst (Resend, Postmark) en een geverifieerd domein.
+Automatisch mailen is er ook: de Edge Function `send-contract`
+([bron](./supabase/functions/send-contract/index.ts)) stuurt de PDF via Resend. De app roept
+hem aan met `cloud.invoke`; de API-sleutel blijft op de server. Alleen een ingelogd account
+met de rol *coach* mag hem gebruiken, zodat klantaccounts er geen mail mee kunnen sturen.
+Opzet in zes stappen staat in [SUPABASE.md](./SUPABASE.md); zonder die opzet valt de app
+terug op het deelvenster.
 
 Elke kalendermaand dat een getekend contract loopt levert één maandbedrag op. Die tellen
 mee in **Omzet per maand** naast de strippenkaarten, verschijnen los in "Openstaande
