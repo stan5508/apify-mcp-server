@@ -449,7 +449,7 @@
 <script>
 (() => {
   'use strict';
-  const APP_VERSION = 39; // bump when publishing; shown on the home screen
+  const APP_VERSION = 40; // bump when publishing; shown on the home screen
   const KEY = 'coachlog-v1';
   const $app = document.getElementById('app');
 
@@ -2638,6 +2638,15 @@
         <input type="file" id="import-file" accept="application/json" hidden>
       </div>
       <p class="mut">Alles wordt lokaal op dit apparaat bewaard. Maak regelmatig een back-up.</p>
+      <div class="eyebrow">Oefeninfo</div>
+      <div class="card">
+        <p class="sub" style="margin:0 0 10px">Exporteer je oefeningenlijst om hem te laten aanvullen met uitleg, foto's en video's. In het bestand staan alleen de oefeningen — geen klanten, trainingen of metingen. De ingevulde versie lees je hier weer in; alleen bestaande oefeningen worden aangevuld, de rest blijft ongemoeid.</p>
+        <div class="actions">
+          <button id="ex-export">Exporteer oefeningenlijst</button>
+          <button id="ex-import-btn">Lees oefeninfo in</button>
+          <input type="file" id="ex-import-file" accept="application/json" hidden>
+        </div>
+      </div>
       <div class="eyebrow">Versie</div>
       <div class="card">
         <p class="sub" style="margin:0 0 8px">Coachlog versie ${APP_VERSION}.</p>
@@ -2666,6 +2675,10 @@
     if (scrollToId) document.getElementById(scrollToId)?.scrollIntoView({ block: 'center' });
     document.getElementById('export-btn').addEventListener('click', exportJson);
     document.getElementById('csv-all').addEventListener('click', () => downloadCsv(null));
+    document.getElementById('ex-export').addEventListener('click', exportExercises);
+    const exFile = document.getElementById('ex-import-file');
+    document.getElementById('ex-import-btn').addEventListener('click', () => exFile.click());
+    exFile.addEventListener('change', importExerciseInfo);
     const fileInput = document.getElementById('import-file');
     document.getElementById('import-btn').addEventListener('click', () => fileInput.click());
     fileInput.addEventListener('change', importJson);
@@ -6336,6 +6349,66 @@
     localStorage.setItem(KEY, JSON.stringify(db));
     URL.revokeObjectURL(a.href);
   }
+  // only the exercises, so a list can be shared without any client data in it
+  function exportExercises() {
+    const rows = [...db.exercises].sort((a, b) => byName(a.name, b.name)).map((e) => ({
+      name: e.name, kind: e.kind, group: e.group, equipment: e.equipment,
+      hasPhoto: !!e.photoId, hasInstructions: !!e.instructions, archived: !!e.archived,
+    }));
+    const blob = new Blob([JSON.stringify({ coachlog: 'oefeningen', version: APP_VERSION, exercises: rows }, null, 2)],
+      { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `coachlog-oefeningen-${todayIso()}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  // fills uitleg, foto and video on exercises that already exist; touches nothing else
+  function importExerciseInfo(ev) {
+    const file = ev.target.files[0];
+    if (!file) return;
+    ev.target.value = '';
+    const reader = new FileReader();
+    reader.onload = () => {
+      let rows;
+      try {
+        const d = JSON.parse(reader.result);
+        rows = Array.isArray(d) ? d : d.exercises;
+        if (!Array.isArray(rows)) throw new Error('geen lijst');
+      } catch {
+        alert('Dit bestand is geen oefeninfo-bestand.');
+        return;
+      }
+      const byKey = new Map();
+      for (const e of db.exercises) {
+        byKey.set(exKey(e.name), e);
+        for (const a of e.aliases || []) byKey.set(exKey(a), e);
+      }
+      let filled = 0;
+      const missing = [];
+      for (const row of rows) {
+        const rec = byKey.get(exKey(row.name));
+        if (!rec) { missing.push(row.name); continue; }
+        if (row.instructions) rec.instructions = String(row.instructions);
+        if (row.cues) rec.cues = String(row.cues);
+        if (row.videoUrl) rec.videoUrl = safeUrl(row.videoUrl) || rec.videoUrl;
+        if (row.group && MUSCLE_GROUPS.includes(row.group)) rec.group = row.group;
+        if (row.equipment && EQUIPMENT.includes(row.equipment)) rec.equipment = row.equipment;
+        if (row.photoId) {
+          rec.photoId = String(row.photoId);
+          rec.photos = Array.isArray(row.photos) && row.photos.length ? row.photos : ['0.jpg', '1.jpg'];
+          rec.photoName = String(row.photoName || row.photoId).replace(/_/g, ' ');
+        }
+        filled++;
+      }
+      save(); render();
+      alert(`${filled} oefening${filled === 1 ? '' : 'en'} bijgewerkt.`
+        + (missing.length ? `\n\nNiet gevonden (${missing.length}): ${missing.slice(0, 8).join(', ')}${missing.length > 8 ? '…' : ''}` : ''));
+    };
+    reader.readAsText(file);
+  }
+
   function importJson(ev) {
     const file = ev.target.files[0];
     if (!file) return;
