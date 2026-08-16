@@ -438,7 +438,7 @@
 <script>
 (() => {
   'use strict';
-  const APP_VERSION = 31; // bump when publishing; shown on the home screen
+  const APP_VERSION = 32; // bump when publishing; shown on the home screen
   const KEY = 'coachlog-v1';
   const $app = document.getElementById('app');
 
@@ -5440,6 +5440,8 @@
         ],
       });
     }
+    // the registry is normally built on load, so fill it here too: no reload needed
+    migrateExercises(db);
   }
 
   // ---------- nav ----------
