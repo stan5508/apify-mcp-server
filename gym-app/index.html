@@ -445,7 +445,7 @@
 <script>
 (() => {
   'use strict';
-  const APP_VERSION = 34; // bump when publishing; shown on the home screen
+  const APP_VERSION = 35; // bump when publishing; shown on the home screen
   const KEY = 'coachlog-v1';
   const $app = document.getElementById('app');
 
@@ -1093,6 +1093,7 @@
   const num = (v) => { const n = parseFloat(String(v).replace(',', '.')); return Number.isFinite(n) ? n : 0; };
   const todayIso = () => new Date().toISOString().slice(0, 10);
   const fmtDate = (iso) => new Date(iso + 'T12:00:00').toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' });
+  const fmtDateLong = (iso) => new Date(iso + 'T12:00:00').toLocaleDateString('nl-NL', { day: 'numeric', month: 'long', year: 'numeric' });
   const fmtDateFull = (iso) => new Date(iso + 'T12:00:00').toLocaleDateString('nl-NL', { weekday: 'short', day: 'numeric', month: 'long' });
   const unitLbl = () => (db.settings && db.settings.unit) || 'kg';
   const fmtKg = (n) => (Math.round(n * 10) / 10).toLocaleString('nl-NL') + ' ' + unitLbl();
@@ -3010,6 +3011,193 @@
 
   // --- credits and payments ---
 
+
+  // ---------- contract as a PDF (hand-rolled: no library, works offline) ----------
+  const PDF_W = 595.28;
+  const PDF_H = 841.89;
+  const PDF_MARGIN = 56;
+  const PDF_TEXT_W = PDF_W - PDF_MARGIN * 2;
+  // WinAnsi covers Dutch; swap the typographic characters a coach actually types
+  const PDF_SWAP = { '—': '-', '–': '-', '’': "'", '‘': "'", '“': '"', '”': '"', '×': 'x', '·': '-', '€': '\x80', '…': '...' };
+  const pdfText = (s) => String(s ?? '').replace(/[^\x20-\x7E\xA0-\xFF]/g, (c) => PDF_SWAP[c] || '?');
+  const pdfEsc = (s) => pdfText(s).replace(/[\\()]/g, (c) => '\\' + c);
+  const pdfBytes = (s) => Uint8Array.from(String(s), (c) => c.charCodeAt(0) & 0xff);
+  // Helvetica averages just under half an em; stay a touch wide so lines never overrun
+  const pdfWidth = (s, size, bold) => pdfText(s).length * size * (bold ? 0.55 : 0.52);
+
+  function pdfWrap(text, size, width, bold) {
+    const out = [];
+    for (const para of String(text || '').split('\n')) {
+      if (!para.trim()) { out.push(''); continue; }
+      let line = '';
+      for (const word of para.split(/\s+/)) {
+        const next = line ? line + ' ' + word : word;
+        if (pdfWidth(next, size, bold) > width && line) { out.push(line); line = word; }
+        else line = next;
+      }
+      out.push(line);
+    }
+    return out;
+  }
+
+  async function pdfJpeg(dataUrl, maxW = 460) {
+    const img = await new Promise((res, rej) => {
+      const i = new Image();
+      i.onload = () => res(i);
+      i.onerror = () => rej(new Error('afbeelding kon niet worden gelezen'));
+      i.src = dataUrl;
+    });
+    const w = Math.min(maxW, img.width || maxW);
+    const h = Math.max(1, Math.round((img.height / (img.width || 1)) * w));
+    const cv = document.createElement('canvas');
+    cv.width = w;
+    cv.height = h;
+    const ctx = cv.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(img, 0, 0, w, h);
+    const b64 = cv.toDataURL('image/jpeg', 0.9).split(',')[1];
+    return { w, h, bytes: Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)) };
+  }
+
+  // builds the page streams first, so the object numbers are known before writing
+  function pdfLayout(blocks, imageCount) {
+    const pages = [];
+    let ops = [];
+    let y = PDF_H - PDF_MARGIN;
+    const newPage = () => { pages.push(ops); ops = []; y = PDF_H - PDF_MARGIN; };
+    const room = (h) => { if (y - h < PDF_MARGIN + 24) newPage(); };
+    const write = (s, x, size, bold, grey) => {
+      ops.push(`BT /${bold ? 'F2' : 'F1'} ${size} Tf ${grey || 0.1} g 1 0 0 1 ${x.toFixed(2)} ${y.toFixed(2)} Tm (${pdfEsc(s)}) Tj ET`);
+    };
+    for (const bl of blocks) {
+      if (bl.type === 'title') {
+        room(30); write(bl.text, PDF_MARGIN, 18, true); y -= 24;
+      } else if (bl.type === 'sub') {
+        room(16); write(bl.text, PDF_MARGIN, 10, false, 0.42); y -= 18;
+      } else if (bl.type === 'rule') {
+        room(14);
+        ops.push(`0.8 G 0.7 w ${PDF_MARGIN} ${y.toFixed(2)} m ${(PDF_W - PDF_MARGIN).toFixed(2)} ${y.toFixed(2)} l S`);
+        y -= 18;
+      } else if (bl.type === 'head') {
+        room(26); y -= 8; write(bl.text, PDF_MARGIN, 11, true); y -= 16;
+      } else if (bl.type === 'row') {
+        room(16);
+        write(bl.label, PDF_MARGIN, 10, false, 0.35);
+        const vw = pdfWidth(bl.value, 10, true);
+        write(bl.value, PDF_W - PDF_MARGIN - vw, 10, true);
+        y -= 15;
+      } else if (bl.type === 'para') {
+        for (const line of pdfWrap(bl.text, 10, PDF_TEXT_W)) {
+          room(14);
+          if (line) write(line, PDF_MARGIN, 10, false, 0.2);
+          y -= 13;
+        }
+        y -= 4;
+      } else if (bl.type === 'signatures') {
+        const boxW = (PDF_TEXT_W - 24) / 2;
+        const boxH = Math.max(...bl.items.map((it) => Math.round((it.img.h / it.img.w) * boxW)));
+        room(boxH + 40);
+        bl.items.forEach((it, i) => {
+          const x = PDF_MARGIN + i * (boxW + 24);
+          const h = Math.round((it.img.h / it.img.w) * boxW);
+          ops.push(`q ${boxW.toFixed(2)} 0 0 ${h} ${x.toFixed(2)} ${(y - h).toFixed(2)} cm /Im${it.index + 1} Do Q`);
+          ops.push(`0.8 G 0.7 w ${x.toFixed(2)} ${(y - h).toFixed(2)} m ${(x + boxW).toFixed(2)} ${(y - h).toFixed(2)} l S`);
+        });
+        y -= boxH + 12;
+        bl.items.forEach((it, i) => write(it.name, PDF_MARGIN + i * (boxW + 24), 9, false, 0.42));
+        y -= 20;
+      }
+    }
+    pages.push(ops);
+    return pages.filter((ps, i) => ps.length || i === 0);
+  }
+
+  function pdfAssemble(pages, images) {
+    const nImg = images.length;
+    const catalog = 1;
+    const pagesObj = 2;
+    const fontR = 3;
+    const fontB = 4;
+    const imgObj = (i) => 5 + i;
+    const pageObj = (i) => 5 + nImg + i * 2;
+    const contObj = (i) => 6 + nImg + i * 2;
+    const objects = [];
+    const put = (...chunks) => { objects.push(chunks); };
+
+    put(`<< /Type /Catalog /Pages ${pagesObj} 0 R >>`);
+    put(`<< /Type /Pages /Count ${pages.length} /Kids [${pages.map((_, i) => `${pageObj(i)} 0 R`).join(' ')}] >>`);
+    put('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>');
+    put('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>');
+    images.forEach((im) => put(
+      `<< /Type /XObject /Subtype /Image /Width ${im.w} /Height ${im.h} /ColorSpace /DeviceRGB `
+      + `/BitsPerComponent 8 /Filter /DCTDecode /Length ${im.bytes.length} >>\nstream\n`,
+      im.bytes, '\nendstream'));
+    pages.forEach((ops, i) => {
+      const res = `<< /Font << /F1 ${fontR} 0 R /F2 ${fontB} 0 R >>`
+        + (nImg ? ` /XObject << ${images.map((_, k) => `/Im${k + 1} ${imgObj(k)} 0 R`).join(' ')} >>` : '') + ' >>';
+      put(`<< /Type /Page /Parent ${pagesObj} 0 R /MediaBox [0 0 ${PDF_W.toFixed(2)} ${PDF_H.toFixed(2)}] `
+        + `/Resources ${res} /Contents ${contObj(i)} 0 R >>`);
+      const stream = ops.join('\n');
+      put(`<< /Length ${pdfBytes(stream).length} >>\nstream\n`, stream, '\nendstream');
+    });
+
+    const chunks = [];
+    let len = 0;
+    const push = (c) => { const b = typeof c === 'string' ? pdfBytes(c) : c; chunks.push(b); len += b.length; };
+    push('%PDF-1.4\n%\xE2\xE3\xCF\xD3\n');
+    const offsets = [];
+    objects.forEach((parts, i) => {
+      offsets[i] = len;
+      push(`${i + 1} 0 obj\n`);
+      parts.forEach(push);
+      push('\nendobj\n');
+    });
+    const xref = len;
+    push(`xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`);
+    offsets.forEach((off) => push(String(off).padStart(10, '0') + ' 00000 n \n'));
+    push(`trailer\n<< /Size ${objects.length + 1} /Root ${catalog} 0 R >>\nstartxref\n${xref}\n%%EOF\n`);
+    return new Blob(chunks, { type: 'application/pdf' });
+  }
+
+  async function contractPdf(s, client) {
+    const sig = s.signature || {};
+    const end = subEnd(s);
+    const images = [];
+    const items = [];
+    for (const [key, name] of [['client', sig.clientName || client.name], ['coach', sig.coachName || 'Coach']]) {
+      if (!sig[key]) continue;
+      const img = await pdfJpeg(sig[key]);
+      items.push({ name, img, index: images.length });
+      images.push(img);
+    }
+    const blocks = [
+      { type: 'title', text: 'Trainingsovereenkomst' },
+      { type: 'sub', text: `${client.name} en ${sig.coachName || db.settings.coachName || 'de coach'}` },
+      { type: 'rule' },
+      { type: 'head', text: 'Afspraken' },
+      { type: 'row', label: 'Klant', value: client.name },
+      ...(client.email ? [{ type: 'row', label: 'E-mail', value: client.email }] : []),
+      { type: 'row', label: 'Abonnement', value: s.name },
+      { type: 'row', label: 'Prijs per maand', value: money(s.pricePerMonth || 0) },
+      { type: 'row', label: 'Looptijd', value: s.months ? (s.months === 1 ? '1 maand' : s.months + ' maanden') : 'doorlopend' },
+      { type: 'row', label: 'Ingangsdatum', value: fmtDateLong(s.startDate) },
+      ...(end ? [{ type: 'row', label: 'Einddatum', value: fmtDateLong(end) }] : []),
+      ...(s.sessionsPerWeek ? [{ type: 'row', label: 'Sessies per week', value: fmtNum(s.sessionsPerWeek) }] : []),
+      ...(s.noticeMonths ? [{ type: 'row', label: 'Opzegtermijn', value: s.noticeMonths === 1 ? '1 maand' : s.noticeMonths + ' maanden' }] : []),
+      ...(s.fields || []).filter((f) => f.value).map((f) => ({ type: 'row', label: f.label, value: f.value })),
+    ];
+    if (s.terms) blocks.push({ type: 'head', text: 'Voorwaarden' }, { type: 'para', text: s.terms });
+    if (items.length) {
+      blocks.push({ type: 'head', text: 'Handtekeningen' }, { type: 'signatures', items });
+      blocks.push({ type: 'sub', text: `Ondertekend op ${fmtDateLong((sig.signedAt || '').slice(0, 10))}.` });
+    }
+    return pdfAssemble(pdfLayout(blocks, images.length), images);
+  }
+
+  const contractFileName = (s, client) =>
+    `Trainingsovereenkomst ${client.name} ${s.startDate}.pdf`.replace(/[\\/:*?"<>|]/g, '-');
+
   // --- abonnementen: overzicht en nieuw contract ---
   function viewSubscriptions() {
     const clients = sortedClients().filter((c) => !c.archived);
@@ -3281,10 +3469,17 @@
                 </div>`).join('')}</div>`
               : '<p class="mut no-print">Nog geen maand verstreken.</p>';
           })() +
-          `<div class="actions no-print">
-            <button id="sub-print">Print / PDF</button>
-            ${s.status === 'getekend' ? '<button class="danger ghost" id="sub-cancel">Opzeggen</button>' : ''}
-          </div>`);
+          `<div class="eyebrow no-print">Naar de klant</div>
+          <div class="card no-print">
+            <p class="sub" style="margin:0 0 10px">${c.email ? `Contract als PDF naar ${esc(c.email)}.` : 'Vul het e-mailadres in op het profiel van de klant, dan staat het meteen goed in de mail.'}</p>
+            <div class="actions">
+              <button class="primary" id="sub-send">Als PDF versturen</button>
+              <button id="sub-pdf">PDF opslaan</button>
+              <button id="sub-print">Printen</button>
+            </div>
+            <p class="mut" id="send-msg" style="margin:8px 0 0">${s.sentAt ? `Laatst verstuurd op ${esc(fmtDateLong(s.sentAt.slice(0, 10)))}.` : ''}</p>
+          </div>` +
+          (s.status === 'getekend' ? `<div class="actions no-print"><button class="danger ghost" id="sub-cancel">Opzeggen</button></div>` : ''));
 
     bindNav();
     const form = document.getElementById('sub-form');
@@ -3335,6 +3530,54 @@
     }
     const printBtn = document.getElementById('sub-print');
     if (printBtn) printBtn.addEventListener('click', () => window.print());
+    const sendBtn = document.getElementById('sub-send');
+    const pdfBtn = document.getElementById('sub-pdf');
+    if (sendBtn) {
+      const msg = document.getElementById('send-msg');
+      const build = async () => {
+        const blob = await contractPdf(s, c);
+        return new File([blob], contractFileName(s, c), { type: 'application/pdf' });
+      };
+      const download = (file) => {
+        const url = URL.createObjectURL(file);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = file.name;
+        a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 4000);
+      };
+      pdfBtn.addEventListener('click', async () => {
+        msg.textContent = 'PDF maken…';
+        try { download(await build()); msg.textContent = 'PDF opgeslagen.'; }
+        catch (e) { msg.textContent = 'PDF maken mislukt: ' + e.message; }
+      });
+      sendBtn.addEventListener('click', async () => {
+        msg.textContent = 'PDF maken…';
+        let file;
+        try { file = await build(); }
+        catch (e) { msg.textContent = 'PDF maken mislukt: ' + e.message; return; }
+        const subject = `Trainingsovereenkomst — ${c.name}`;
+        const body = `Hoi ${c.name.split(' ')[0]},\n\nHierbij de ondertekende trainingsovereenkomst voor ${s.name}, ingaand op ${fmtDateLong(s.startDate)}.\n\nGroet,\n${(s.signature || {}).coachName || db.settings.coachName || ''}`;
+        // a PWA cannot send mail itself; hand the file to the tablet's share sheet
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          try {
+            await navigator.share({ files: [file], title: subject, text: body });
+            s.sentAt = new Date().toISOString();
+            save(); render();
+            return;
+          } catch (e) {
+            if (e && e.name === 'AbortError') { msg.textContent = 'Versturen afgebroken.'; return; }
+          }
+        }
+        // no share sheet: save the PDF and open a prefilled mail to attach it to
+        download(file);
+        const to = c.email ? encodeURIComponent(c.email) : '';
+        location.href = `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+        s.sentAt = new Date().toISOString();
+        save();
+        msg.textContent = 'PDF opgeslagen en mail geopend — voeg het bestand toe als bijlage.';
+      });
+    }
     const cancelBtn = document.getElementById('sub-cancel');
     if (cancelBtn) cancelBtn.addEventListener('click', () => {
       const per = s.noticeMonths || 0;

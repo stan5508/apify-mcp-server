@@ -90,6 +90,16 @@ opzegtermijn wordt de einddatum berekend). Het contract is te printen of als PDF
 bewaren; de printstijl is meteen rechtgetrokken, want in het donkere thema kwam er witte
 tekst op wit papier uit.
 
+Een getekend contract gaat als **PDF** naar de klant. De PDF wordt in de app zelf
+opgebouwd — geen bibliotheek, geen internet nodig: een handgeschreven PDF-schrijver met
+Helvetica in WinAnsi en de handtekeningen als JPEG (DCTDecode). Versturen loopt via het
+deelvenster van het apparaat (`navigator.share` met het bestand), zodat Mail, WhatsApp of
+Signal het als bijlage krijgen. Kan het apparaat dat niet, dan bewaart de app de PDF en
+opent een vooringevulde mail waar je hem zelf aanhangt. De verstuurdatum wordt vastgelegd.
+
+Nog open: automatisch mailen zonder tussenkomst. Dat vraagt een server — bijvoorbeeld een
+Supabase Edge Function met een maildienst (Resend, Postmark) en een geverifieerd domein.
+
 Elke kalendermaand dat een getekend contract loopt levert één maandbedrag op. Die tellen
 mee in **Omzet per maand** naast de strippenkaarten, verschijnen los in "Openstaande
 betalingen" tot je ze aftikt, en staan ook onderaan het contract zelf. Maanden die nog
