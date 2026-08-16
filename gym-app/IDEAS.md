@@ -90,6 +90,11 @@ opzegtermijn wordt de einddatum berekend). Het contract is te printen of als PDF
 bewaren; de printstijl is meteen rechtgetrokken, want in het donkere thema kwam er witte
 tekst op wit papier uit.
 
+Elke kalendermaand dat een getekend contract loopt levert één maandbedrag op. Die tellen
+mee in **Omzet per maand** naast de strippenkaarten, verschijnen los in "Openstaande
+betalingen" tot je ze aftikt, en staan ook onderaan het contract zelf. Maanden die nog
+moeten komen tellen niet mee — omzet gaat over wat verstreken is.
+
 Let op: handtekeningen worden verkleind opgeslagen (~11 kB per stuk, dus ~22 kB per
 contract) en gaan mee in de synchronisatie, net als de progressiefoto's.
 
