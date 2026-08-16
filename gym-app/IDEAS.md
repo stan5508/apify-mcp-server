@@ -112,8 +112,13 @@ voor spiergroepen, grafieklijnen en de schijvenrekenmachine. Basis `#0B0D0F` / `
 accent amber `#F2A93B`, tekst `#F5F7F8`.
 
 Volgorde: pagina-indeling (gebouwd) → kleur (gebouwd) → oefeningplaatjes (gebouwd) →
-tabbalk op de telefoon → logo → kleine dingen (lege schermen, `tabular-nums`, trilling,
-48 px raakvlakken, klantfoto in de zijbalk, PWA-startscherm).
+tabbalk op de telefoon (gebouwd) → logo → kleine dingen (lege schermen, `tabular-nums`,
+trilling, 48 px raakvlakken, klantfoto in de zijbalk, PWA-startscherm).
+
+Onder 760 px staat een vaste tabbalk onderin (Vandaag · Klanten · Agenda · Meer) en wordt
+de zijbalk een uitschuiflade. Klanten opent de lade met het zoekveld actief, Meer opent hem
+onderaan. Tijdens duo-schermen blijft de lade op de telefoon bereikbaar; op tabletformaat
+(760–999 px) verdwijnt de zijbalk daar nog steeds, want die kost breedte.
 
 Oefeningplaatjes komen uit **Free Exercise DB** (publiek domein). `oefeningen.json` is de
 uitgedunde catalogus (873 oefeningen, 106 kB) en wordt meegeleverd; de foto's zelf staan op

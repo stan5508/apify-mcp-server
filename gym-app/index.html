@@ -129,9 +129,44 @@
   }
   #side { position: sticky; top: 0; max-height: 100vh; overflow-y: auto; padding-bottom: 24px; }
   #app { max-width: 640px; padding-bottom: 96px; min-width: 0; }
+  /* phone: the sidebar becomes a drawer behind the tab bar */
+  #tabbar, #nav-backdrop { display: none; }
   @media (max-width: 759px) {
     .layout { display: block; }
-    #side { position: static; max-height: none; border-bottom: 1px solid var(--grid); padding-bottom: 4px; margin-bottom: 4px; }
+    #app { padding-bottom: 108px; }
+    #side {
+      position: fixed; top: 0; bottom: 0; left: 0; width: min(320px, 86vw); z-index: 41;
+      max-height: none; overflow-y: auto; background: var(--surface); border-right: 1px solid var(--grid);
+      /* clear the tab bar, which stays tappable on top of the drawer */
+      padding: 0 16px calc(68px + env(safe-area-inset-bottom));
+      /* visibility keeps the closed drawer out of the tab order, not just off screen;
+         it flips at once on open and only after the slide-out on close */
+      transform: translateX(-101%); visibility: hidden;
+      transition: transform 0.18s ease-out, visibility 0s linear 0.18s;
+    }
+    body.nav-open #side {
+      transform: translateX(0); visibility: visible;
+      transition: transform 0.18s ease-out, visibility 0s;
+    }
+    #nav-backdrop { display: block; position: fixed; inset: 0; z-index: 40; background: rgba(0, 0, 0, 0.45); }
+    #nav-backdrop[hidden] { display: none; }
+    #tabbar {
+      display: grid; grid-template-columns: repeat(4, 1fr);
+      position: fixed; left: 0; right: 0; bottom: 0; z-index: 42;
+      background: var(--surface); border-top: 1px solid var(--grid);
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+    #tabbar button {
+      border: 0; background: transparent; border-radius: 0; color: var(--muted);
+      display: flex; flex-direction: column; align-items: center; gap: 3px;
+      font-size: 11px; padding: 8px 2px 10px; min-height: 52px;
+    }
+    #tabbar button svg { width: 21px; height: 21px; }
+    #tabbar button[aria-current="page"] { color: var(--accent); }
+    #timer-bar { bottom: calc(52px + env(safe-area-inset-bottom)); }
+  }
+  @media (max-width: 759px) and (prefers-reduced-motion: reduce) {
+    #side { transition: none; }
   }
 
   .nav-search { width: 100%; margin: 0 0 10px; padding: 7px 10px; font-size: 14px; }
@@ -343,8 +378,9 @@
 
   #app.wide { max-width: none; }
   .duo-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 0 20px; align-items: start; }
-  /* on narrower screens (e.g. tablet portrait) hide the sidebar during duo screens so both columns fit */
-  @media (max-width: 999px) {
+  /* on narrower screens (e.g. tablet portrait) hide the sidebar during duo screens so both columns fit;
+     phones keep it, because there it is a drawer that costs no width */
+  @media (min-width: 760px) and (max-width: 999px) {
     body.wide-page .layout { display: block; }
     body.wide-page #side { display: none; }
   }
@@ -363,6 +399,17 @@
   <aside id="side"></aside>
   <main id="app"></main>
 </div>
+<div id="nav-backdrop" hidden></div>
+<nav id="tabbar" aria-label="Hoofdnavigatie">
+  <button type="button" data-tab="/" aria-label="Vandaag">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg>Vandaag</button>
+  <button type="button" data-tab-menu="clients" aria-label="Klanten">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3 20c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5"/><circle cx="17.5" cy="9" r="2.4"/></svg>Klanten</button>
+  <button type="button" data-tab="/agenda" aria-label="Agenda">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>Agenda</button>
+  <button type="button" data-tab-menu="all" aria-label="Meer">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg>Meer</button>
+</nav>
 <div id="lock-screen" hidden></div>
 <div id="timer-bar" hidden>
   <span class="t-label"></span>
@@ -375,7 +422,7 @@
 <script>
 (() => {
   'use strict';
-  const APP_VERSION = 28; // bump when publishing; shown on the home screen
+  const APP_VERSION = 29; // bump when publishing; shown on the home screen
   const KEY = 'coachlog-v1';
   const $app = document.getElementById('app');
 
@@ -2193,6 +2240,45 @@
     if (navArch) navArch.addEventListener('click', () => { uiState.navArchived = !uiState.navArchived; renderSidebar(); });
   }
 
+  // ---------- phone tab bar ----------
+  const $tabbar = document.getElementById('tabbar');
+  const $backdrop = document.getElementById('nav-backdrop');
+  function closeDrawer() {
+    document.body.classList.remove('nav-open');
+    $backdrop.hidden = true;
+  }
+  function openDrawer(focusClients) {
+    document.body.classList.add('nav-open');
+    $backdrop.hidden = false;
+    if (focusClients) {
+      uiState.navClients = true;
+      renderSidebar();
+      // wait for the drawer to become visible; a hidden field cannot take focus
+      requestAnimationFrame(() => document.getElementById('nav-q')?.focus());
+    }
+    $side.scrollTop = focusClients ? 0 : $side.scrollHeight;
+  }
+  // the drawer tabs have no page of their own, so only the real routes light up
+  function syncTabbar(section) {
+    const current = section === '' ? '/' : '/' + section;
+    $tabbar.querySelectorAll('[data-tab]').forEach((b) => {
+      if (b.dataset.tab === current) b.setAttribute('aria-current', 'page');
+      else b.removeAttribute('aria-current');
+    });
+  }
+  $tabbar.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => {
+    closeDrawer();
+    if (location.hash.slice(1) === b.dataset.tab) render();
+    else location.hash = b.dataset.tab;
+  }));
+  $tabbar.querySelectorAll('[data-tab-menu]').forEach((b) => b.addEventListener('click', () => {
+    if (document.body.classList.contains('nav-open')) closeDrawer();
+    else openDrawer(b.dataset.tabMenu === 'clients');
+  }));
+  $backdrop.addEventListener('click', closeDrawer);
+  $side.addEventListener('click', (ev) => { if (ev.target.closest('a')) closeDrawer(); });
+  document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') closeDrawer(); });
+
   function render() {
     const hash = location.hash.slice(1) || '/';
     const parts = hash.split('/').filter(Boolean);
@@ -2200,7 +2286,9 @@
     const widePage = parts[0] === 'duo' && (parts[2] === 'training' || parts[2] === 'schema' || parts[2] === 'vrij');
     $app.classList.toggle('wide', widePage);
     document.body.classList.toggle('wide-page', widePage);
+    closeDrawer();
     renderSidebar();
+    syncTabbar(parts[0] || '');
     if (parts[0] === 'klant' && parts[2] === 'schema') return viewSchema(parts[1], parts[3]);
     if (parts[0] === 'klant' && parts[2] === 'training') return viewWorkout(parts[1], parts[3]);
     if (parts[0] === 'klant' && parts[2] === 'bewerk') return viewWorkout(parts[1], null, parts[3]);

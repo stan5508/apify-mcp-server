@@ -1,4 +1,4 @@
-const CACHE = 'coachlog-v28';
+const CACHE = 'coachlog-v29';
 const PHOTOS = 'coachlog-photos';
 const PHOTO_HOSTS = ['cdn.jsdelivr.net', 'raw.githubusercontent.com'];
 const ASSETS = [
