@@ -445,7 +445,7 @@
 <script>
 (() => {
   'use strict';
-  const APP_VERSION = 33; // bump when publishing; shown on the home screen
+  const APP_VERSION = 34; // bump when publishing; shown on the home screen
   const KEY = 'coachlog-v1';
   const $app = document.getElementById('app');
 
@@ -1737,14 +1737,43 @@
   const activeSubTypes = () => db.subTypes.filter((t) => !t.archived).sort((a, b) => byName(a.name, b.name));
 
   const openInvoices = () => db.packages.filter((p) => !p.paid).sort((a, b) => a.date.localeCompare(b.date));
+  // one termijn per calendar month a signed contract runs, never into the future
+  function subInstalments() {
+    const now = todayIso().slice(0, 7);
+    const out = [];
+    for (const s of db.subscriptions) {
+      if (s.status === 'concept' || !s.startDate || !(s.pricePerMonth > 0)) continue;
+      const end = subEnd(s);
+      const last = end ? end.slice(0, 7) : now;
+      let m = s.startDate.slice(0, 7);
+      while (m <= last && m <= now) {
+        out.push({
+          subId: s.id, clientId: s.clientId, name: s.name, month: m,
+          amount: s.pricePerMonth, paid: (s.paidMonths || []).includes(m),
+        });
+        m = addMonths(m + '-01', 1).slice(0, 7);
+      }
+    }
+    return out.sort((a, b) => a.month.localeCompare(b.month));
+  }
+  const openInstalments = () => subInstalments().filter((t) => !t.paid);
+
   function revenueByMonth() {
     const months = new Map();
-    for (const p of db.packages) {
-      const m = p.date.slice(0, 7);
+    const bucket = (m) => {
       const cur = months.get(m) || { month: m, invoiced: 0, paid: 0 };
+      months.set(m, cur);
+      return cur;
+    };
+    for (const p of db.packages) {
+      const cur = bucket(p.date.slice(0, 7));
       cur.invoiced += p.price || 0;
       if (p.paid) cur.paid += p.price || 0;
-      months.set(m, cur);
+    }
+    for (const t of subInstalments()) {
+      const cur = bucket(t.month);
+      cur.invoiced += t.amount;
+      if (t.paid) cur.paid += t.amount;
     }
     return [...months.values()].sort((a, b) => b.month.localeCompare(a.month));
   }
@@ -3239,8 +3268,20 @@
                 <img class="sig-shot" src="${esc((s.signature || {}).coach || '')}" alt="Handtekening coach"></div>
             </div>
             <p class="mut" style="margin:10px 0 0">Ondertekend op ${esc(fmtDate(((s.signature || {}).signedAt || '').slice(0, 10)))}.</p>
-          </div>
-          <div class="actions no-print">
+          </div>` +
+          `<div class="eyebrow no-print">Maandbedragen</div>` +
+          (() => {
+            const rows = subInstalments().filter((t) => t.subId === s.id);
+            return rows.length
+              ? `<div class="card no-print">${rows.map((t) => `<div class="row" style="margin-bottom:4px">
+                  <div class="grow sub">${esc(monthLabel(t.month))}</div>
+                  <div style="font-variant-numeric:tabular-nums">${esc(money(t.amount))}</div>
+                  ${t.paid ? '<span class="badge pr">betaald</span>'
+                    : `<button class="small primary" data-sub-pay="${s.id}.${t.month}">Betaald</button>`}
+                </div>`).join('')}</div>`
+              : '<p class="mut no-print">Nog geen maand verstreken.</p>';
+          })() +
+          `<div class="actions no-print">
             <button id="sub-print">Print / PDF</button>
             ${s.status === 'getekend' ? '<button class="danger ghost" id="sub-cancel">Opzeggen</button>' : ''}
           </div>`);
@@ -3364,12 +3405,14 @@
     const rows = sortedClients().map((c) => ({ c, l: creditLedger(c.id) })).filter((x) => x.l || !x.c.archived);
     const open = openInvoices();
     const months = revenueByMonth();
-    const openTotal = open.reduce((t, p) => t + (p.price || 0), 0);
-    const paidTotal = db.packages.filter((p) => p.paid).reduce((t, p) => t + (p.price || 0), 0);
+    const openSubs = openInstalments();
+    const openTotal = open.reduce((t, p) => t + (p.price || 0), 0) + openSubs.reduce((t, x) => t + x.amount, 0);
+    const paidTotal = db.packages.filter((p) => p.paid).reduce((t, p) => t + (p.price || 0), 0)
+      + subInstalments().filter((x) => x.paid).reduce((t, x) => t + x.amount, 0);
 
     $app.innerHTML = topbar('Tegoeden & betalingen', '/') +
       `<div class="stat-grid">
-        <div class="stat"><div class="lbl">Openstaand</div><div class="val">${esc(money(openTotal))}</div><div class="mut">${open.length} factuur${open.length === 1 ? '' : 'en'}</div></div>
+        <div class="stat"><div class="lbl">Openstaand</div><div class="val">${esc(money(openTotal))}</div><div class="mut">${open.length + openSubs.length} post${open.length + openSubs.length === 1 ? '' : 'en'}</div></div>
         <div class="stat"><div class="lbl">Betaald</div><div class="val">${esc(money(paidTotal))}</div><div class="mut">totaal</div></div>
         <div class="stat"><div class="lbl">Bijna op</div><div class="val">${rows.filter((x) => x.l && x.l.low && x.l.remaining > 0).length}</div><div class="mut">klanten ≤ 2 sessies</div></div>
         <div class="stat"><div class="lbl">Abonnementen</div><div class="val">${esc(money(subMonthlyTotal()))}</div><div class="mut">per maand, ${db.subscriptions.filter(subRunning).length} lopend</div></div>
@@ -3388,10 +3431,15 @@
       </table></div>` : '<p class="mut">Nog geen strippenkaarten. Voeg er een toe op het profiel van een klant.</p>') +
 
       `<div class="eyebrow">Openstaande betalingen</div>` +
-      (open.length ? open.map((p) => `<div class="card"><div class="row"><div class="grow">
-          <div class="title">${esc((clientById(p.clientId) || {}).name || '?')} — ${esc(money(p.price || 0))}</div>
-          <div class="sub">${p.sessions} sessies · ${esc(fmtDate(p.date))}${p.note ? ' · ' + esc(p.note) : ''}</div>
-        </div><button class="small primary" data-pay="${p.id}">Betaald</button></div></div>`).join('')
+      (open.length || openSubs.length
+        ? open.map((p) => `<div class="card"><div class="row"><div class="grow">
+            <div class="title">${esc((clientById(p.clientId) || {}).name || '?')} — ${esc(money(p.price || 0))}</div>
+            <div class="sub">${p.sessions} sessies · ${esc(fmtDate(p.date))}${p.note ? ' · ' + esc(p.note) : ''}</div>
+          </div><button class="small primary" data-pay="${p.id}">Betaald</button></div></div>`).join('')
+          + openSubs.map((t) => `<div class="card"><div class="row"><div class="grow">
+            <div class="title">${esc((clientById(t.clientId) || {}).name || '?')} — ${esc(money(t.amount))}</div>
+            <div class="sub">${esc(t.name)} · ${esc(monthLabel(t.month))}</div>
+          </div><button class="small primary" data-sub-pay="${t.subId}.${t.month}">Betaald</button></div></div>`).join('')
         : '<p class="mut">Niets openstaand.</p>') +
 
       `<div class="eyebrow">Omzet per maand</div>` +
@@ -3413,6 +3461,13 @@
       const p = db.packages.find((x) => x.id === b.dataset.pay);
       p.paid = true;
       p.paidAt = todayIso();
+      save(); render();
+    }));
+    document.querySelectorAll('[data-sub-pay]').forEach((b) => b.addEventListener('click', () => {
+      const [subId, month] = b.dataset.subPay.split('.');
+      const s = subById(subId);
+      s.paidMonths = s.paidMonths || [];
+      if (!s.paidMonths.includes(month)) s.paidMonths.push(month);
       save(); render();
     }));
     document.getElementById('noshow-toggle').addEventListener('click', () => {
