@@ -12,7 +12,7 @@ git -C "$repo_root" worktree add "$work" gh-pages
 
 rm -f "$work"/*.html "$work"/*.js "$work"/*.json "$work"/*.png "$work"/*.svg "$work"/*.webmanifest
 cp "$repo_root"/gym-app/index.html "$repo_root"/gym-app/klant.html "$repo_root"/gym-app/sporter.html "$repo_root"/gym-app/manifest.webmanifest \
-   "$repo_root"/gym-app/sw.js "$repo_root"/gym-app/oefeningen.json "$repo_root"/gym-app/icon-512.png "$repo_root"/gym-app/icon-180.png \
+   "$repo_root"/gym-app/sw.js "$repo_root"/gym-app/icon-512.png "$repo_root"/gym-app/icon-180.png \
    "$repo_root"/gym-app/icon.svg "$work"/
 touch "$work/.nojekyll"
 
