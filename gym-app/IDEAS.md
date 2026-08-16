@@ -188,9 +188,13 @@ Oefeningplaatjes komen uit **Free Exercise DB** (publiek domein). `oefeningen.js
 uitgedunde catalogus (873 oefeningen, 106 kB) en wordt meegeleverd; de foto's zelf staan op
 `raw.githubusercontent.com` en worden pas opgehaald als je ze bekijkt. De service worker
 bewaart elke opgehaalde foto in een aparte cache (`coachlog-photos`), dus na één keer
-bekijken werken ze offline. Koppelen gaat handmatig via de bibliotheek — automatisch matchen
-op naam is te onbetrouwbaar, wel wordt de naam als zoekterm voorgesteld en worden gangbare
-Nederlandse termen vertaald. ExerciseDB/GymVisual-GIF's zijn commercieel — niet gebruiken.
+bekijken werken ze offline. Koppelen gaat via de knop **Foto's** in de bibliotheek: voor elke oefening zonder foto
+komen drie voorstellen naast elkaar, waarvan de beste gok voorgeselecteerd staat. Volledig
+automatisch matchen kiest te vaak net de verkeerde variant (Box Squat in plaats van Barbell
+Squat), dus de keuze blijft bij de coach — maar dan in één scherm in plaats van per
+oefening. De rangschikking gebruikt de naam, plus het materiaal en de spiergroep die al bij
+de oefening staan; gangbare Nederlandse termen worden vertaald. Per oefening bijstellen kan
+nog steeds via Bewerken. ExerciseDB/GymVisual-GIF's zijn commercieel — niet gebruiken.
 wger blijft de kandidaat voor Nederlandse uitleg.
 
 ## Aanbevolen volgorde (advies, niet vastgelegd)

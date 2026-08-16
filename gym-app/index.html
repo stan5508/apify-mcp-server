@@ -345,6 +345,10 @@
   .photo-pick { padding: 0; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--surface); text-align: left; }
   .photo-pick img { width: 100%; aspect-ratio: 3 / 2; object-fit: cover; display: block; background: var(--raised); }
   .photo-pick span { display: block; padding: 6px 8px; font-size: 12px; line-height: 1.3; color: var(--ink-2); }
+  .photo-pick.off { opacity: 0.45; }
+  .sug-row { padding: 12px 0; border-top: 1px solid var(--grid); }
+  .sug-row:first-of-type { border-top: 0; }
+  .photo-pick[aria-pressed="true"] { border-color: var(--accent); }
   /* a session is tapped fast, sometimes with wet hands: nothing under 44px */
   #wo-form .set-row button, #duo-form .set-row button { min-width: 44px; min-height: 44px; }
   #wo-form .set-row input, #duo-form .set-row input { min-height: 44px; }
@@ -445,7 +449,7 @@
 <script>
 (() => {
   'use strict';
-  const APP_VERSION = 37; // bump when publishing; shown on the home screen
+  const APP_VERSION = 38; // bump when publishing; shown on the home screen
   const KEY = 'coachlog-v1';
   const $app = document.getElementById('app');
 
@@ -846,17 +850,24 @@
     if (!photoCatalog) photoCatalog = await (await fetch('./oefeningen.json')).json();
     return photoCatalog;
   }
-  // rank on how many of the typed words appear, then prefer the plainest name
-  function searchPhotos(query, limit = 24) {
+  // rank on the typed words, then on what the exercise record already says
+  function searchPhotos(query, limit = 24, rec) {
     if (!photoCatalog) return [];
     const words = photoTokens(query);
     if (!words.length) return photoCatalog.slice(0, limit);
+    const phrase = words.join(' ');
     return photoCatalog
       .map((c) => {
         const name = c.n.toLowerCase();
         let score = 0;
         for (const w of words) if (name.includes(w)) score += w.length > 3 ? 3 : 1;
-        if (name === words.join(' ')) score += 10;
+        if (!score) return { c, score };
+        if (name === phrase) score += 8;
+        else if (name.endsWith(phrase)) score += 4;
+        if (rec && rec.equipment && rec.equipment !== 'Onbekend' && c.e === rec.equipment) score += 3;
+        if (rec && rec.group && c.g === rec.group) score += 1;
+        // every extra qualifier ("decline", "wide-grip") makes it a more specific variant
+        score -= 0.6 * Math.max(0, name.split(/\s+/).length - words.length);
         return { c, score };
       })
       .filter((x) => x.score > 0)
@@ -2819,7 +2830,7 @@
     metric: 'top', navClients: true, navDuos: true, navTemplates: true, measMetric: 'weight',
     period: 'all', comparePicks: [], compareMetric: 'top',
     navQuery: '', navArchived: false, foodQuery: '', subTypeEditing: null,
-    nutri: { moment: null, query: '', results: [], message: '' }, navBusiness: true, navLibrary: true, libQuery: '', libEquipment: '', libKind: '', libShowArchived: false, libEditing: null, libSort: 'used',
+    nutri: { moment: null, query: '', results: [], message: '' }, navBusiness: true, navLibrary: true, libQuery: '', libEquipment: '', libKind: '', libShowArchived: false, libEditing: null, libSort: 'used', photoSuggest: null,
   };
   let pendingFree = []; // exercises picked for a free session, set by viewPickExercises
   let pendingDuo = null; // { duoId, picks: { [clientId]: [names] } }, set by viewDuoPick
@@ -3824,11 +3835,35 @@
       });
 
     const editing = uiState.libEditing ? exerciseById(uiState.libEditing) : null;
+    const sug = uiState.photoSuggest;
+    const sugPanel = () => {
+      if (!sug) return '';
+      if (sug.loading) return `<div class="card"><p class="mut" style="margin:0">Fotolijst laden…</p></div>`;
+      if (sug.error) return `<div class="card"><p class="mut" style="margin:0">${esc(sug.error)}</p></div>`;
+      const picked = sug.rows.filter((r) => r.sel >= 0).length;
+      return `<div class="eyebrow">Foto's kiezen</div>
+        <div class="card">
+          <p class="sub" style="margin:0 0 4px">${sug.rows.length} oefening${sug.rows.length === 1 ? '' : 'en'} zonder foto${sug.missed ? `; voor ${sug.missed} is niets gevonden` : ''}. De beste gok staat voorgeselecteerd — tik een andere aan als die beter past, of sla de oefening over.</p>
+          ${sug.rows.map((r, i) => `<div class="sug-row">
+            <div class="row" style="margin-bottom:6px">
+              <div class="grow title">${esc(r.name)}</div>
+              <button type="button" class="small ghost" data-sug-skip="${i}" aria-pressed="${r.sel < 0}">${r.sel < 0 ? 'Overgeslagen' : 'Overslaan'}</button>
+            </div>
+            <div class="photo-grid">${r.options.map((o, k) => `<button type="button" class="photo-pick${r.sel === k ? '' : ' off'}" data-sug="${i}.${k}" aria-pressed="${r.sel === k}">
+              ${photoImg(o.i + '/' + o.p[0])}<span>${esc(o.n)}</span></button>`).join('')}</div>
+          </div>`).join('')}
+          <div class="actions" style="margin-top:14px">
+            <button class="primary" id="sug-apply" ${picked ? '' : 'disabled'}>${picked} foto${picked === 1 ? '' : "'s"} koppelen</button>
+            <button class="ghost" id="sug-cancel">Annuleren</button>
+          </div>
+        </div>`;
+    };
 
     $app.innerHTML = topbar(group ? `Bibliotheek — ${group}` : 'Bibliotheek', '/') +
       `<div class="row" style="margin-bottom:10px">
         <input id="lib-q" class="grow" placeholder="Zoek oefening…" value="${esc(uiState.libQuery)}">
         <button class="small" id="lib-add-toggle">+ Nieuw</button>
+        <button class="small" id="lib-photos">Foto's</button>
       </div>
       <div class="row" style="margin-bottom:12px">
         <select id="lib-kind" class="grow"><option value="">Alle soorten</option>${
@@ -3849,6 +3884,7 @@
         <button class="primary" type="submit">Oefening toevoegen</button>
       </form>` +
 
+      sugPanel() +
       (list.length ? list.map(({ rec, usage }) => uiState.libEditing === rec.id
         ? `<form class="card" data-edit-form="${rec.id}">
             <label class="field"><span>Naam</span><input name="name" value="${esc(rec.name)}" required></label>
@@ -3941,6 +3977,53 @@
       uiState.libQuery = ''; uiState.libKind = ''; uiState.libEquipment = '';
       render();
     });
+    document.getElementById('lib-photos').addEventListener('click', async () => {
+      if (uiState.photoSuggest) { uiState.photoSuggest = null; render(); return; }
+      uiState.photoSuggest = { loading: true, rows: [], missed: 0 };
+      render();
+      try {
+        await loadPhotoCatalog();
+      } catch {
+        uiState.photoSuggest = { rows: [], missed: 0, error: 'Fotolijst laden mislukt. Probeer het opnieuw met internet.' };
+        render();
+        return;
+      }
+      const rows = [];
+      let missed = 0;
+      for (const rec of activeExercises()) {
+        if (rec.photoId) continue;
+        const options = searchPhotos(rec.name, 3, rec);
+        if (options.length) rows.push({ id: rec.id, name: rec.name, options, sel: 0 });
+        else missed++;
+      }
+      uiState.photoSuggest = { rows, missed };
+      render();
+    });
+    document.querySelectorAll('[data-sug]').forEach((b) => b.addEventListener('click', () => {
+      const [i, k] = b.dataset.sug.split('.').map(Number);
+      uiState.photoSuggest.rows[i].sel = k;
+      render();
+    }));
+    document.querySelectorAll('[data-sug-skip]').forEach((b) => b.addEventListener('click', () => {
+      const row = uiState.photoSuggest.rows[Number(b.dataset.sugSkip)];
+      row.sel = row.sel < 0 ? 0 : -1;
+      render();
+    }));
+    const sugApply = document.getElementById('sug-apply');
+    if (sugApply) sugApply.addEventListener('click', () => {
+      for (const row of uiState.photoSuggest.rows) {
+        const pick = row.options[row.sel];
+        const rec = pick && exerciseById(row.id);
+        if (!rec) continue;
+        rec.photoId = pick.i;
+        rec.photos = pick.p;
+        rec.photoName = pick.n;
+      }
+      uiState.photoSuggest = null;
+      save(); render();
+    });
+    const sugCancel = document.getElementById('sug-cancel');
+    if (sugCancel) sugCancel.addEventListener('click', () => { uiState.photoSuggest = null; render(); });
     document.getElementById('lib-add-toggle').addEventListener('click', () => {
       uiState.libEditing = uiState.libEditing === 'new' ? null : 'new';
       render();
