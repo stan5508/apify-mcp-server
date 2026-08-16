@@ -265,7 +265,7 @@
   .stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
   .stat { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
   .stat .lbl { font-size: 12px; color: var(--muted); }
-  .stat .val { font-size: 20px; font-weight: 650; margin-top: 2px; }
+  .stat .val { font-size: 20px; font-weight: 650; margin-top: 2px; font-variant-numeric: tabular-nums; }
   .stat .delta { font-size: 13px; margin-top: 2px; }
   .delta.up { color: var(--good); }
   .delta.down { color: var(--danger); }
@@ -345,6 +345,18 @@
   .photo-pick { padding: 0; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--surface); text-align: left; }
   .photo-pick img { width: 100%; aspect-ratio: 3 / 2; object-fit: cover; display: block; background: var(--raised); }
   .photo-pick span { display: block; padding: 6px 8px; font-size: 12px; line-height: 1.3; color: var(--ink-2); }
+  /* a session is tapped fast, sometimes with wet hands: nothing under 44px */
+  #wo-form .set-row button, #duo-form .set-row button { min-width: 44px; min-height: 44px; }
+  #wo-form .set-row input, #duo-form .set-row input { min-height: 44px; }
+  #wo-form .row > button.small, #duo-form .row > button.small { min-width: 44px; min-height: 44px; }
+  /* the row you are typing in lifts out, so you never lose your place mid-set */
+  .set-row:focus-within { background: var(--raised); border-radius: 8px; }
+  .avatar {
+    width: 22px; height: 22px; border-radius: 50%; flex: none; object-fit: cover;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 9px; font-weight: 700; color: var(--on-accent);
+  }
+  .navlink.person { display: flex; align-items: center; gap: 8px; }
   .plate { display: inline-block; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 999px;
     border: 1px solid rgba(11, 13, 15, 0.22); font-variant-numeric: tabular-nums; }
   .bar-row .val { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink-2); }
@@ -426,7 +438,7 @@
 <script>
 (() => {
   'use strict';
-  const APP_VERSION = 30; // bump when publishing; shown on the home screen
+  const APP_VERSION = 31; // bump when publishing; shown on the home screen
   const KEY = 'coachlog-v1';
   const $app = document.getElementById('app');
 
@@ -907,6 +919,22 @@
     });
   }
 
+  // a face or two letters scans faster than a name in a long list
+  const initials = (name) => (String(name || '').match(/[\p{L}\p{N}]+/gu) || [])
+    .slice(0, 2).map((w) => w[0]).join('').toUpperCase() || '?';
+  const avatarTint = (name) => {
+    let h = 0;
+    for (const ch of String(name || '')) h = (h * 31 + ch.charCodeAt(0)) % 4;
+    return `var(--series-${h + 1})`;
+  };
+  function avatarHtml(client) {
+    const shots = (client && client.photos) || [];
+    const last = shots.length ? shots[shots.length - 1] : null;
+    return last && last.data
+      ? `<img class="avatar" src="${esc(last.data)}" alt="">`
+      : `<span class="avatar" style="background:${avatarTint(client && client.name)}">${esc(initials(client && client.name))}</span>`;
+  }
+
   const restFor = (name) => {
     const rec = exerciseByName(name);
     return (rec && rec.restSeconds) || db.settings.restSeconds || 90;
@@ -1277,14 +1305,14 @@
       const key = b.dataset[camel('rest')];
       startRest(restSecondsFor(key === 'all' ? null : key));
     }));
-    if (db.settings.autoRest) {
-      document.querySelectorAll(`[data-${attr}][data-f="reps"], [data-${attr}][data-f="minutes"]`).forEach((inp) => {
-        inp.addEventListener('change', () => {
-          const key = inp.dataset[attr] || '';
-          if (num(inp.value) > 0) startRest(restSecondsFor(key.slice(0, key.lastIndexOf('.'))));
-        });
+    document.querySelectorAll(`[data-${attr}][data-f="reps"], [data-${attr}][data-f="minutes"]`).forEach((inp) => {
+      inp.addEventListener('change', () => {
+        const key = inp.dataset[attr] || '';
+        if (num(inp.value) <= 0) return;
+        tick();
+        if (db.settings.autoRest) startRest(restSecondsFor(key.slice(0, key.lastIndexOf('.'))));
       });
-    }
+    });
   }
 
   // live PR badge: show while typed weight beats the client's best for that exercise
@@ -1851,6 +1879,9 @@
     } catch { /* audio unavailable */ }
     if (navigator.vibrate) navigator.vibrate(times > 1 ? [200, 100, 200] : 300);
   }
+  // short buzz when a set is filled in; you feel it without looking
+  const tick = () => { if (db.settings.sound && navigator.vibrate) navigator.vibrate(35); };
+
   const mmss = (sec) => {
     const total = Math.max(0, Math.round(sec));
     return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
@@ -2198,7 +2229,7 @@
       <input id="nav-q" class="nav-search" placeholder="Zoek klant of duo…" value="${esc(uiState.navQuery)}">
       <details class="navgrp" data-key="Clients" ${uiState.navClients ? 'open' : ''}>
         <summary>Klanten <span class="chev">▾</span></summary>
-        ${clients.map((c) => `<a class="navlink${c.id === activeClient ? ' active' : ''}" href="#/klant/${c.id}">${esc(c.name)}</a>`).join('')}
+        ${clients.map((c) => `<a class="navlink person${c.id === activeClient ? ' active' : ''}" href="#/klant/${c.id}">${avatarHtml(c)}<span>${esc(c.name)}</span></a>`).join('')}
         ${clients.length ? '' : '<span class="navlink mut">geen resultaten</span>'}
         ${archivedCount ? `<button class="navlink add" id="nav-archived" type="button">${uiState.navArchived ? '‹ Actieve klanten' : `Archief (${archivedCount}) ›`}</button>` : ''}
         <a class="navlink add" href="#/">+ Nieuwe klant</a>
@@ -2724,7 +2755,9 @@
       `</div>` +
 
       `<div class="eyebrow">Progressie per oefening</div>` +
-      (exerciseCards || `<div class="empty"><p>Nog geen trainingen gelogd. Start een training om progressie te zien.</p></div>`) +
+      (exerciseCards || `<div class="empty"><p>Nog geen trainingen gelogd. Zodra je de eerste sessie logt verschijnt hier de progressie per oefening.</p>
+        <div class="actions"><button class="primary" data-nav="/klant/${id}/vrij">+ Vrije training</button>
+        <button data-nav="/klant/${id}/sjabloon">Uit sjabloon</button></div></div>`) +
 
       `<div class="eyebrow">Schema's</div>` +
       schemas.map((s) => `<div class="card tappable" data-nav="/klant/${id}/schema/${s.id}" role="link" tabindex="0">
@@ -3081,7 +3114,8 @@
               <button class="small ghost" data-edit="${rec.id}">Bewerken</button>
             </div>
           </div>`).join('')
-        : `<div class="empty"><p>${uiState.libShowArchived ? 'Niets gearchiveerd.' : 'Geen oefeningen gevonden.'}</p></div>`) +
+        : `<div class="empty"><p>${uiState.libShowArchived ? 'Niets gearchiveerd.' : 'Geen oefeningen die aan de filters voldoen.'}</p>
+          ${uiState.libShowArchived ? '' : '<button class="primary" id="lib-clear">Filters wissen</button>'}</div>`) +
 
       (activeExercises().length < 20 && !uiState.libShowArchived
         ? `<hr class="divider"><div class="card">
@@ -3104,6 +3138,11 @@
     document.getElementById('lib-equip').addEventListener('change', (ev) => { uiState.libEquipment = ev.target.value; render(); });
     document.getElementById('lib-sort').addEventListener('change', (ev) => { uiState.libSort = ev.target.value; render(); });
     document.getElementById('lib-archived').addEventListener('click', () => { uiState.libShowArchived = !uiState.libShowArchived; render(); });
+    const libClear = document.getElementById('lib-clear');
+    if (libClear) libClear.addEventListener('click', () => {
+      uiState.libQuery = ''; uiState.libKind = ''; uiState.libEquipment = '';
+      render();
+    });
     document.getElementById('lib-add-toggle').addEventListener('click', () => {
       uiState.libEditing = uiState.libEditing === 'new' ? null : 'new';
       render();
@@ -3752,8 +3791,8 @@
   function viewClientFeed(clientKey) {
     if (!cloud.configured() || !cloud.signedIn()) {
       $app.innerHTML = topbar('Van klanten', '/') +
-        `<div class="empty"><p>Nog niet verbonden met de cloud. Stel dat in op de startpagina.</p>
-        <button class="primary" data-nav="/">Naar instellingen</button></div>`;
+        `<div class="empty"><p>Nog niet verbonden met de cloud. Zet je Supabase-gegevens onder Instellingen → Cloud-accounts; daarna kunnen klanten zelf loggen.</p>
+        <button class="primary" data-nav="/cloud">Naar Cloud-accounts</button></div>`;
       bindNav();
       return;
     }
@@ -3765,7 +3804,8 @@
         const profiles = await cloud.select('profiles', `coach_id=eq.${coachId}&select=id,name,created_at&order=name`);
         if (!profiles.length) {
           $app.innerHTML = topbar('Van klanten', '/') +
-            `<div class="empty"><p>Nog geen gekoppelde klanten. Maak een uitnodigingscode aan op de startpagina en stuur je klant de link naar de sporter-app.</p></div>`;
+            `<div class="empty"><p>Nog geen gekoppelde klanten. Maak een uitnodigingscode aan en stuur je klant die code plus de link naar de sporter-app.</p>
+            <button class="primary" data-nav="/cloud">Uitnodigingscode maken</button></div>`;
           bindNav();
           return;
         }
@@ -4011,7 +4051,8 @@
           Object.entries(metricLabels).map(([k, l]) => `<button data-cmp-metric="${k}" aria-pressed="${uiState.compareMetric === k}">${l}</button>`).join('')}</div>
         <div class="card"><div class="chart-wrap" id="cmp-chart"></div></div>
         ${picks.length > 4 ? '<p class="mut">Alleen de eerste vier oefeningen worden getekend.</p>' : ''}`
-        : `<div class="empty"><p>Nog geen gelogde oefeningen om te vergelijken.</p></div>`);
+        : `<div class="empty"><p>Vergelijken kan zodra er twee oefeningen gelogd zijn.</p>
+          <button class="primary" data-nav="/klant/${clientId}/vrij">+ Vrije training</button></div>`);
 
     bindNav();
     bindPeriodBar();
