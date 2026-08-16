@@ -445,7 +445,7 @@
 <script>
 (() => {
   'use strict';
-  const APP_VERSION = 35; // bump when publishing; shown on the home screen
+  const APP_VERSION = 36; // bump when publishing; shown on the home screen
   const KEY = 'coachlog-v1';
   const $app = document.getElementById('app');
 
@@ -473,7 +473,7 @@
       nutritionPlans: d.nutritionPlans || {}, meals: d.meals || [], foods: d.foods || [], water: d.water || {},
       muscleGroups: d.muscleGroups || {},
       settings: { unit: 'kg', restSeconds: 90, autoRest: true, sound: true, barWeight: 20, noShowCounts: true, currency: '€', theme: 'dark', pin: null, lockMinutes: 15, coachName: '', lastBackupAt: null,
-        countTrainingBurn: true, kcalPerMin: 6, waterTargetMl: 2000, ...(d.settings || {}) },
+        countTrainingBurn: true, kcalPerMin: 6, waterTargetMl: 2000, mailCopy: true, ...(d.settings || {}) },
       updatedAt: d.updatedAt || 0,
     };
     for (const c of out.clients) {
@@ -596,6 +596,8 @@
     });
     const remove = (table, query) => call(`/rest/v1/${table}?${query}`, { method: 'DELETE' });
     const rpc = (fn, args) => call(`/rest/v1/rpc/${fn}`, { method: 'POST', body: JSON.stringify(args || {}) });
+    // edge functions live on another path than the REST API
+    const invoke = (fn, payload) => call(`/functions/v1/${fn}`, { method: 'POST', body: JSON.stringify(payload || {}) });
 
     // make sure this account has a profile row
     async function ensureProfile(role, name) {
@@ -616,7 +618,7 @@
     return {
       configured, signedIn, setConfig, clearConfig, config: () => cfg,
       sendLink, captureSessionFromUrl, signOut, userId, userEmail,
-      select, insert, upsert, remove, rpc, ensureProfile,
+      select, insert, upsert, remove, rpc, invoke, ensureProfile,
     };
   })();
 
@@ -2582,8 +2584,17 @@
                <button class="ghost" id="cloud-logout">Uitloggen</button>
              </div>
              <div id="invite-box"></div>`) +
-      `</div>
-      <div class="eyebrow">Synchronisatie</div>
+      `</div>` +
+      (cloud.configured() && cloud.signedIn()
+        ? `<div class="eyebrow">Contracten mailen</div>
+          <div class="card">
+            <p class="sub" style="margin:0 0 10px">Met de functie <strong>send-contract</strong> in je Supabase-project verstuurt de app getekende contracten zelf. Opzet staat in SUPABASE.md.</p>
+            <div class="pillbar"><button id="mail-copy" aria-pressed="${!!db.settings.mailCopy}">Kopie naar mijzelf</button></div>
+            <div class="actions" style="margin-top:10px"><button id="mail-test">Testmail sturen</button></div>
+            <p class="mut" id="mail-msg" style="margin:8px 0 0"></p>
+          </div>`
+        : '') +
+      `<div class="eyebrow">Synchronisatie</div>
       <div class="card">` +
       (syncCfg && syncCfg.gistId
         ? `<p class="sub" style="margin:0 0 6px">Gekoppeld aan je privé-cloudopslag (GitHub Gist).</p>
@@ -2741,6 +2752,35 @@
       } catch (e) {
         box.innerHTML = `<p class="mut">Aanmaken mislukt: ${esc(e.message)}</p>`;
       }
+    });
+    const mailCopy = document.getElementById('mail-copy');
+    if (mailCopy) mailCopy.addEventListener('click', () => {
+      db.settings.mailCopy = !db.settings.mailCopy;
+      save(); render();
+    });
+    const mailTest = document.getElementById('mail-test');
+    if (mailTest) mailTest.addEventListener('click', async () => {
+      const box = document.getElementById('mail-msg');
+      const to = cloud.userEmail();
+      if (!to) { box.textContent = 'Geen e-mailadres bekend van je account.'; return; }
+      mailTest.disabled = true;
+      box.textContent = 'Versturen…';
+      try {
+        const blob = pdfAssemble(pdfLayout([
+          { type: 'title', text: 'Testbericht' },
+          { type: 'sub', text: 'Coachlog' },
+          { type: 'rule' },
+          { type: 'para', text: 'Als je dit leest werkt het mailen van contracten. Je kunt dit bericht weggooien.' },
+        ], 0), []);
+        await cloud.invoke('send-contract', {
+          to, subject: 'Coachlog — testbericht', text: 'Dit is een testbericht van Coachlog.',
+          filename: 'test.pdf', pdf: await blobBase64(blob),
+        });
+        box.textContent = `Verstuurd naar ${to}. Kijk ook even in je spam.`;
+      } catch (e) {
+        box.textContent = 'Mislukt: ' + e.message;
+      }
+      mailTest.disabled = false;
     });
     const syncStatusEl = document.getElementById('sync-status');
     const connectBtn = document.getElementById('sync-connect');
@@ -3195,6 +3235,14 @@
     return pdfAssemble(pdfLayout(blocks, images.length), images);
   }
 
+  const mailReady = () => cloud.configured() && cloud.signedIn();
+  const blobBase64 = (blob) => new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(String(r.result).split(',')[1]);
+    r.onerror = () => rej(new Error('bestand kon niet worden gelezen'));
+    r.readAsDataURL(blob);
+  });
+
   const contractFileName = (s, client) =>
     `Trainingsovereenkomst ${client.name} ${s.startDate}.pdf`.replace(/[\\/:*?"<>|]/g, '-');
 
@@ -3471,9 +3519,12 @@
           })() +
           `<div class="eyebrow no-print">Naar de klant</div>
           <div class="card no-print">
-            <p class="sub" style="margin:0 0 10px">${c.email ? `Contract als PDF naar ${esc(c.email)}.` : 'Vul het e-mailadres in op het profiel van de klant, dan staat het meteen goed in de mail.'}</p>
+            <p class="sub" style="margin:0 0 10px">${c.email
+              ? `Contract als PDF naar ${esc(c.email)}.${mailReady() ? ' De app verstuurt zelf; jij hoeft niets meer te doen.' : ''}`
+              : 'Vul het e-mailadres in op het profiel van de klant, dan kan het contract eruit.'}</p>
             <div class="actions">
-              <button class="primary" id="sub-send">Als PDF versturen</button>
+              ${mailReady() ? '<button class="primary" id="sub-mail">Mailen naar klant</button>' : ''}
+              <button ${mailReady() ? '' : 'class="primary" '}id="sub-send">Delen als PDF</button>
               <button id="sub-pdf">PDF opslaan</button>
               <button id="sub-print">Printen</button>
             </div>
@@ -3534,6 +3585,9 @@
     const pdfBtn = document.getElementById('sub-pdf');
     if (sendBtn) {
       const msg = document.getElementById('send-msg');
+      const mailBody = () => `Hoi ${c.name.split(' ')[0]},\n\n`
+        + `Hierbij de ondertekende trainingsovereenkomst voor ${s.name}, ingaand op ${fmtDateLong(s.startDate)}.\n\n`
+        + `Groet,\n${(s.signature || {}).coachName || db.settings.coachName || ''}`;
       const build = async () => {
         const blob = await contractPdf(s, c);
         return new File([blob], contractFileName(s, c), { type: 'application/pdf' });
@@ -3546,6 +3600,28 @@
         a.click();
         setTimeout(() => URL.revokeObjectURL(url), 4000);
       };
+      const mailBtn = document.getElementById('sub-mail');
+      if (mailBtn) mailBtn.addEventListener('click', async () => {
+        if (!c.email) { msg.textContent = 'Deze klant heeft nog geen e-mailadres op zijn profiel.'; return; }
+        mailBtn.disabled = true;
+        msg.textContent = 'Versturen…';
+        try {
+          const file = await build();
+          await cloud.invoke('send-contract', {
+            to: c.email,
+            subject: `Trainingsovereenkomst — ${c.name}`,
+            text: mailBody(),
+            filename: file.name,
+            pdf: await blobBase64(file),
+            copyTo: db.settings.mailCopy ? cloud.userEmail() : '',
+          });
+          s.sentAt = new Date().toISOString();
+          save(); render();
+        } catch (e) {
+          msg.textContent = 'Mailen mislukt: ' + e.message;
+          mailBtn.disabled = false;
+        }
+      });
       pdfBtn.addEventListener('click', async () => {
         msg.textContent = 'PDF maken…';
         try { download(await build()); msg.textContent = 'PDF opgeslagen.'; }
@@ -3557,7 +3633,7 @@
         try { file = await build(); }
         catch (e) { msg.textContent = 'PDF maken mislukt: ' + e.message; return; }
         const subject = `Trainingsovereenkomst — ${c.name}`;
-        const body = `Hoi ${c.name.split(' ')[0]},\n\nHierbij de ondertekende trainingsovereenkomst voor ${s.name}, ingaand op ${fmtDateLong(s.startDate)}.\n\nGroet,\n${(s.signature || {}).coachName || db.settings.coachName || ''}`;
+        const body = mailBody();
         // a PWA cannot send mail itself; hand the file to the tablet's share sheet
         if (navigator.canShare && navigator.canShare({ files: [file] })) {
           try {
