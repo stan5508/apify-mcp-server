@@ -112,8 +112,14 @@ voor spiergroepen, grafieklijnen en de schijvenrekenmachine. Basis `#0B0D0F` / `
 accent amber `#F2A93B`, tekst `#F5F7F8`.
 
 Volgorde: pagina-indeling (gebouwd) → kleur (gebouwd) → oefeningplaatjes (gebouwd) →
-tabbalk op de telefoon (gebouwd) → logo → kleine dingen (lege schermen, `tabular-nums`,
-trilling, 48 px raakvlakken, klantfoto in de zijbalk, PWA-startscherm).
+tabbalk op de telefoon (gebouwd) → logo (gebouwd) → kleine dingen (lege schermen,
+`tabular-nums`, trilling, 48 px raakvlakken, klantfoto in de zijbalk, PWA-startscherm).
+
+Logo: de turfstreepjes uit het voorstel — drie witte streepjes met een amberkleurige
+schuine streep erdoor, op `#15181C`. `icon.svg` is de bron; `icon-512.png` en `icon-180.png`
+worden daaruit gerenderd (volvlak, zodat het als maskable icoon werkt; de inhoud blijft
+binnen de veilige cirkel). Woordmerk: **Coach** vet, *log* licht grijs — in de zijbalk, op
+het pincodescherm en in de sporter-app.
 
 Onder 760 px staat een vaste tabbalk onderin (Vandaag · Klanten · Agenda · Meer) en wordt
 de zijbalk een uitschuiflade. Klanten opent de lade met het zoekveld actief, Meer opent hem

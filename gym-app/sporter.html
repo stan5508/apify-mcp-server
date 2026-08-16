@@ -20,6 +20,9 @@
   body { margin: 0; background: var(--page); color: var(--ink); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
   main { max-width: 560px; margin: 0 auto; padding: 14px 14px 80px; }
   h1 { font-size: 19px; margin: 0 0 12px; }
+  .brand { display: flex; align-items: center; gap: 9px; font-weight: 750; letter-spacing: -0.025em; }
+  .brand i { font-style: normal; font-weight: 400; color: var(--muted); }
+  .brand-mark { width: 26px; height: 26px; flex: none; }
   .sub { color: var(--ink-2); font-size: 14px; }
   .mut { color: var(--muted); font-size: 13px; }
   .eyebrow { font-size: 12px; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 22px 0 8px; }
@@ -197,7 +200,7 @@
   // ---------- views ----------
   function setupView(message) {
     $app.innerHTML = `
-      <h1>Coachlog</h1>
+      <h1 class="brand"><svg class="brand-mark" viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="96" fill="#15181c"/><g stroke="#f5f7f8" stroke-width="46" stroke-linecap="round"><line x1="178" y1="164" x2="178" y2="348"/><line x1="256" y1="164" x2="256" y2="348"/><line x1="334" y1="164" x2="334" y2="348"/></g><line x1="146" y1="366" x2="366" y2="146" stroke="#f2a93b" stroke-width="46" stroke-linecap="round"/></svg><span>Coach<i>log</i></span></h1>
       <p class="sub">Log je trainingen en voeding. Je coach kijkt mee; andere sporters zien niets van jou.</p>
       <div class="card">
         <label class="field"><span>Project-URL van je coach</span><input id="s-url" placeholder="https://xxxx.supabase.co"></label>

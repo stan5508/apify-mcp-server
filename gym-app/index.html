@@ -204,7 +204,10 @@
     margin-bottom: 16px;
   }
   .topbar h1 { font-size: 18px; font-weight: 650; margin: 0; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .brand { font-size: 13px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--accent); }
+  .brand { display: flex; align-items: center; gap: 9px; font-size: 19px; font-weight: 750;
+    letter-spacing: -0.025em; color: var(--ink); }
+  .brand i { font-style: normal; font-weight: 400; color: var(--muted); }
+  .brand-mark { width: 26px; height: 26px; flex: none; }
 
   .eyebrow {
     font-size: 12px; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase;
@@ -300,7 +303,8 @@
   #lock-screen { position: fixed; inset: 0; z-index: 50; background: var(--page); display: flex; align-items: center; justify-content: center; padding: 24px; }
   #lock-screen[hidden] { display: none; }
   .lock-box { width: 100%; max-width: 280px; text-align: center; }
-  .lock-box .brand { font-size: 15px; margin-bottom: 12px; }
+  .lock-box .brand { font-size: 17px; margin-bottom: 12px; justify-content: center; }
+  .lock-box .brand-mark { width: 22px; height: 22px; }
   .lock-box input { text-align: center; font-size: 22px; letter-spacing: 0.3em; margin-bottom: 10px; }
   body.timer-on #app { padding-bottom: 160px; }
   #timer-bar .t-label { flex: 1; min-width: 0; font-size: 14px; }
@@ -422,7 +426,7 @@
 <script>
 (() => {
   'use strict';
-  const APP_VERSION = 29; // bump when publishing; shown on the home screen
+  const APP_VERSION = 30; // bump when publishing; shown on the home screen
   const KEY = 'coachlog-v1';
   const $app = document.getElementById('app');
 
@@ -1609,7 +1613,7 @@
     const el = document.getElementById('lock-screen');
     el.hidden = false;
     el.innerHTML = `<div class="lock-box">
-      <div class="brand">Coachlog</div>
+      <div class="brand"><svg class="brand-mark" viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="96" fill="#15181c"/><g stroke="#f5f7f8" stroke-width="46" stroke-linecap="round"><line x1="178" y1="164" x2="178" y2="348"/><line x1="256" y1="164" x2="256" y2="348"/><line x1="334" y1="164" x2="334" y2="348"/></g><line x1="146" y1="366" x2="366" y2="146" stroke="#f2a93b" stroke-width="46" stroke-linecap="round"/></svg><span>Coach<i>log</i></span></div>
       <p class="sub">Voer je pincode in.</p>
       <input id="lock-pin" type="password" inputmode="numeric" autocomplete="off" placeholder="••••" maxlength="12">
       <p class="mut" id="lock-msg"></p>
@@ -2189,7 +2193,7 @@
     const duos = sortedDuos().filter((d) => match(duoName(d)));
     const archivedCount = db.clients.filter((c) => c.archived).length;
     $side.innerHTML = `
-      <div class="brand-row"><a class="brand" href="#/">Coachlog</a></div>
+      <div class="brand-row"><a class="brand" href="#/"><svg class="brand-mark" viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="96" fill="#15181c"/><g stroke="#f5f7f8" stroke-width="46" stroke-linecap="round"><line x1="178" y1="164" x2="178" y2="348"/><line x1="256" y1="164" x2="256" y2="348"/><line x1="334" y1="164" x2="334" y2="348"/></g><line x1="146" y1="366" x2="366" y2="146" stroke="#f2a93b" stroke-width="46" stroke-linecap="round"/></svg><span>Coach<i>log</i></span></a></div>
       <a class="navlink${hash === '/' ? ' active' : ''}" href="#/">Vandaag</a>
       <input id="nav-q" class="nav-search" placeholder="Zoek klant of duo…" value="${esc(uiState.navQuery)}">
       <details class="navgrp" data-key="Clients" ${uiState.navClients ? 'open' : ''}>
