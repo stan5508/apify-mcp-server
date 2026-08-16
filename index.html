@@ -338,17 +338,6 @@
   .bar-row { display: grid; grid-template-columns: 110px 1fr 78px; gap: 10px; align-items: center; margin-bottom: 8px; font-size: 14px; }
   .bar-row .track { display: block; background: var(--grid); border-radius: 4px; height: 14px; overflow: hidden; }
   .bar-row .fill { display: block; background: var(--data); height: 100%; border-radius: 4px; min-width: 2px; }
-  .ex-thumb { object-fit: cover; border-radius: 8px; background: var(--raised); flex: none; }
-  .shots { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
-  .shots img { width: 100%; border-radius: 8px; display: block; background: var(--raised); }
-  .photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(104px, 1fr)); gap: 8px; margin-top: 10px; }
-  .photo-pick { padding: 0; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--surface); text-align: left; }
-  .photo-pick img { width: 100%; aspect-ratio: 3 / 2; object-fit: cover; display: block; background: var(--raised); }
-  .photo-pick span { display: block; padding: 6px 8px; font-size: 12px; line-height: 1.3; color: var(--ink-2); }
-  .photo-pick.off { opacity: 0.45; }
-  .sug-row { padding: 12px 0; border-top: 1px solid var(--grid); }
-  .sug-row:first-of-type { border-top: 0; }
-  .photo-pick[aria-pressed="true"] { border-color: var(--accent); }
   /* a session is tapped fast, sometimes with wet hands: nothing under 44px */
   #wo-form .set-row button, #duo-form .set-row button { min-width: 44px; min-height: 44px; }
   #wo-form .set-row input, #duo-form .set-row input { min-height: 44px; }
@@ -449,7 +438,7 @@
 <script>
 (() => {
   'use strict';
-  const APP_VERSION = 40; // bump when publishing; shown on the home screen
+  const APP_VERSION = 41; // bump when publishing; shown on the home screen
   const KEY = 'coachlog-v1';
   const $app = document.getElementById('app');
 
@@ -489,6 +478,15 @@
       c.goals = c.goals || [];
       c.photos = c.photos || [];
       c.archived = !!c.archived;
+    }
+    // photos were removed; drop what they left behind
+    for (const e of out.exercises) {
+      if (e.photoId || e.photos || e.photoName) {
+        delete e.photoId;
+        delete e.photos;
+        delete e.photoName;
+        out._needsSave = true;
+      }
     }
     // dark is the standard now; switch existing installs over once
     if (out.settings.theme === 'system' && !out.settings.themePicked) {
@@ -784,7 +782,7 @@
       .sort((a, b) => (b.uses - a.uses) || byName(a.name, b.name))
       .map((e) => e.name);
   }
-  const hasInfo = (rec) => !!(rec && (rec.instructions || rec.cues || rec.videoUrl || rec.imageUrl || rec.photoId));
+  const hasInfo = (rec) => !!(rec && (rec.instructions || rec.cues || rec.videoUrl || rec.imageUrl));
   const clientNote = (clientId, name) => ((db.clientNotes[clientId] || {})[exKey(name)] || '');
   function setClientNote(clientId, name, text) {
     const notes = db.clientNotes[clientId] || (db.clientNotes[clientId] = {});
@@ -799,147 +797,16 @@
     const rec = exerciseByName(name);
     const note = clientId ? clientNote(clientId, name) : '';
     if (!hasInfo(rec) && !note) return '<p class="mut">Nog geen uitleg. Vul die in via de bibliotheek.</p>';
-    const shots = rec && rec.photoId ? (rec.photos || ['0.jpg']).map((_, n) => photoPath(rec, n)) : [];
     const img = safeUrl(rec && rec.imageUrl);
     const vid = safeUrl(rec && rec.videoUrl);
     return (note ? `<div class="note-box"><strong>Voor deze klant:</strong> ${esc(note)}</div>` : '') +
       (rec && rec.instructions ? `<p class="sub" style="white-space:pre-wrap;margin:0 0 8px">${esc(rec.instructions)}</p>` : '') +
       (rec && rec.cues ? `<div class="note-box"><strong>Aandachtspunten:</strong> ${esc(rec.cues)}</div>` : '') +
-      (shots.length ? `<div class="shots">${shots.map((path) => photoImg(path)).join('')}</div>` : '') +
       (img ? `<img src="${esc(img)}" alt="" loading="lazy" style="max-width:100%;border-radius:8px;margin-top:8px">` : '') +
       (vid ? `<p style="margin:8px 0 0"><a href="${esc(vid)}" target="_blank" rel="noopener">Video bekijken ↗</a></p>` : '') +
       (rec ? `<p style="margin:8px 0 0"><a href="${esc(youtubeSearch(rec))}" target="_blank" rel="noopener">Zoek uitvoering op YouTube ↗</a></p>` : '');
   }
 
-
-  // ---------- exercise photos (Free Exercise DB, public domain) ----------
-  // jsDelivr is the CDN for the same repo; raw.githubusercontent is the fallback
-  const PHOTO_BASE = 'https://cdn.jsdelivr.net/gh/yuhonas/free-exercise-db@main/exercises/';
-  const PHOTO_BASE_ALT = 'https://raw.githubusercontent.com/yuhonas/free-exercise-db/main/exercises/';
-  const photoPath = (rec, n = 0) => rec && rec.photoId ? `${rec.photoId}/${(rec.photos || ['0.jpg'])[n] || ''}` : '';
-  const photoUrl = (rec, n = 0) => photoPath(rec, n) ? PHOTO_BASE + photoPath(rec, n) : '';
-  const photoImg = (path, attrs = '') =>
-    `<img src="${esc(PHOTO_BASE + path)}" data-fallback="${esc(PHOTO_BASE_ALT + path)}" alt="" loading="lazy" ${attrs}>`;
-  const photoThumb = (rec, size = 44) => {
-    const path = photoPath(rec);
-    if (path) return photoImg(path, `class="ex-thumb" style="width:${size}px;height:${size}px"`);
-    const url = safeUrl(rec && rec.imageUrl);
-    return url ? `<img class="ex-thumb" src="${esc(url)}" alt="" loading="lazy" style="width:${size}px;height:${size}px">` : '';
-  };
-  // one listener beats an inline onerror on every tag
-  document.addEventListener('error', (ev) => {
-    const t = ev.target;
-    if (t instanceof HTMLImageElement && t.dataset.fallback && t.src !== t.dataset.fallback) t.src = t.dataset.fallback;
-  }, true);
-
-  // the catalogue is english; map the dutch words a coach actually types
-  const PHOTO_TERMS = {
-    bankdrukken: 'bench press', schuinbankdrukken: 'incline bench press', roeien: 'row', roeimachine: 'rowing',
-    kuitheffen: 'calf raise', schouderdrukken: 'shoulder press', zijwaartseheffing: 'lateral raise',
-    optrekken: 'pull up', opdrukken: 'push up', hurkzit: 'squat', beenpers: 'leg press', beenstrekken: 'leg extension',
-    beencurl: 'leg curl', buikspieren: 'crunch', planken: 'plank', hardlopen: 'running', fietsen: 'cycling',
-    heupbrug: 'hip thrust', dips: 'dips', kniebuiging: 'squat', borst: 'chest', rug: 'back', benen: 'leg',
-    schouders: 'shoulder', armen: 'arm', triceps: 'triceps', biceps: 'biceps', buik: 'abs', billen: 'glute',
-  };
-  const photoTokens = (text) => String(text || '').toLowerCase()
-    .replace(/[^a-z0-9\s]/g, ' ')
-    .split(/\s+/).filter(Boolean)
-    .flatMap((w) => (PHOTO_TERMS[w] || w).split(' '));
-
-  let photoCatalog = null;
-  async function loadPhotoCatalog() {
-    if (!photoCatalog) photoCatalog = await (await fetch('./oefeningen.json')).json();
-    return photoCatalog;
-  }
-  // rank on the typed words, then on what the exercise record already says
-  function searchPhotos(query, limit = 24, rec) {
-    if (!photoCatalog) return [];
-    const words = photoTokens(query);
-    if (!words.length) return photoCatalog.slice(0, limit);
-    const phrase = words.join(' ');
-    return photoCatalog
-      .map((c) => {
-        const name = c.n.toLowerCase();
-        let score = 0;
-        for (const w of words) if (name.includes(w)) score += w.length > 3 ? 3 : 1;
-        if (!score) return { c, score };
-        if (name === phrase) score += 8;
-        else if (name.endsWith(phrase)) score += 4;
-        if (rec && rec.equipment && rec.equipment !== 'Onbekend' && c.e === rec.equipment) score += 3;
-        if (rec && rec.group && c.g === rec.group) score += 1;
-        // every extra qualifier ("decline", "wide-grip") makes it a more specific variant
-        score -= 0.6 * Math.max(0, name.split(/\s+/).length - words.length);
-        return { c, score };
-      })
-      .filter((x) => x.score > 0)
-      .sort((a, b) => b.score - a.score || a.c.n.length - b.c.n.length)
-      .slice(0, limit)
-      .map((x) => x.c);
-  }
-
-
-  // ---------- photo picker ----------
-  function photoCurrentHtml(rec) {
-    return `${photoThumb(rec, 56)}
-      <div class="grow ${rec.photoId ? 'sub' : 'mut'}">${rec.photoId ? esc(rec.photoName || rec.photoId) : 'Nog geen foto gekozen.'}</div>
-      <button type="button" class="small" data-photo-find="${rec.id}">Foto zoeken</button>
-      <button type="button" class="small ghost" data-photo-clear="${rec.id}" ${rec.photoId ? '' : 'hidden'}>Verwijderen</button>`;
-  }
-  function bindPhotoPicker() {
-    const current = document.getElementById('photo-current');
-    const box = document.getElementById('photo-box');
-    if (!current || !box) return;
-    const refresh = (rec) => {
-      current.innerHTML = photoCurrentHtml(rec);
-      bindPhotoPicker();
-    };
-    const findBtn = current.querySelector('[data-photo-find]');
-    const clearBtn = current.querySelector('[data-photo-clear]');
-    clearBtn.addEventListener('click', () => {
-      const rec = exerciseById(clearBtn.dataset.photoClear);
-      delete rec.photoId; delete rec.photos; delete rec.photoName;
-      save();
-      box.innerHTML = '';
-      refresh(rec);
-    });
-    findBtn.addEventListener('click', async () => {
-      const rec = exerciseById(findBtn.dataset.photoFind);
-      box.innerHTML = '<p class="mut" style="margin:10px 0 0">Fotolijst laden…</p>';
-      try {
-        await loadPhotoCatalog();
-      } catch {
-        box.innerHTML = '<p class="mut" style="margin:10px 0 0">Fotolijst laden mislukt. Probeer het opnieuw met internet.</p>';
-        return;
-      }
-      box.innerHTML = `<div class="row" style="margin-top:10px">
-          <input id="photo-q" class="grow" value="${esc(rec.name)}" placeholder="Zoek op naam, bijv. bench press">
-          <button type="button" class="small ghost" id="photo-close">Sluiten</button>
-        </div>
-        <p class="mut" style="margin:6px 0 0">Foto's uit Free Exercise DB (publiek domein). Zoeken gaat op Engelse namen; gangbare Nederlandse termen worden vertaald.</p>
-        <div id="photo-results"></div>`;
-      const results = document.getElementById('photo-results');
-      const draw = (q) => {
-        const hits = searchPhotos(q);
-        results.innerHTML = hits.length
-          ? `<div class="photo-grid">${hits.map((c) => `<button type="button" class="photo-pick" data-photo-id="${esc(c.i)}">
-              ${photoImg(c.i + '/' + c.p[0])}
-              <span>${esc(c.n)}<br><span class="mut">${esc(c.g)} · ${esc(c.e)}</span></span></button>`).join('')}</div>`
-          : '<p class="mut" style="margin:10px 0 0">Niets gevonden. Probeer een Engelse term, bijvoorbeeld "bench press" of "row".</p>';
-        results.querySelectorAll('[data-photo-id]').forEach((b) => b.addEventListener('click', () => {
-          const pick = photoCatalog.find((c) => c.i === b.dataset.photoId);
-          rec.photoId = pick.i; rec.photos = pick.p; rec.photoName = pick.n;
-          save();
-          box.innerHTML = '';
-          refresh(rec);
-        }));
-      };
-      const qIn = document.getElementById('photo-q');
-      let t = null;
-      qIn.addEventListener('input', () => { clearTimeout(t); t = setTimeout(() => draw(qIn.value), 150); });
-      document.getElementById('photo-close').addEventListener('click', () => { box.innerHTML = ''; });
-      draw(rec.name);
-    });
-  }
 
   // a face or two letters scans faster than a name in a long list
   const initials = (name) => (String(name || '').match(/[\p{L}\p{N}]+/gu) || [])
@@ -957,9 +824,9 @@
       : `<span class="avatar" style="background:${avatarTint(client && client.name)}">${esc(initials(client && client.name))}</span>`;
   }
 
-  // the photo catalogue has no video, so link a search that lands on the right clips
+  // exercises carry no video of their own, so link a search that lands on the right clips
   const youtubeSearch = (rec) => 'https://www.youtube.com/results?search_query='
-    + encodeURIComponent(`${rec.photoName || rec.name} proper form`);
+    + encodeURIComponent(`${rec.name} proper form`);
 
   const restFor = (name) => {
     const rec = exerciseByName(name);
@@ -2640,7 +2507,7 @@
       <p class="mut">Alles wordt lokaal op dit apparaat bewaard. Maak regelmatig een back-up.</p>
       <div class="eyebrow">Oefeninfo</div>
       <div class="card">
-        <p class="sub" style="margin:0 0 10px">Exporteer je oefeningenlijst om hem te laten aanvullen met uitleg, foto's en video's. In het bestand staan alleen de oefeningen — geen klanten, trainingen of metingen. De ingevulde versie lees je hier weer in; alleen bestaande oefeningen worden aangevuld, de rest blijft ongemoeid.</p>
+        <p class="sub" style="margin:0 0 10px">Exporteer je oefeningenlijst om hem te laten aanvullen met uitleg en video's. In het bestand staan alleen de oefeningen — geen klanten, trainingen of metingen. De ingevulde versie lees je hier weer in; alleen bestaande oefeningen worden aangevuld, de rest blijft ongemoeid.</p>
         <div class="actions">
           <button id="ex-export">Exporteer oefeningenlijst</button>
           <button id="ex-import-btn">Lees oefeninfo in</button>
@@ -2663,8 +2530,7 @@
         const regs = 'serviceWorker' in navigator ? await navigator.serviceWorker.getRegistrations() : [];
         await Promise.all(regs.map(async (r) => r.update()));
         const keys = await caches.keys();
-        // keep the photo cache: those stay valid and are expensive to fetch again
-        await Promise.all(keys.filter((k) => k !== 'coachlog-photos').map(async (k) => caches.delete(k)));
+        await Promise.all(keys.map(async (k) => caches.delete(k)));
         msg.textContent = 'Klaar. De app wordt opnieuw geladen…';
         setTimeout(() => location.reload(), 700);
       } catch (e) {
@@ -2848,7 +2714,7 @@
     metric: 'top', navClients: true, navDuos: true, navTemplates: true, measMetric: 'weight',
     period: 'all', comparePicks: [], compareMetric: 'top',
     navQuery: '', navArchived: false, foodQuery: '', subTypeEditing: null,
-    nutri: { moment: null, query: '', results: [], message: '' }, navBusiness: true, navLibrary: true, libQuery: '', libEquipment: '', libKind: '', libShowArchived: false, libEditing: null, libSort: 'used', photoSuggest: null,
+    nutri: { moment: null, query: '', results: [], message: '' }, navBusiness: true, navLibrary: true, libQuery: '', libEquipment: '', libKind: '', libShowArchived: false, libEditing: null, libSort: 'used',
   };
   let pendingFree = []; // exercises picked for a free session, set by viewPickExercises
   let pendingDuo = null; // { duoId, picks: { [clientId]: [names] } }, set by viewDuoPick
@@ -3853,36 +3719,10 @@
       });
 
     const editing = uiState.libEditing ? exerciseById(uiState.libEditing) : null;
-    const sug = uiState.photoSuggest;
-    const sugPanel = () => {
-      if (!sug) return '';
-      if (sug.loading) return `<div class="card"><p class="mut" style="margin:0">Fotolijst laden…</p></div>`;
-      if (sug.error) return `<div class="card"><p class="mut" style="margin:0">${esc(sug.error)}</p></div>`;
-      const picked = sug.rows.filter((r) => r.sel >= 0).length;
-      return `<div class="eyebrow">Foto's kiezen</div>
-        <div class="card">
-          <p class="sub" style="margin:0 0 4px">${sug.rows.length} oefening${sug.rows.length === 1 ? '' : 'en'} zonder foto${sug.missed ? `; voor ${sug.missed} is niets gevonden` : ''}. De beste gok staat voorgeselecteerd — tik een andere aan als die beter past, of sla de oefening over.</p>
-          ${sug.rows.map((r, i) => `<div class="sug-row">
-            <div class="row" style="margin-bottom:6px">
-              <div class="grow title">${esc(r.name)}</div>
-              <button type="button" class="small ghost" data-sug-skip="${i}" aria-pressed="${r.sel < 0}">${r.sel < 0 ? 'Overgeslagen' : 'Overslaan'}</button>
-            </div>
-            <div class="photo-grid">${r.options.map((o, k) => `<button type="button" class="photo-pick${r.sel === k ? '' : ' off'}" data-sug="${i}.${k}" aria-pressed="${r.sel === k}">
-              ${photoImg(o.i + '/' + o.p[0])}<span>${esc(o.n)}</span></button>`).join('')}</div>
-          </div>`).join('')}
-          <div class="actions" style="margin-top:14px">
-            <button class="primary" id="sug-apply" ${picked ? '' : 'disabled'}>${picked} foto${picked === 1 ? '' : "'s"} koppelen</button>
-            <button class="ghost" id="sug-cancel">Annuleren</button>
-          </div>
-        </div>`;
-    };
-
     $app.innerHTML = topbar(group ? `Bibliotheek — ${group}` : 'Bibliotheek', '/') +
       `<div class="row" style="margin-bottom:10px">
         <input id="lib-q" class="grow" placeholder="Zoek oefening…" value="${esc(uiState.libQuery)}">
         <button class="small" id="lib-add-toggle">+ Nieuw</button>
-        <button class="small" id="lib-photos">Foto's</button>
-        <button class="small" id="lib-import">Fotolijst</button>
       </div>
       <div class="row" style="margin-bottom:12px">
         <select id="lib-kind" class="grow"><option value="">Alle soorten</option>${
@@ -3903,7 +3743,6 @@
         <button class="primary" type="submit">Oefening toevoegen</button>
       </form>` +
 
-      sugPanel() +
       (list.length ? list.map(({ rec, usage }) => uiState.libEditing === rec.id
         ? `<form class="card" data-edit-form="${rec.id}">
             <label class="field"><span>Naam</span><input name="name" value="${esc(rec.name)}" required></label>
@@ -3925,11 +3764,6 @@
             <div class="row">
               <label class="field grow"><span>Video-link</span><input name="videoUrl" type="url" value="${esc(rec.videoUrl || '')}" placeholder="https://…"></label>
               <label class="field grow"><span>Afbeelding-link</span><input name="imageUrl" type="url" value="${esc(rec.imageUrl || '')}" placeholder="https://…"></label>
-            </div>
-            <div class="card" style="margin:0 0 10px;background:transparent">
-              <div class="eyebrow" style="margin-top:0">Foto</div>
-              <div class="row" id="photo-current">${photoCurrentHtml(rec)}</div>
-              <div id="photo-box"></div>
             </div>
             ${hasInfo(rec) ? `<div class="info-panel">${exerciseInfoHtml(rec.name, null)}</div>` : ''}
             <div class="actions">
@@ -3958,7 +3792,6 @@
           </form>`
         : `<div class="card">
             <div class="row">
-              ${photoThumb(rec)}
               <div class="grow">
                 <div class="title">${esc(rec.name)}${rec.archived ? ' <span class="badge">gearchiveerd</span>' : ''}${hasInfo(rec) ? ' <span class="badge">uitleg</span>' : ''}</div>
                 <div class="sub">${esc(rec.group)} · ${esc(rec.equipment)}${rec.kind !== 'kracht' ? ' · ' + KIND_LABELS[rec.kind] : ''}${rec.restSeconds ? ' · rust ' + rec.restSeconds + 's' : ''}</div>
@@ -3972,8 +3805,8 @@
 
       (db.exercises.some((e) => e.fromCatalog)
         ? `<hr class="divider"><div class="card">
-            <div class="title">Uit de fotolijst</div>
-            <p class="sub">${db.exercises.filter((e) => e.fromCatalog).length} oefeningen komen uit de fotolijst. Wat je nooit hebt gebruikt kun je in één keer weghalen.</p>
+            <div class="title">Ingelezen oefeningen</div>
+            <p class="sub">${db.exercises.filter((e) => e.fromCatalog).length} oefeningen zijn ooit in bulk toegevoegd. Wat je nooit hebt gebruikt kun je in één keer weghalen.</p>
             <button id="lib-drop-import">Ongebruikte verwijderen</button>
           </div>` : '') +
 
@@ -4003,26 +3836,6 @@
       uiState.libQuery = ''; uiState.libKind = ''; uiState.libEquipment = '';
       render();
     });
-    document.getElementById('lib-import').addEventListener('click', async () => {
-      let catalog;
-      try { catalog = await loadPhotoCatalog(); }
-      catch { alert('Fotolijst laden mislukt. Probeer het opnieuw met internet.'); return; }
-      const known = new Set(db.exercises.flatMap((e) => [exKey(e.name), ...(e.aliases || []).map(exKey)]));
-      const fresh = catalog.filter((c) => !known.has(exKey(c.n)));
-      if (!fresh.length) { alert('Alle oefeningen uit de fotolijst staan er al in.'); return; }
-      if (!confirm(`${fresh.length} oefeningen toevoegen, elk met foto?\n\n`
-        + 'Je bibliotheek en alle keuzelijsten worden daarmee een stuk langer, en de namen zijn Engels. '
-        + 'Ongebruikte kun je later in één keer weer weghalen.')) return;
-      for (const c of fresh) {
-        db.exercises.push({
-          id: uid(), name: c.n, kind: c.g === 'Cardio' ? 'cardio' : 'kracht', group: c.g,
-          equipment: c.e, restSeconds: null, aliases: [], archived: false,
-          photoId: c.i, photos: c.p, photoName: c.n, fromCatalog: true,
-        });
-      }
-      uiState.libQuery = '';
-      save(); render();
-    });
     const libDrop = document.getElementById('lib-drop-import');
     if (libDrop) libDrop.addEventListener('click', () => {
       const unused = db.exercises.filter((e) => e.fromCatalog && !exerciseUsage(e.name).sessions);
@@ -4032,53 +3845,6 @@
       db.exercises = db.exercises.filter((e) => !drop.has(e.id));
       save(); render();
     });
-    document.getElementById('lib-photos').addEventListener('click', async () => {
-      if (uiState.photoSuggest) { uiState.photoSuggest = null; render(); return; }
-      uiState.photoSuggest = { loading: true, rows: [], missed: 0 };
-      render();
-      try {
-        await loadPhotoCatalog();
-      } catch {
-        uiState.photoSuggest = { rows: [], missed: 0, error: 'Fotolijst laden mislukt. Probeer het opnieuw met internet.' };
-        render();
-        return;
-      }
-      const rows = [];
-      let missed = 0;
-      for (const rec of activeExercises()) {
-        if (rec.photoId) continue;
-        const options = searchPhotos(rec.name, 3, rec);
-        if (options.length) rows.push({ id: rec.id, name: rec.name, options, sel: 0 });
-        else missed++;
-      }
-      uiState.photoSuggest = { rows, missed };
-      render();
-    });
-    document.querySelectorAll('[data-sug]').forEach((b) => b.addEventListener('click', () => {
-      const [i, k] = b.dataset.sug.split('.').map(Number);
-      uiState.photoSuggest.rows[i].sel = k;
-      render();
-    }));
-    document.querySelectorAll('[data-sug-skip]').forEach((b) => b.addEventListener('click', () => {
-      const row = uiState.photoSuggest.rows[Number(b.dataset.sugSkip)];
-      row.sel = row.sel < 0 ? 0 : -1;
-      render();
-    }));
-    const sugApply = document.getElementById('sug-apply');
-    if (sugApply) sugApply.addEventListener('click', () => {
-      for (const row of uiState.photoSuggest.rows) {
-        const pick = row.options[row.sel];
-        const rec = pick && exerciseById(row.id);
-        if (!rec) continue;
-        rec.photoId = pick.i;
-        rec.photos = pick.p;
-        rec.photoName = pick.n;
-      }
-      uiState.photoSuggest = null;
-      save(); render();
-    });
-    const sugCancel = document.getElementById('sug-cancel');
-    if (sugCancel) sugCancel.addEventListener('click', () => { uiState.photoSuggest = null; render(); });
     document.getElementById('lib-add-toggle').addEventListener('click', () => {
       uiState.libEditing = uiState.libEditing === 'new' ? null : 'new';
       render();
@@ -4107,7 +3873,6 @@
       uiState.libEditing = null;
       save(); render();
     }));
-    bindPhotoPicker();
     document.querySelectorAll('[data-edit-form]').forEach((form) => form.addEventListener('submit', (ev) => {
       ev.preventDefault();
       const rec = exerciseById(form.dataset.editForm);
@@ -6168,7 +5933,6 @@
             const linked = ex.superset && draft.some((d, i) => i !== xi && d.superset === ex.superset);
             return `<div class="card${linked ? ' ss-mark' : ''}">
             <div class="row" style="margin-bottom:2px">
-              ${photoThumb(exerciseByName(ex.name), 38)}
               <div class="title grow">${esc(ex.name)}${linked ? ` <span class="badge">Superset ${esc(ex.superset)}</span>` : ''}${ex.kind !== 'kracht' ? ` <span class="badge">${KIND_LABELS[ex.kind]}</span>` : ''}</div>
               <button type="button" class="small ghost" data-up="${xi}" aria-label="Omhoog" ${xi === 0 ? 'disabled' : ''}>↑</button>
               <button type="button" class="small ghost" data-down="${xi}" aria-label="Omlaag" ${xi === draft.length - 1 ? 'disabled' : ''}>↓</button>
@@ -6353,7 +6117,7 @@
   function exportExercises() {
     const rows = [...db.exercises].sort((a, b) => byName(a.name, b.name)).map((e) => ({
       name: e.name, kind: e.kind, group: e.group, equipment: e.equipment,
-      hasPhoto: !!e.photoId, hasInstructions: !!e.instructions, archived: !!e.archived,
+      hasInstructions: !!e.instructions, archived: !!e.archived,
     }));
     const blob = new Blob([JSON.stringify({ coachlog: 'oefeningen', version: APP_VERSION, exercises: rows }, null, 2)],
       { type: 'application/json' });
@@ -6395,11 +6159,6 @@
         if (row.videoUrl) rec.videoUrl = safeUrl(row.videoUrl) || rec.videoUrl;
         if (row.group && MUSCLE_GROUPS.includes(row.group)) rec.group = row.group;
         if (row.equipment && EQUIPMENT.includes(row.equipment)) rec.equipment = row.equipment;
-        if (row.photoId) {
-          rec.photoId = String(row.photoId);
-          rec.photos = Array.isArray(row.photos) && row.photos.length ? row.photos : ['0.jpg', '1.jpg'];
-          rec.photoName = String(row.photoName || row.photoId).replace(/_/g, ' ');
-        }
         filled++;
       }
       save(); render();
