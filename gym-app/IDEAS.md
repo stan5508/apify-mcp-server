@@ -137,13 +137,24 @@ gegevens, de coach die van zijn eigen klanten.
 Nog open: klanten die hun schema van de coach zien, meldingen ("je coach heeft een
 nieuw schema klaargezet"), en het terugsturen van coach-schema's naar de sporter-app.
 
-## Nog te doen (niet door de app, door Stan zelf)
+## Nog te doen (opzetwerk, niet door de app)
 
-- **Contracten automatisch mailen aanzetten** — stap 6 in [SUPABASE.md](./SUPABASE.md):
-  Resend-account, domein verifiëren, de functie `send-contract` in Supabase plakken en
-  twee secrets zetten. Uitgesteld op 16 aug 2026: te veel werk voor dat moment. De code
-  staat klaar; zolang het niet is opgezet legt de knop **Mailen naar klant** zelf uit wat
-  er ontbreekt en werkt **Delen als PDF** gewoon.
+### Contracten automatisch mailen — wachten tot er online-coachingklanten tekenen
+
+Alle code staat klaar en is getest; wat ontbreekt is eenmalig opzetwerk bij twee externe
+diensten. **Aanzetten zodra er daadwerkelijk klanten voor online coaching tekenen** — voor
+losse contracten in de sportschool is Delen als PDF genoeg.
+
+- Stap-voor-stap handleiding: <https://claude.ai/code/artifact/5de55d1f-30a6-4c16-8228-255ac9f082d1>
+- Kort: [SUPABASE.md stap 6](./SUPABASE.md). Resend-account, domein verifiëren via DNS,
+  de functie [`send-contract`](./supabase/functions/send-contract/index.ts) in Supabase
+  plakken, de secrets `RESEND_API_KEY` en `MAIL_FROM` zetten, testmail sturen.
+- Reken op 15–20 minuten plus wachttijd op de DNS. Gratis tot 3.000 mails per maand.
+
+Zolang het niet is opgezet legt de knop **Mailen naar klant** zelf uit wat er ontbreekt en
+werkt **Delen als PDF** gewoon door. Er gaat dus niets stuk door te wachten.
+
+Besloten 16 aug 2026.
 
 ## Restyling — gekozen richting
 
