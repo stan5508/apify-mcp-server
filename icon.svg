@@ -1,10 +1,9 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="96" fill="#2a78d6"/>
-  <g fill="#ffffff">
-    <rect x="88" y="168" width="36" height="176" rx="10"/>
-    <rect x="136" y="196" width="36" height="120" rx="10"/>
-    <rect x="180" y="240" width="152" height="32" rx="8"/>
-    <rect x="340" y="196" width="36" height="120" rx="10"/>
-    <rect x="388" y="168" width="36" height="176" rx="10"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Coachlog">
+  <rect width="512" height="512" fill="#15181c"/>
+  <g stroke="#f5f7f8" stroke-width="34" stroke-linecap="round">
+    <line x1="178" y1="164" x2="178" y2="348"/>
+    <line x1="256" y1="164" x2="256" y2="348"/>
+    <line x1="334" y1="164" x2="334" y2="348"/>
   </g>
+  <line x1="146" y1="366" x2="366" y2="146" stroke="#f2a93b" stroke-width="34" stroke-linecap="round"/>
 </svg>
