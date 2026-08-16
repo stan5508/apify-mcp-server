@@ -112,8 +112,12 @@ voor spiergroepen, grafieklijnen en de schijvenrekenmachine. Basis `#0B0D0F` / `
 accent amber `#F2A93B`, tekst `#F5F7F8`.
 
 Volgorde: pagina-indeling (gebouwd) → kleur (gebouwd) → oefeningplaatjes (gebouwd) →
-tabbalk op de telefoon (gebouwd) → logo (gebouwd) → kleine dingen (lege schermen,
-`tabular-nums`, trilling, 48 px raakvlakken, klantfoto in de zijbalk, PWA-startscherm).
+tabbalk op de telefoon (gebouwd) → logo (gebouwd) → kleine dingen (gebouwd).
+
+Kleine dingen: raakvlakken van minstens 44 px tijdens een sessie, de regel waarin je typt
+licht op, korte trilling zodra je herhalingen invult, avatars (nieuwste progressiefoto,
+anders initialen) in de zijbalk, cijfers in de statistieken lijnen uit, en lege schermen
+noemen de vervolgstap. Het PWA-startscherm ging al mee met het donkere thema.
 
 Logo: de turfstreepjes uit het voorstel — drie witte streepjes met een amberkleurige
 schuine streep erdoor, op `#15181C`. `icon.svg` is de bron; `icon-512.png` en `icon-180.png`
