@@ -440,7 +440,7 @@
 <script>
 (() => {
   'use strict';
-  const APP_VERSION = 42; // bump when publishing; shown on the home screen
+  const APP_VERSION = 43; // bump when publishing; shown on the home screen
   const KEY = 'coachlog-v1';
   const $app = document.getElementById('app');
 
@@ -2753,6 +2753,40 @@
     navQuery: '', navArchived: false, foodQuery: '', subTypeEditing: null,
     nutri: { moment: null, query: '', results: [], message: '' }, navBusiness: true, navLibrary: true, libQuery: '', libEquipment: '', libKind: '', libShowArchived: false, libEditing: null, libSort: 'used',
   };
+  // unsaved in-progress training, auto-saved per keystroke; device-local (outside db, not synced)
+  const TRAINING_DRAFT_KEY = 'coachlog-training-draft';
+  function anyTrainingDraft() {
+    try { return JSON.parse(localStorage.getItem(TRAINING_DRAFT_KEY)); } catch { return null; }
+  }
+  function readTrainingDraft(ref) {
+    const d = anyTrainingDraft();
+    return d && d.ref === ref ? d : null;
+  }
+  function writeTrainingDraft(data) {
+    try { localStorage.setItem(TRAINING_DRAFT_KEY, JSON.stringify({ ...data, savedAt: Date.now() })); } catch { /* best-effort */ }
+  }
+  function clearTrainingDraft(ref) {
+    if (readTrainingDraft(ref)) localStorage.removeItem(TRAINING_DRAFT_KEY);
+  }
+  function fmtDraftTime(ts) {
+    const d = new Date(ts);
+    const time = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return iso === todayIso() ? time : `${fmtDate(iso)}, ${time}`;
+  }
+  // resume banner on the client/duo page when an unsaved training matches the prefix
+  function draftResumeHtml(prefix) {
+    const d = anyTrainingDraft();
+    if (!d || !d.ref.startsWith(prefix)) return '';
+    return `<div class="note-box"><strong>Niet-opgeslagen training</strong> van ${esc(fmtDraftTime(d.savedAt))} — je invoer staat er nog.
+      <div class="actions" style="margin-top:8px"><button class="small primary" data-nav="${esc(d.ref)}">Hervatten</button>
+      <button class="small" id="discard-draft">Weggooien</button></div></div>`;
+  }
+  function bindDraftDiscard() {
+    const b = document.getElementById('discard-draft');
+    if (b) b.addEventListener('click', () => { localStorage.removeItem(TRAINING_DRAFT_KEY); render(); });
+  }
+
   let pendingFree = []; // exercises picked for a free session, set by viewPickExercises
   let pendingDuo = null; // { duoId, picks: { [clientId]: [names] } }, set by viewDuoPick
   function viewClient(id) {
@@ -2788,6 +2822,7 @@
       clientTabs(id, '') +
       (c.goal ? `<p class="sub" style="margin:0 0 12px">Doel: ${esc(c.goal)}</p>` : '') +
       ((c.injuries || c.medical) ? `<div class="note-box"><strong>Let op:</strong> ${esc([c.injuries, c.medical].filter(Boolean).join(' · '))}</div>` : '') +
+      draftResumeHtml(`/klant/${id}/`) +
       statHtml +
       `<div style="margin-top:16px" class="actions">` +
       schemas.map((s) => `<button class="primary" data-nav="/klant/${id}/training/${s.id}">Start: ${esc(s.name)}</button>`).join('') +
@@ -2835,6 +2870,7 @@
        <button class="danger ghost" id="del-client">Klant verwijderen</button>`;
 
     bindNav();
+    bindDraftDiscard();
 
     document.querySelectorAll('[data-edit-workout]').forEach((b) => b.addEventListener('click', () => {
       location.hash = `/klant/${id}/bewerk/${b.dataset.editWorkout}`;
@@ -5300,6 +5336,7 @@
     const dates = [...new Set(duoWorkouts.map((w) => w.date))].sort().reverse();
 
     $app.innerHTML = topbar(duoName(duo), '/') +
+      draftResumeHtml(`/duo/${duoId}/training`) +
       `<div class="actions">` +
       duoSchemasOf(duoId).map((s) => `<button class="primary" data-nav="/duo/${duoId}/training/${s.id}">Start: ${esc(s.name)}</button>`).join('') +
       `<button class="primary" data-nav="/duo/${duoId}/vrij">+ Vrije duo-training</button></div>` +
@@ -5361,6 +5398,7 @@
       <button class="danger ghost" id="del-duo">Duo verwijderen</button>`;
 
     bindNav();
+    bindDraftDiscard();
     document.getElementById('del-duo').addEventListener('click', () => {
       if (!confirm('Dit duo verwijderen? De klanten en hun trainingen blijven bewaard.')) return;
       db.duos = db.duos.filter((d) => d.id !== duoId);
@@ -5569,7 +5607,11 @@
     if (!duo || members.some((m) => !m)) { location.hash = '/'; return; }
     const duoSchema = duoSchemaId ? duoSchemaById(duoSchemaId) : null;
     if (duoSchemaId && (!duoSchema || duoSchema.duoId !== duoId)) { location.hash = `/duo/${duoId}`; return; }
-    if (!duoSchema && (!pendingDuo || pendingDuo.duoId !== duoId)) { location.hash = `/duo/${duoId}/vrij`; return; }
+    const draftRef = `/duo/${duoId}/training` + (duoSchemaId ? `/${duoSchemaId}` : '');
+    const storedRaw = readTrainingDraft(draftRef);
+    const stored = storedRaw && Array.isArray(storedRaw.members) && storedRaw.members.length === members.length
+      && storedRaw.members.every((sm, i) => sm.clientId === members[i].id) ? storedRaw : null;
+    if (!duoSchema && (!pendingDuo || pendingDuo.duoId !== duoId) && !stored) { location.hash = `/duo/${duoId}/vrij`; return; }
 
     const prefill = (clientId, name, kind, targets) => {
       const prev = lastEntryFor(clientId, name);
@@ -5582,21 +5624,30 @@
       const kind = ex.kind || kindFor(clientId, ex.name);
       return { name: ex.name, kind, superset: ex.superset || null, sets: prefill(clientId, ex.name, kind, ex.targets) };
     };
-    const draft = members.map((m) => ({
-      client: m,
-      exercises: duoSchema
-        ? (duoSchema.plans[m.id] || []).map((ex) => mkExercise(m.id, ex))
-        : (pendingDuo.picks[m.id] || []).map((n) => mkExercise(m.id, { name: n })),
-    }));
+    const draft = stored
+      ? stored.members.map((sm, i) => ({
+          client: members[i],
+          exercises: sm.exercises.map((e) => ({ name: e.name, kind: e.kind || kindFor(members[i].id, e.name), superset: e.superset || null, sets: e.sets.map((s) => ({ ...s })) })),
+        }))
+      : members.map((m) => ({
+          client: m,
+          exercises: duoSchema
+            ? (duoSchema.plans[m.id] || []).map((ex) => mkExercise(m.id, ex))
+            : (pendingDuo.picks[m.id] || []).map((n) => mkExercise(m.id, { name: n })),
+        }));
+    const initDate = stored ? stored.date : todayIso();
+    const initNotes = stored ? stored.notes : '';
+    const restoredAt = stored ? stored.savedAt : null;
     let swapping = null; // "mi.xi" of exercise currently in swap mode
     let infoOpen = null; // "mi.xi" of the exercise whose explanation is open
     let openMore = null; // "mi.xi.si" of the set whose options are open
     let tool = null;
-    const startedAt = Date.now();
+    const startedAt = (stored && stored.startedAt) || Date.now();
 
     const paint = () => {
       $app.innerHTML = topbar(`Duo-training — ${duoName(duo)}`, `/duo/${duoId}`) +
         `<p style="margin:0 0 12px"><span class="badge">${duoSchema ? esc(duoSchema.name) : 'Vrije training'}</span></p>` +
+        (restoredAt ? `<div class="note-box">Automatisch bewaarde invoer hersteld (${esc(fmtDraftTime(restoredAt))}). <button type="button" class="small" id="discard-draft">Opnieuw beginnen</button></div>` : '') +
         `<form id="duo-form">
           <div class="actions" style="margin-bottom:12px">
             <button type="button" class="small" data-rest-dset="all">⏱ Rust</button>
@@ -5604,7 +5655,7 @@
             <button type="button" class="small" id="tool-interval">⏲ Interval</button>
           </div>
           ${toolPanelHtml(tool)}
-          <label class="field"><span>Datum</span><input type="date" name="date" value="${todayIso()}" required></label>
+          <label class="field"><span>Datum</span><input type="date" name="date" value="${esc(initDate)}" required></label>
           <div class="duo-cols">
           ${draft.map((mem, mi) =>
             `<div><div class="eyebrow">${esc(mem.client.name)}</div>` +
@@ -5651,7 +5702,7 @@
             </div></div>`
           ).join('')}
           </div>
-          <label class="field"><span>Notities (optioneel)</span><textarea name="notes" rows="2" placeholder="bijv. samen circuit gedaan"></textarea></label>
+          <label class="field"><span>Notities (optioneel)</span><textarea name="notes" rows="2" placeholder="bijv. samen circuit gedaan">${esc(initNotes)}</textarea></label>
           <button class="primary wide" type="submit">Duo-training opslaan</button>
         </form>`;
 
@@ -5665,13 +5716,28 @@
           else set[f] = f === 'rir' && inp.value.trim() === '' ? undefined : num(inp.value);
         });
       };
+      const persistDraft = () => {
+        syncDraft();
+        writeTrainingDraft({
+          ref: draftRef, startedAt,
+          date: document.querySelector('[name="date"]').value,
+          notes: document.querySelector('[name="notes"]').value,
+          members: draft.map((mem) => ({ clientId: mem.client.id, exercises: mem.exercises })),
+        });
+      };
       const repaintKeeping = () => {
+        persistDraft();
         const dateVal = document.querySelector('[name="date"]').value;
         const notesVal = document.querySelector('[name="notes"]').value;
         paint();
         document.querySelector('[name="date"]').value = dateVal;
         document.querySelector('[name="notes"]').value = notesVal;
       };
+      const form = document.getElementById('duo-form');
+      form.addEventListener('input', persistDraft);
+      form.addEventListener('change', persistDraft);
+      const disc = document.getElementById('discard-draft');
+      if (disc) disc.addEventListener('click', () => { clearTrainingDraft(draftRef); render(); });
       draft.forEach((mem, mi) => mem.exercises.forEach((ex, xi) => {
         if (ex.kind !== 'cardio') bindPrLive('dset', `${mi}.${xi}`, mem.client.id, ex.name);
       }));
@@ -5781,6 +5847,7 @@
         if (!saved) { alert('Vul minstens één set in.'); return; }
         stopTimer();
         save();
+        clearTrainingDraft(draftRef);
         pendingDuo = null;
         location.hash = `/duo/${duoId}`;
       });
@@ -5926,7 +5993,9 @@
     const isFree = !editing && schemaId === 'vrij';
     const schema = editing ? schemaById(editing.schemaId) : isFree ? null : schemaById(schemaId);
     if (!c || (!editing && !isFree && !schema)) { location.hash = c ? `/klant/${clientId}` : '/'; return; }
-    if (isFree && !pendingFree.length) { location.hash = `/klant/${clientId}/vrij`; return; }
+    const draftRef = `/klant/${clientId}/` + (editId ? `bewerk/${editId}` : `training/${isFree ? 'vrij' : schemaId}`);
+    const stored = readTrainingDraft(draftRef);
+    if (isFree && !pendingFree.length && !stored) { location.hash = `/klant/${clientId}/vrij`; return; }
 
     // prefill: most recent logged sets of this exercise (any session), else per-set schema targets
     const prefill = (ex) => {
@@ -5945,14 +6014,20 @@
       superset: ex.superset || null,
       sets: prefill(ex),
     });
-    const draft = editing
-      ? editing.entries.map((e) => ({ name: e.name, kind: entryKind(e), superset: e.superset || null, sets: e.sets.map((s) => ({ ...s })) }))
-      : (isFree ? pendingFree.map((n) => ({ name: n })) : schema.exercises).map(mkExercise);
+    const draft = stored
+      ? stored.entries.map((e) => ({ name: e.name, kind: e.kind || kindFor(clientId, e.name), superset: e.superset || null, sets: e.sets.map((s) => ({ ...s })) }))
+      : editing
+        ? editing.entries.map((e) => ({ name: e.name, kind: entryKind(e), superset: e.superset || null, sets: e.sets.map((s) => ({ ...s })) }))
+        : (isFree ? pendingFree.map((n) => ({ name: n })) : schema.exercises).map(mkExercise);
+    const initDate = stored ? stored.date : editing ? editing.date : todayIso();
+    const initNotes = stored ? stored.notes : editing ? editing.notes || '' : '';
+    const initDuration = stored && stored.duration !== undefined ? stored.duration : editing ? editing.durationMin || '' : '';
+    const restoredAt = stored ? stored.savedAt : null;
     let swapping = null; // exercise index currently in swap mode
     let infoOpen = null; // exercise index whose explanation is open
     let openMore = null; // "xi.si" of the set whose options are open
     let tool = null; // 'plates' | 'interval'
-    const startedAt = Date.now();
+    const startedAt = (stored && stored.startedAt) || Date.now();
 
     const paint = () => {
       const extraOptions = [...new Set([...knownExercises(clientId), ...libraryNames()])]
@@ -5961,6 +6036,7 @@
         `<p style="margin:0 0 12px"><span class="badge">${esc(schema ? schema.name : editing && editing.duoId ? (duoSchemaById(editing.schemaId) || {}).name || 'Duo-training' : 'Vrije training')}</span></p>` +
         ((c.injuries || c.medical) ? `<div class="note-box"><strong>Let op:</strong> ${esc([c.injuries, c.medical].filter(Boolean).join(' · '))}</div>` : '') +
         (() => { const l = creditLedger(clientId); return l && l.low ? `<div class="note-box"><strong>Tegoed:</strong> nog ${l.remaining} sessie${l.remaining === 1 ? '' : 's'} na deze training.</div>` : ''; })() +
+        (restoredAt ? `<div class="note-box">Automatisch bewaarde invoer hersteld (${esc(fmtDraftTime(restoredAt))}). <button type="button" class="small" id="discard-draft">Opnieuw beginnen</button></div>` : '') +
         `<form id="wo-form">
           <div class="actions" style="margin-bottom:12px">
             <button type="button" class="small" data-rest-set="all">⏱ Rust</button>
@@ -5968,8 +6044,8 @@
             <button type="button" class="small" id="tool-interval">⏲ Interval</button>
           </div>
           ${toolPanelHtml(tool)}
-          <label class="field"><span>Datum</span><input type="date" name="date" value="${editing ? esc(editing.date) : todayIso()}" required></label>
-          ${editing ? `<label class="field"><span>Duur (min)</span><input type="number" min="0" name="duration" value="${editing.durationMin || ''}" placeholder="–"></label>` : ''}
+          <label class="field"><span>Datum</span><input type="date" name="date" value="${esc(initDate)}" required></label>
+          ${editing ? `<label class="field"><span>Duur (min)</span><input type="number" min="0" name="duration" value="${esc(String(initDuration))}" placeholder="–"></label>` : ''}
           ${draft.map((ex, xi) => {
             const prev = lastEntryFor(clientId, ex.name, editing && editing.id);
             const linked = ex.superset && draft.some((d, i) => i !== xi && d.superset === ex.superset);
@@ -6007,7 +6083,7 @@
               <button type="button" class="small" id="add-extra">+ Oefening</button>
             </div>
           </div>
-          <label class="field"><span>Notities (optioneel)</span><textarea name="notes" rows="2" placeholder="bijv. voelde sterk, knie licht gevoelig">${editing ? esc(editing.notes || '') : ''}</textarea></label>
+          <label class="field"><span>Notities (optioneel)</span><textarea name="notes" rows="2" placeholder="bijv. voelde sterk, knie licht gevoelig">${esc(initNotes)}</textarea></label>
           <button class="primary wide" type="submit">${editing ? 'Wijzigingen opslaan' : 'Training opslaan'}</button>
         </form>`;
 
@@ -6031,7 +6107,17 @@
         const d = document.querySelector('[name="duration"]');
         if (d && v.duration !== undefined) d.value = v.duration;
       };
-      const repaintKeeping = () => { const v = keepFields(); paint(); restoreFields(v); };
+      const persistDraft = () => {
+        syncDraft();
+        const v = keepFields();
+        writeTrainingDraft({ ref: draftRef, startedAt, date: v.date, notes: v.notes, duration: v.duration, entries: draft });
+      };
+      const repaintKeeping = () => { persistDraft(); const v = keepFields(); paint(); restoreFields(v); };
+      const form = document.getElementById('wo-form');
+      form.addEventListener('input', persistDraft);
+      form.addEventListener('change', persistDraft);
+      const disc = document.getElementById('discard-draft');
+      if (disc) disc.addEventListener('click', () => { clearTrainingDraft(draftRef); render(); });
 
       draft.forEach((ex, xi) => {
         if (ex.kind !== 'cardio') bindPrLive('set', String(xi), clientId, ex.name, editing && editing.id);
@@ -6141,6 +6227,7 @@
         }
         stopTimer();
         save();
+        clearTrainingDraft(draftRef);
         if (isFree) pendingFree = [];
         location.hash = `/klant/${clientId}`;
       });
