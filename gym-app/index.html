@@ -319,6 +319,8 @@
   .note-box { background: var(--wash); border-radius: 8px; padding: 8px 10px; font-size: 14px; color: var(--ink-2); margin-bottom: 8px; }
   .note-box strong { color: var(--accent-strong); }
   .info-panel { border: 1px solid var(--grid); border-radius: 8px; padding: 10px; margin-bottom: 10px; }
+  .chart-overlay { position: fixed; inset: 0; z-index: 45; background: var(--page); overflow-y: auto; padding: 0 16px 32px; }
+  .chart-overlay .inner { max-width: 640px; margin: 0 auto; }
 
   .legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px; }
   .legend span { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-2); }
@@ -438,7 +440,7 @@
 <script>
 (() => {
   'use strict';
-  const APP_VERSION = 41; // bump when publishing; shown on the home screen
+  const APP_VERSION = 42; // bump when publishing; shown on the home screen
   const KEY = 'coachlog-v1';
   const $app = document.getElementById('app');
 
@@ -2065,6 +2067,41 @@
     svg.addEventListener('touchstart', onMove, { passive: true });
     svg.addEventListener('touchmove', onMove, { passive: true });
     svg.addEventListener('mouseleave', onLeave);
+  }
+
+  // full-screen progress chart during a session; separate element on top of the form so typed input stays
+  function openSessionChart(clientId, name, excludeId) {
+    const sessions = exerciseSessions(clientId, name, excludeId);
+    const kind = sessions.length ? sessions[0].kind : 'kracht';
+    const repsOnly = kind === 'lichaamsgewicht' && sessions.every((s) => !s.extra);
+    const valueOf = (s) => kind === 'cardio' ? s.distance : repsOnly ? s.bestReps : s.top;
+    const unit = kind === 'cardio' ? 'km' : repsOnly ? 'herh.' : 'kg';
+    const title = kind === 'cardio' ? 'Afstand per training'
+      : repsOnly ? 'Meeste herhalingen per training'
+      : kind === 'lichaamsgewicht' ? 'Extra gewicht per training' : 'Beste gewicht per training';
+    const points = sessions.map((s) => ({ date: s.date, value: valueOf(s) })).filter((p) => Number.isFinite(p.value) && p.value > 0);
+    const el = document.createElement('div');
+    el.className = 'chart-overlay';
+    el.innerHTML = `<div class="inner">
+      <div class="topbar"><button class="back" id="chart-close" aria-label="Sluiten">←</button><h1>${esc(name)}</h1></div>
+      <div class="eyebrow" style="margin-top:0">${title}</div>
+      <div class="card">
+        <div class="chart-wrap" id="session-chart"></div>
+        <p class="mut" style="margin:6px 0 0">Warming-upsets tellen niet mee.</p>
+      </div>
+      ${sessions.length ? `<div class="eyebrow">Laatste sessies</div>` + [...sessions].slice(-5).reverse().map((s) => `<div class="card">
+        <div class="title">${esc(fmtDateFull(s.date))}${s.isPr ? ' <span class="badge pr">🏆 PR</span>' : ''}</div>
+        <div class="sub">${s.sets.map((st) => setText(st, kind)).join(' · ')}</div>
+      </div>`).join('') : ''}
+    </div>`;
+    document.body.appendChild(el);
+    const onKey = (ev) => { if (ev.key === 'Escape') close(); };
+    const close = () => { el.remove(); document.removeEventListener('keydown', onKey); };
+    el.querySelector('#chart-close').addEventListener('click', close);
+    document.addEventListener('keydown', onKey);
+    const box = el.querySelector('#session-chart');
+    if (points.length) renderChart(box, points, unit);
+    else box.innerHTML = '<p class="mut">Nog geen eerdere sessies voor deze oefening.</p>';
   }
 
   // multi-series line chart with legend (used to compare exercises)
@@ -5583,6 +5620,7 @@
                 <button type="button" class="small ghost" data-ddown="${key}" aria-label="Omlaag" ${xi === mem.exercises.length - 1 ? 'disabled' : ''}>↓</button>
                 <button type="button" class="small ghost" data-dlink="${key}" aria-label="Superset met vorige" ${xi === 0 ? 'disabled' : ''}>⛓</button>
                 <button type="button" class="small ghost" data-rest-dset="${key}" aria-label="Start rusttimer">⏱</button>
+                <button type="button" class="small ghost" data-dchart="${key}" aria-label="Progressiegrafiek" ${prev ? '' : 'disabled'}>📈</button>
                 <button type="button" class="small ghost" data-dinfo="${key}" aria-label="Uitleg">${hasInfo(exerciseByName(ex.name)) || clientNote(mem.client.id, ex.name) ? 'ℹ️' : 'ℹ'}</button>
                 <button type="button" class="small ghost" data-dswap="${key}">⇄</button>
               </div>
@@ -5672,6 +5710,10 @@
           list[xi].superset = group;
         }
         repaintKeeping();
+      }));
+      document.querySelectorAll('[data-dchart]').forEach((b) => b.addEventListener('click', () => {
+        const [mi, xi] = b.dataset.dchart.split('.').map(Number);
+        openSessionChart(draft[mi].client.id, draft[mi].exercises[xi].name);
       }));
       document.querySelectorAll('[data-dinfo]').forEach((b) => b.addEventListener('click', () => {
         syncDraft();
@@ -5938,6 +5980,7 @@
               <button type="button" class="small ghost" data-down="${xi}" aria-label="Omlaag" ${xi === draft.length - 1 ? 'disabled' : ''}>↓</button>
               <button type="button" class="small ghost" data-link="${xi}" aria-label="Superset met vorige" ${xi === 0 ? 'disabled' : ''}>⛓</button>
               <button type="button" class="small ghost" data-rest-set="${xi}" aria-label="Start rusttimer">⏱</button>
+              <button type="button" class="small ghost" data-chart="${xi}" aria-label="Progressiegrafiek" ${prev ? '' : 'disabled'}>📈</button>
               <button type="button" class="small ghost" data-info="${xi}" aria-label="Uitleg">${hasInfo(exerciseByName(ex.name)) || clientNote(clientId, ex.name) ? 'ℹ️' : 'ℹ'}</button>
               <button type="button" class="small ghost" data-swap="${xi}">⇄</button>
             </div>
@@ -6031,6 +6074,9 @@
         syncDraft();
         infoOpen = infoOpen === +b.dataset.info ? null : +b.dataset.info;
         repaintKeeping();
+      }));
+      document.querySelectorAll('[data-chart]').forEach((b) => b.addEventListener('click', () => {
+        openSessionChart(clientId, draft[+b.dataset.chart].name, editing && editing.id);
       }));
       document.querySelectorAll('[data-swap]').forEach((b) => b.addEventListener('click', () => {
         syncDraft();
