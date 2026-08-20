@@ -440,7 +440,7 @@
 <script>
 (() => {
   'use strict';
-  const APP_VERSION = 43; // bump when publishing; shown on the home screen
+  const APP_VERSION = 44; // bump when publishing; shown on the home screen
   const KEY = 'coachlog-v1';
   const $app = document.getElementById('app');
 
@@ -5716,8 +5716,8 @@
           else set[f] = f === 'rir' && inp.value.trim() === '' ? undefined : num(inp.value);
         });
       };
+      // see the solo screen: never re-read the DOM here, the draft is already up to date
       const persistDraft = () => {
-        syncDraft();
         writeTrainingDraft({
           ref: draftRef, startedAt,
           date: document.querySelector('[name="date"]').value,
@@ -5725,6 +5725,7 @@
           members: draft.map((mem) => ({ clientId: mem.client.id, exercises: mem.exercises })),
         });
       };
+      const syncAndPersist = () => { syncDraft(); persistDraft(); };
       const repaintKeeping = () => {
         persistDraft();
         const dateVal = document.querySelector('[name="date"]').value;
@@ -5734,8 +5735,8 @@
         document.querySelector('[name="notes"]').value = notesVal;
       };
       const form = document.getElementById('duo-form');
-      form.addEventListener('input', persistDraft);
-      form.addEventListener('change', persistDraft);
+      form.addEventListener('input', syncAndPersist);
+      form.addEventListener('change', syncAndPersist);
       const disc = document.getElementById('discard-draft');
       if (disc) disc.addEventListener('click', () => { clearTrainingDraft(draftRef); render(); });
       draft.forEach((mem, mi) => mem.exercises.forEach((ex, xi) => {
@@ -6107,15 +6108,17 @@
         const d = document.querySelector('[name="duration"]');
         if (d && v.duration !== undefined) d.value = v.duration;
       };
+      // draft is the source of truth here: callers sync the DOM into it before mutating,
+      // so re-reading the (now stale) DOM would resurrect removed sets
       const persistDraft = () => {
-        syncDraft();
         const v = keepFields();
         writeTrainingDraft({ ref: draftRef, startedAt, date: v.date, notes: v.notes, duration: v.duration, entries: draft });
       };
+      const syncAndPersist = () => { syncDraft(); persistDraft(); };
       const repaintKeeping = () => { persistDraft(); const v = keepFields(); paint(); restoreFields(v); };
       const form = document.getElementById('wo-form');
-      form.addEventListener('input', persistDraft);
-      form.addEventListener('change', persistDraft);
+      form.addEventListener('input', syncAndPersist);
+      form.addEventListener('change', syncAndPersist);
       const disc = document.getElementById('discard-draft');
       if (disc) disc.addEventListener('click', () => { clearTrainingDraft(draftRef); render(); });
 
