@@ -278,6 +278,21 @@
   .delta.up { color: var(--good); }
   .delta.down { color: var(--danger); }
 
+  /* screens slide in the direction you are travelling */
+  @keyframes slide-fwd { from { opacity: 0; transform: translateX(18px); } to { opacity: 1; transform: none; } }
+  @keyframes slide-back { from { opacity: 0; transform: translateX(-18px); } to { opacity: 1; transform: none; } }
+  #app.slide-fwd { animation: slide-fwd 0.24s cubic-bezier(0.22, 1, 0.36, 1); }
+  #app.slide-back { animation: slide-back 0.24s cubic-bezier(0.22, 1, 0.36, 1); }
+  @media (prefers-reduced-motion: reduce) {
+    #app.slide-fwd, #app.slide-back { animation: none; }
+  }
+
+  /* streak ring around an avatar, with a flame once the weeks stack up */
+  .av-wrap { position: relative; display: inline-flex; flex: none; }
+  .av-wrap .streak-ring { position: absolute; inset: -4px; pointer-events: none; }
+  .av-wrap .flame { position: absolute; right: -4px; bottom: -4px; font-size: 12px; line-height: 1; }
+  .client-hero .av-wrap .flame { font-size: 17px; right: -2px; bottom: -2px; }
+
   /* uniform card lists pair up on a tablet instead of running down one narrow column */
   .cards-2 { display: grid; gap: 10px; }
   .cards-2 > .card { margin-bottom: 0; }
@@ -472,7 +487,6 @@
     .sub, .mut, .eyebrow, .title, td, th, .stat .val, .stat .lbl { color: #111 !important; }
     .badge { color: #111 !important; background: #eee !important; }
   }
-  .prev-hint { margin: -4px 0 8px 32px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
   .pr-live {
     display: inline-flex; align-items: center; gap: 6px;
     font-size: 13px; font-weight: 650; color: var(--good);
@@ -542,7 +556,7 @@
 <script>
 (() => {
   'use strict';
-  const APP_VERSION = 48; // bump when publishing; shown on the home screen
+  const APP_VERSION = 49; // bump when publishing; shown on the home screen
   const KEY = 'coachlog-v1';
   const $app = document.getElementById('app');
 
@@ -926,6 +940,35 @@
     return last && last.data
       ? `<img class="avatar" src="${esc(last.data)}" alt="">`
       : `<span class="avatar" style="background:${avatarTint(client && client.name)}">${esc(initials(client && client.name))}</span>`;
+  }
+
+  // avatar with a ring showing this week's sessions, and a flame from three weeks on
+  function avatarStreakHtml(client, size) {
+    if (!client) return avatarHtml(client);
+    const target = Math.max(1, sessionsPerWeekTarget(client.id));
+    const thisWeek = workoutsOf(client.id).filter((w) => isoWeek(w.date) === isoWeek(todayIso())).length;
+    const streak = weekStreak(client.id);
+    const pct = Math.min(1, thisWeek / target);
+    const r = size / 2 + 2, box = r * 2, c = 2 * Math.PI * (r - 1.5);
+    return `<span class="av-wrap">
+      ${avatarHtml(client)}
+      ${thisWeek ? `<svg class="streak-ring" viewBox="0 0 ${box} ${box}" aria-label="${thisWeek} van ${target} trainingen deze week">
+        <circle cx="${r}" cy="${r}" r="${r - 1.5}" fill="none" stroke="var(--grid)" stroke-width="2"/>
+        <circle cx="${r}" cy="${r}" r="${r - 1.5}" fill="none" stroke="var(--good)" stroke-width="2" stroke-linecap="round"
+          stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${(c * (1 - pct)).toFixed(1)}" transform="rotate(-90 ${r} ${r})"/>
+      </svg>` : ''}
+      ${streak >= 3 ? `<span class="flame" title="${streak} weken op rij">🔥</span>` : ''}
+    </span>`;
+  }
+
+  // how many sessions a week this client is aiming for: from their subscription, otherwise their own habit
+  function sessionsPerWeekTarget(clientId) {
+    const today = todayIso();
+    const sub = (db.subscriptions || []).find((x) => x.clientId === clientId && x.status === 'getekend'
+      && (!subEnd(x) || subEnd(x) >= today));
+    if (sub && sub.sessionsPerWeek > 0) return sub.sessionsPerWeek;
+    const weeks = new Set(workoutsOf(clientId).slice(-24).map((w) => isoWeek(w.date)));
+    return weeks.size ? Math.max(1, Math.round(workoutsOf(clientId).slice(-24).length / weeks.size)) : 1;
   }
 
   // exercises carry no video of their own, so link a search that lands on the right clips
@@ -2297,6 +2340,31 @@
     return `<span class="trend ${up ? 'up' : 'down'}">${up ? '+' : '−'}${esc(fmt(Math.abs(delta)))} ${up ? '↑' : '↓'}</span>`;
   }
 
+  // counts a stat tile's number up to its value; the text is already correct, this only animates the way there
+  function countUpStats() {
+    if (!motionOk()) return;
+    document.querySelectorAll('.stat .val').forEach((el) => {
+      if (el.dataset.counted) return;
+      const full = el.textContent;
+      const m = full.match(/-?\d[\d.]*(,\d+)?/);
+      if (!m) return;
+      const target = Number(m[0].replace(/\./g, '').replace(',', '.'));
+      if (!Number.isFinite(target) || target === 0) return;
+      el.dataset.counted = '1';
+      const decimals = (m[1] || '').length ? m[1].length - 1 : 0;
+      const t0 = performance.now(), ms = 550;
+      const step = (t) => {
+        const k = Math.min(1, (t - t0) / ms);
+        const eased = 1 - Math.pow(1 - k, 3);
+        const now = (target * eased).toLocaleString('nl-NL', { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
+        el.textContent = full.replace(m[0], now);
+        if (k < 1) requestAnimationFrame(step);
+        else el.textContent = full;
+      };
+      requestAnimationFrame(step);
+    });
+  }
+
   // progress ring used for the day overview and the streak avatars
   function ringHtml(done, total, label) {
     const r = 20, c = 2 * Math.PI * r;
@@ -2510,7 +2578,7 @@
       <input id="nav-q" class="nav-search" placeholder="Zoek klant of duo…" value="${esc(uiState.navQuery)}">
       <details class="navgrp" data-key="Clients" ${uiState.navClients ? 'open' : ''}>
         <summary>Klanten <span class="chev">▾</span></summary>
-        ${clients.map((c) => `<a class="navlink person${c.id === activeClient ? ' active' : ''}" href="#/klant/${c.id}">${avatarHtml(c)}<span>${esc(c.name)}</span></a>`).join('')}
+        ${clients.map((c) => `<a class="navlink person${c.id === activeClient ? ' active' : ''}" href="#/klant/${c.id}">${avatarStreakHtml(c, 22)}<span>${esc(c.name)}</span></a>`).join('')}
         ${clients.length ? '' : '<span class="navlink mut">geen resultaten</span>'}
         ${archivedCount ? `<button class="navlink add" id="nav-archived" type="button">${uiState.navArchived ? '‹ Actieve klanten' : `Archief (${archivedCount}) ›`}</button>` : ''}
         <a class="navlink add" href="#/">+ Nieuwe klant</a>
@@ -2596,10 +2664,18 @@
   $side.addEventListener('click', (ev) => { if (ev.target.closest('a')) closeDrawer(); });
   document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') closeDrawer(); });
 
+  let navDepth = 0; // how deep the previous screen was, so we know which way to slide
   function render() {
     const hash = location.hash.slice(1) || '/';
     const parts = hash.split('/').filter(Boolean);
     window.scrollTo(0, 0);
+    if (motionOk()) {
+      $app.classList.remove('slide-fwd', 'slide-back');
+      void $app.offsetWidth; // restart the animation even when the class is unchanged
+      $app.classList.add(parts.length < navDepth ? 'slide-back' : 'slide-fwd');
+    }
+    navDepth = parts.length;
+    requestAnimationFrame(countUpStats);
     const widePage = parts[0] === 'duo' && (parts[2] === 'training' || parts[2] === 'schema' || parts[2] === 'vrij');
     $app.classList.toggle('wide', widePage);
     document.body.classList.toggle('wide-page', widePage);
@@ -3138,7 +3214,7 @@
     const since = workouts.length ? workouts[0].date : null;
     $app.innerHTML = topbar(c.name, '/') +
       `<div class="client-hero">
-        ${avatarHtml(c)}
+        ${avatarStreakHtml(c, 60)}
         <div class="grow">
           <h2>${esc(c.name)}</h2>
           <div class="sub">${workouts.length} training${workouts.length === 1 ? '' : 'en'}${since ? ` · sinds ${esc(fmtDate(since))}` : ''}${c.goal ? ` · ${esc(c.goal)}` : ''}</div>
