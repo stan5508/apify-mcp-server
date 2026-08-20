@@ -14,7 +14,7 @@ Dit is geen onderdeel van de MCP-server in deze repo; het is een losstaande app 
 
 ## Werkwijze — houd je hieraan
 
-1. **Elke wijziging**: `APP_VERSION` in `index.html` én `CACHE` in `sw.js` ophogen (nu **45**).
+1. **Elke wijziging**: `APP_VERSION` in `index.html` én `CACHE` in `sw.js` ophogen (nu **49**).
    Zonder die twee ziet hij de wijziging niet op zijn tablet.
 2. **Testen** met Playwright (`playwright-core`, `executablePath: '/opt/pw-browsers/chromium'`)
    tegen `python3 -m http.server` in `gym-app/`. Schrijf per functie een klein `.mjs`-scriptje
@@ -64,11 +64,19 @@ foods, water, muscleGroups, settings`.
 - Logo: turfstreepjes (drie witte streepjes, amber schuine streep) in `icon.svg`; de PNG's
   worden daaruit gerenderd. Woordmerk: **Coach**log.
 - Onder 760 px een vaste tabbalk (Vandaag · Klanten · Agenda · Meer) met de zijbalk als lade.
+- **Spiergroepkleuren liggen vast**: Borst rood, Rug blauw, Schouders geel, Benen groen
+  (`GROUP_COLOURS`). Groepen zonder schijfkleur blijven neutraal — geen vijfde kleur verzinnen.
+- Boven 900 px staan gelijkvormige kaartenlijsten in twee kolommen (`.cards-2`).
+- Beweging: schermen schuiven in, cijfers in tegels tellen omhoog, grafieken tekenen zichzelf,
+  streak-ring rond de avatar. Alles uit bij `prefers-reduced-motion`.
 - Contrast getoetst: gewone tekst ≥ 4,5:1, grafiekkleuren ≥ 3:1, in beide thema's.
 
 ## Wat er staat
 
-**Trainen** — schema's met per-set doelen, sjablonen (solo én duo), vrije trainingen, duo's
+**Trainen** — sets afvinken (groene regel, trilling, rusttimer start vanzelf), sessiebalk met
+verstreken tijd en voortgang, afrondscherm met PR's en confetti, twee knoppen per oefening plus
+een ⋯-menu, vorige sessie als spookinvoer in het veld,
+schema's met per-set doelen, sjablonen (solo én duo), vrije trainingen, duo's
 met kolommen naast elkaar, oefening vervangen tijdens de sessie, rusttimer, intervaltimer,
 schijvenrekenmachine met echte schijfkleuren, RIR, set-types, supersets, per zijde loggen,
 cardio, live PR-melding, vorige-prestatie-hints, korte trilling bij het invullen van reps,
