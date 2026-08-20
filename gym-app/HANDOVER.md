@@ -14,7 +14,7 @@ Dit is geen onderdeel van de MCP-server in deze repo; het is een losstaande app 
 
 ## Werkwijze — houd je hieraan
 
-1. **Elke wijziging**: `APP_VERSION` in `index.html` én `CACHE` in `sw.js` ophogen (nu **50**).
+1. **Elke wijziging**: `APP_VERSION` in `index.html` én `CACHE` in `sw.js` ophogen (nu **51**).
    Zonder die twee ziet hij de wijziging niet op zijn tablet.
 2. **Testen** met Playwright (`playwright-core`, `executablePath: '/opt/pw-browsers/chromium'`)
    tegen `python3 -m http.server` in `gym-app/`. Schrijf per functie een klein `.mjs`-scriptje
@@ -64,8 +64,13 @@ foods, water, muscleGroups, settings`.
 - Logo: turfstreepjes (drie witte streepjes, amber schuine streep) in `icon.svg`; de PNG's
   worden daaruit gerenderd. Woordmerk: **Coach**log.
 - Onder 760 px een vaste tabbalk (Vandaag · Klanten · Agenda · Meer) met de zijbalk als lade.
-- **Spiergroepkleuren liggen vast**: Borst rood, Rug blauw, Schouders geel, Benen groen
-  (`GROUP_COLOURS`). Groepen zonder schijfkleur blijven neutraal — geen vijfde kleur verzinnen.
+- **Spiergroepen dragen Latijnse namen** (`MUSCLE_GROUPS`): Pectoralis major, Deltoideus,
+  Triceps brachii, Latissimus dorsi, Trapezius, Biceps brachii, Erector spinae, Quadriceps,
+  Hamstrings, Gluteus maximus, Triceps surae, Rectus abdominis, Cardio, Overig. De oude
+  Nederlandse namen migreren automatisch via `LEGACY_GROUPS` — die staat bewust vóór
+  `loadDb()`, want de migratie draait daarbinnen.
+- **Kleur volgt de keten** (`GROUP_COLOURS`): duwen rood, trekken blauw, benen groen, core geel.
+  Cardio en Overig blijven neutraal — geen vijfde kleur verzinnen.
 - Boven 900 px staan gelijkvormige kaartenlijsten in twee kolommen (`.cards-2`).
 - Beweging: schermen schuiven in, cijfers in tegels tellen omhoog, grafieken tekenen zichzelf,
   streak-ring rond de avatar. Alles uit bij `prefers-reduced-motion`.
