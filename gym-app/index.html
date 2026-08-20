@@ -131,12 +131,12 @@
     -webkit-font-smoothing: antialiased;
   }
   .layout {
-    max-width: 980px; margin: 0 auto; padding: 0 16px;
+    max-width: 1100px; margin: 0 auto; padding: 0 16px;
     display: grid; grid-template-columns: 230px minmax(0, 1fr);
     gap: 28px; align-items: start;
   }
   #side { position: sticky; top: 0; max-height: 100vh; overflow-y: auto; padding-bottom: 24px; }
-  #app { max-width: 640px; padding-bottom: 96px; min-width: 0; }
+  #app { max-width: 760px; padding-bottom: 96px; min-width: 0; }
   /* phone: the sidebar becomes a drawer behind the tab bar */
   #tabbar, #nav-backdrop { display: none; }
   @media (max-width: 759px) {
@@ -270,13 +270,18 @@
   .seg button { flex: 1; border: none; background: transparent; padding: 7px 4px; font-size: 13px; border-radius: 6px; color: var(--ink-2); }
   .seg button[aria-pressed="true"] { background: var(--wash); color: var(--accent-strong); font-weight: 650; }
 
-  .stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-  .stat { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
-  .stat .lbl { font-size: 12px; color: var(--muted); }
-  .stat .val { font-size: 20px; font-weight: 650; margin-top: 2px; font-variant-numeric: tabular-nums; }
+  .stat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .stat { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+  .stat .lbl { font-size: 12px; color: var(--muted); letter-spacing: 0.01em; }
+  .stat .val { font-size: 27px; font-weight: 650; margin-top: 1px; line-height: 1.15; font-variant-numeric: tabular-nums; letter-spacing: -0.015em; }
   .stat .delta { font-size: 13px; margin-top: 2px; }
   .delta.up { color: var(--good); }
   .delta.down { color: var(--danger); }
+
+  /* uniform card lists pair up on a tablet instead of running down one narrow column */
+  .cards-2 { display: grid; gap: 10px; }
+  .cards-2 > .card { margin-bottom: 0; }
+  @media (min-width: 900px) { .cards-2 { grid-template-columns: 1fr 1fr; } }
 
   .chart-wrap { position: relative; }
   .chart-wrap svg { display: block; width: 100%; height: auto; }
@@ -315,6 +320,7 @@
     font-size: 16px; line-height: 1; display: grid; place-items: center; cursor: pointer;
     transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease, transform 0.12s ease;
   }
+  .set-tick[aria-pressed="false"] { color: var(--baseline); }
   .set-tick[aria-pressed="true"] { background: var(--good); border-color: var(--good); color: #fff; }
   .set-tick:active { transform: scale(0.92); }
   .set-row.done input { border-color: var(--good-line); background: var(--good-wash); }
@@ -335,6 +341,8 @@
   .set-row .n { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
   .set-row .n b { color: var(--accent-strong); font-weight: 700; }
   .mg-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  /* a card that carries its muscle-group colour on the leading edge */
+  .mg-edge { border-left: 3px solid var(--mg, var(--border)); }
   .spark { display: block; flex: none; }
   .spark-empty { display: inline-block; width: 76px; height: 24px; }
   .trend {
@@ -534,7 +542,7 @@
 <script>
 (() => {
   'use strict';
-  const APP_VERSION = 47; // bump when publishing; shown on the home screen
+  const APP_VERSION = 48; // bump when publishing; shown on the home screen
   const KEY = 'coachlog-v1';
   const $app = document.getElementById('app');
 
@@ -1245,7 +1253,7 @@
       const nCell = `<span class="n">${si + 1}${marks ? ` <b>${esc(marks)}</b>` : ''}</span>`;
       // last time's numbers sit in the field as a ghost, so an empty row still tells you what to beat
       const ghost = (f, fallback) => (p && p[f] ? esc(fmtNum(p[f])) : fallback);
-      const tickCell = `<button type="button" class="set-tick" data-tick-${attr}="${key}" aria-pressed="${!!s.done}" aria-label="Set ${si + 1} afvinken">${s.done ? '✓' : ''}</button>`;
+      const tickCell = `<button type="button" class="set-tick" data-tick-${attr}="${key}" aria-pressed="${!!s.done}" aria-label="Set ${si + 1} afvinken">✓</button>`;
       const row = isCardio
         ? `<div class="set-row cardio${s.done ? ' done' : ''}">
             ${nCell}
@@ -3146,7 +3154,7 @@
       `</div>` +
 
       `<div class="eyebrow">Progressie per oefening</div>` +
-      (exerciseCards || `<div class="empty"><p>Nog geen trainingen gelogd. Zodra je de eerste sessie logt verschijnt hier de progressie per oefening.</p>
+      (exerciseCards ? `<div class="cards-2">${exerciseCards}</div>` : `<div class="empty"><p>Nog geen trainingen gelogd. Zodra je de eerste sessie logt verschijnt hier de progressie per oefening.</p>
         <div class="actions"><button class="primary" data-nav="/klant/${id}/vrij">+ Vrije training</button>
         <button data-nav="/klant/${id}/sjabloon">Uit sjabloon</button></div></div>`) +
 
@@ -5399,6 +5407,7 @@
 
     $app.innerHTML = topbar(name, `/klant/${clientId}`) +
       `<div class="row no-print" style="margin-bottom:12px">
+        <span class="mg-dot" style="background:${groupColour(name, kind)}"></span>
         <span class="mut">Spiergroep</span>
         <select id="mg-select" style="max-width:200px">
           ${MUSCLE_GROUPS.map((g) => `<option value="${g}" ${groupOf(name, kind) === g ? 'selected' : ''}>${g}</option>`).join('')}
@@ -5436,14 +5445,14 @@
         <p class="mut" style="margin:6px 0 0">${cfg.barNote}</p>
       </div>` : '') +
 
-      `<div class="eyebrow">Alle sessies</div>` +
+      `<div class="eyebrow">Alle sessies</div><div class="cards-2">` +
       [...sessions].reverse().map((s) => `<div class="card">
         <div class="row"><div class="grow">
           <div class="title">${esc(fmtDateFull(s.date))} ${s.isPr ? '<span class="badge pr">🏆 PR</span>' : ''}</div>
           <div class="sub">${s.sets.map((st) => setText(st, kind) + (st.rir != null ? ` <span class="mut">RIR ${st.rir}</span>` : '')).join(' · ')}</div>
         </div>
         <div class="mut" style="font-variant-numeric:tabular-nums">${esc(cfg.fmt(topOf(s)))}</div></div>
-      </div>`).join('');
+      </div>`).join('') + '</div>';
 
     bindNav();
     bindPeriodBar();
@@ -5992,7 +6001,7 @@
               const prev = lastEntryFor(mem.client.id, ex.name);
               const key = `${mi}.${xi}`;
               const linked = ex.superset && mem.exercises.some((d, i) => i !== xi && d.superset === ex.superset);
-              return `<div class="card${linked ? ' ss-mark' : ''}">
+              return `<div class="card mg-edge${linked ? ' ss-mark' : ''}" style="--mg:${groupColour(ex.name, ex.kind)}">
               <div class="row" style="margin-bottom:2px">
                 <div class="title grow">${esc(ex.name)}${linked ? ` <span class="badge">Superset ${esc(ex.superset)}</span>` : ''}${ex.kind !== 'kracht' ? ` <span class="badge">${KIND_LABELS[ex.kind]}</span>` : ''}</div>
                 <button type="button" class="small ghost" data-dchart="${key}" aria-label="Progressiegrafiek" ${prev ? '' : 'disabled'}>📈</button>
@@ -6399,7 +6408,7 @@
           ${draft.map((ex, xi) => {
             const prev = lastEntryFor(clientId, ex.name, editing && editing.id);
             const linked = ex.superset && draft.some((d, i) => i !== xi && d.superset === ex.superset);
-            return `<div class="card${linked ? ' ss-mark' : ''}">
+            return `<div class="card mg-edge${linked ? ' ss-mark' : ''}" style="--mg:${groupColour(ex.name, ex.kind)}">
             <div class="row" style="margin-bottom:2px">
               <div class="title grow">${esc(ex.name)}${linked ? ` <span class="badge">Superset ${esc(ex.superset)}</span>` : ''}${ex.kind !== 'kracht' ? ` <span class="badge">${KIND_LABELS[ex.kind]}</span>` : ''}</div>
               <button type="button" class="small ghost" data-chart="${xi}" aria-label="Progressiegrafiek" ${prev ? '' : 'disabled'}>📈</button>
