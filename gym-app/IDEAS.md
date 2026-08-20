@@ -17,7 +17,7 @@ klant-inzage. Datamodel dus niet onnodig vastzetten op één gebruiker.
 
 Klanten, duo's, schema's met per-set doelen, sjablonen (koppelbaar aan solo én duo), vrije
 trainingen, oefening vervangen tijdens de sessie, vorige-prestatie-hints, RIR, live PR-melding,
-progressiepagina per oefening (lijn + staaf, PR's, totale progressie), lichaamsmetingen,
+progressiepagina per oefening (lijn, PR's, totale progressie), lichaamsmetingen,
 trainingen bewerken, kg/lbs-label, zijbalknavigatie (alfabetisch), duo-kolommen naast elkaar,
 sync via privé GitHub Gist, offline PWA, publicatie via `gh-pages` (zie `publish.sh`).
 

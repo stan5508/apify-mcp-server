@@ -14,7 +14,7 @@ Dit is geen onderdeel van de MCP-server in deze repo; het is een losstaande app 
 
 ## Werkwijze — houd je hieraan
 
-1. **Elke wijziging**: `APP_VERSION` in `index.html` én `CACHE` in `sw.js` ophogen (nu **44**).
+1. **Elke wijziging**: `APP_VERSION` in `index.html` én `CACHE` in `sw.js` ophogen (nu **45**).
    Zonder die twee ziet hij de wijziging niet op zijn tablet.
 2. **Testen** met Playwright (`playwright-core`, `executablePath: '/opt/pw-browsers/chromium'`)
    tegen `python3 -m http.server` in `gym-app/`. Schrijf per functie een klein `.mjs`-scriptje
@@ -74,7 +74,9 @@ schijvenrekenmachine met echte schijfkleuren, RIR, set-types, supersets, per zij
 cardio, live PR-melding, vorige-prestatie-hints, korte trilling bij het invullen van reps,
 raakvlakken ≥ 44 px, de regel waarin je typt licht op.
 
-**Analyse** — progressie per oefening (lijn + staaf), periodefilter, vergelijken, maand-
+**Analyse** — progressie per oefening (lijn; staafgrafiek alleen bij cardio en
+lichaamsgewicht — volume per training is er op verzoek uit), grafieken tekenen zichzelf in
+(uit bij *prefers-reduced-motion*), periodefilter, vergelijken, maand-
 overzicht, aanwezigheid en streaks, spiergroepverdeling, print-/PDF-rapport, CSV-export.
 
 **Klanten** — profiel met contact en intake, doelen, progressiefoto's, archiveren, avatars
