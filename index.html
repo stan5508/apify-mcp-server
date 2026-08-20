@@ -557,7 +557,7 @@
 <script>
 (() => {
   'use strict';
-  const APP_VERSION = 50; // bump when publishing; shown on the home screen
+  const APP_VERSION = 51; // bump when publishing; shown on the home screen
   const KEY = 'coachlog-v1';
   const $app = document.getElementById('app');
 
@@ -567,6 +567,15 @@
     exercises: [], clientNotes: {}, appointments: [], packages: [], subTypes: [], subscriptions: [],
     nutritionPlans: {}, meals: [], foods: [], water: {}, muscleGroups: {}, settings: { unit: 'kg', restSeconds: 90, autoRest: true, sound: true, barWeight: 20 }, updatedAt: 0,
   });
+  // the Dutch group names this app shipped with, mapped onto their closest Latin equivalent
+  const LEGACY_GROUPS = {
+    Borst: 'Pectoralis major',
+    Rug: 'Latissimus dorsi',
+    Benen: 'Quadriceps',
+    Schouders: 'Deltoideus',
+    Armen: 'Biceps brachii',
+    Core: 'Rectus abdominis',
+  };
   let db = loadDb();
   function loadDb() {
     try {
@@ -768,7 +777,12 @@
     for (const sc of d.schemas) for (const e of sc.exercises || []) seen(e.name, e.kind);
     for (const t of d.templates) for (const e of t.exercises || []) seen(e.name, e.kind);
     for (const ds of d.duoSchemas) for (const plan of Object.values(ds.plans || {})) for (const e of plan) seen(e.name, e.kind);
+    // muscle groups moved from Dutch labels to Latin anatomy; carry the old ones over
+    for (const [key, group] of Object.entries(d.muscleGroups)) {
+      if (LEGACY_GROUPS[group]) { d.muscleGroups[key] = LEGACY_GROUPS[group]; d._needsSave = true; }
+    }
     for (const e of d.exercises) {
+      if (LEGACY_GROUPS[e.group]) { e.group = LEGACY_GROUPS[e.group]; d._needsSave = true; }
       e.aliases = e.aliases || [];
       e.equipment = e.equipment || 'Onbekend';
       e.group = e.group || 'Overig';
@@ -982,27 +996,27 @@
   };
 
   const STARTER_EXERCISES = [
-    ['Squat', 'kracht', 'Benen', 'Barbell'], ['Front squat', 'kracht', 'Benen', 'Barbell'],
-    ['Leg press', 'kracht', 'Benen', 'Machine'], ['Lunges', 'kracht', 'Benen', 'Dumbbell'],
-    ['Bulgarian split squat', 'kracht', 'Benen', 'Dumbbell'], ['Leg extension', 'kracht', 'Benen', 'Machine'],
-    ['Leg curl', 'kracht', 'Benen', 'Machine'], ['Hip thrust', 'kracht', 'Benen', 'Barbell'],
-    ['Kuitheffen', 'kracht', 'Benen', 'Machine'], ['Deadlift', 'kracht', 'Rug', 'Barbell'],
-    ['Romanian deadlift', 'kracht', 'Benen', 'Barbell'], ['Barbell row', 'kracht', 'Rug', 'Barbell'],
-    ['Dumbbell row', 'kracht', 'Rug', 'Dumbbell'], ['Lat pulldown', 'kracht', 'Rug', 'Machine'],
-    ['Seated row', 'kracht', 'Rug', 'Kabel'], ['Pull-up', 'lichaamsgewicht', 'Rug', 'Lichaamsgewicht'],
-    ['Chin-up', 'lichaamsgewicht', 'Rug', 'Lichaamsgewicht'], ['Face pull', 'kracht', 'Schouders', 'Kabel'],
-    ['Bankdrukken', 'kracht', 'Borst', 'Barbell'], ['Incline bankdrukken', 'kracht', 'Borst', 'Barbell'],
-    ['Dumbbell press', 'kracht', 'Borst', 'Dumbbell'], ['Chest fly', 'kracht', 'Borst', 'Kabel'],
-    ['Push-up', 'lichaamsgewicht', 'Borst', 'Lichaamsgewicht'], ['Dips', 'lichaamsgewicht', 'Borst', 'Lichaamsgewicht'],
-    ['Overhead press', 'kracht', 'Schouders', 'Barbell'], ['Arnold press', 'kracht', 'Schouders', 'Dumbbell'],
-    ['Lateral raise', 'kracht', 'Schouders', 'Dumbbell'], ['Reverse fly', 'kracht', 'Schouders', 'Dumbbell'],
-    ['Shrugs', 'kracht', 'Schouders', 'Dumbbell'], ['Barbell curl', 'kracht', 'Armen', 'Barbell'],
-    ['Dumbbell curl', 'kracht', 'Armen', 'Dumbbell'], ['Hammer curl', 'kracht', 'Armen', 'Dumbbell'],
-    ['Triceps pushdown', 'kracht', 'Armen', 'Kabel'], ['Skull crusher', 'kracht', 'Armen', 'Barbell'],
-    ['Triceps dip', 'lichaamsgewicht', 'Armen', 'Lichaamsgewicht'], ['Plank', 'lichaamsgewicht', 'Core', 'Lichaamsgewicht'],
-    ['Hanging leg raise', 'lichaamsgewicht', 'Core', 'Lichaamsgewicht'], ['Russian twist', 'kracht', 'Core', 'Dumbbell'],
-    ['Cable crunch', 'kracht', 'Core', 'Kabel'], ['Back extension', 'lichaamsgewicht', 'Core', 'Lichaamsgewicht'],
-    ['Farmer walk', 'kracht', 'Core', 'Dumbbell'], ['Kettlebell swing', 'kracht', 'Benen', 'Kettlebell'],
+    ['Squat', 'kracht', 'Quadriceps', 'Barbell'], ['Front squat', 'kracht', 'Quadriceps', 'Barbell'],
+    ['Leg press', 'kracht', 'Quadriceps', 'Machine'], ['Lunges', 'kracht', 'Quadriceps', 'Dumbbell'],
+    ['Bulgarian split squat', 'kracht', 'Quadriceps', 'Dumbbell'], ['Leg extension', 'kracht', 'Quadriceps', 'Machine'],
+    ['Leg curl', 'kracht', 'Hamstrings', 'Machine'], ['Hip thrust', 'kracht', 'Gluteus maximus', 'Barbell'],
+    ['Kuitheffen', 'kracht', 'Triceps surae', 'Machine'], ['Deadlift', 'kracht', 'Erector spinae', 'Barbell'],
+    ['Romanian deadlift', 'kracht', 'Hamstrings', 'Barbell'], ['Barbell row', 'kracht', 'Latissimus dorsi', 'Barbell'],
+    ['Dumbbell row', 'kracht', 'Latissimus dorsi', 'Dumbbell'], ['Lat pulldown', 'kracht', 'Latissimus dorsi', 'Machine'],
+    ['Seated row', 'kracht', 'Latissimus dorsi', 'Kabel'], ['Pull-up', 'lichaamsgewicht', 'Latissimus dorsi', 'Lichaamsgewicht'],
+    ['Chin-up', 'lichaamsgewicht', 'Latissimus dorsi', 'Lichaamsgewicht'], ['Face pull', 'kracht', 'Trapezius', 'Kabel'],
+    ['Bankdrukken', 'kracht', 'Pectoralis major', 'Barbell'], ['Incline bankdrukken', 'kracht', 'Pectoralis major', 'Barbell'],
+    ['Dumbbell press', 'kracht', 'Pectoralis major', 'Dumbbell'], ['Chest fly', 'kracht', 'Pectoralis major', 'Kabel'],
+    ['Push-up', 'lichaamsgewicht', 'Pectoralis major', 'Lichaamsgewicht'], ['Dips', 'lichaamsgewicht', 'Pectoralis major', 'Lichaamsgewicht'],
+    ['Overhead press', 'kracht', 'Deltoideus', 'Barbell'], ['Arnold press', 'kracht', 'Deltoideus', 'Dumbbell'],
+    ['Lateral raise', 'kracht', 'Deltoideus', 'Dumbbell'], ['Reverse fly', 'kracht', 'Deltoideus', 'Dumbbell'],
+    ['Shrugs', 'kracht', 'Trapezius', 'Dumbbell'], ['Barbell curl', 'kracht', 'Biceps brachii', 'Barbell'],
+    ['Dumbbell curl', 'kracht', 'Biceps brachii', 'Dumbbell'], ['Hammer curl', 'kracht', 'Biceps brachii', 'Dumbbell'],
+    ['Triceps pushdown', 'kracht', 'Triceps brachii', 'Kabel'], ['Skull crusher', 'kracht', 'Triceps brachii', 'Barbell'],
+    ['Triceps dip', 'lichaamsgewicht', 'Triceps brachii', 'Lichaamsgewicht'], ['Plank', 'lichaamsgewicht', 'Rectus abdominis', 'Lichaamsgewicht'],
+    ['Hanging leg raise', 'lichaamsgewicht', 'Rectus abdominis', 'Lichaamsgewicht'], ['Russian twist', 'kracht', 'Rectus abdominis', 'Dumbbell'],
+    ['Cable crunch', 'kracht', 'Rectus abdominis', 'Kabel'], ['Back extension', 'lichaamsgewicht', 'Erector spinae', 'Lichaamsgewicht'],
+    ['Farmer walk', 'kracht', 'Rectus abdominis', 'Dumbbell'], ['Kettlebell swing', 'kracht', 'Gluteus maximus', 'Kettlebell'],
     ['Roeien', 'cardio', 'Cardio', 'Cardio-apparaat'], ['Loopband', 'cardio', 'Cardio', 'Cardio-apparaat'],
     ['Hometrainer', 'cardio', 'Cardio', 'Cardio-apparaat'], ['Crosstrainer', 'cardio', 'Cardio', 'Cardio-apparaat'],
     ['Skierg', 'cardio', 'Cardio', 'Cardio-apparaat'], ['Assault bike', 'cardio', 'Cardio', 'Cardio-apparaat'],
@@ -1882,14 +1896,27 @@
   }
   const inPeriod = (iso, period) => { const s = periodStart(period); return !s || iso >= s; };
 
-  const MUSCLE_GROUPS = ['Borst', 'Rug', 'Benen', 'Schouders', 'Armen', 'Core', 'Cardio', 'Overig'];
+  const MUSCLE_GROUPS = [
+    'Pectoralis major', 'Deltoideus', 'Triceps brachii',
+    'Latissimus dorsi', 'Trapezius', 'Biceps brachii', 'Erector spinae',
+    'Quadriceps', 'Hamstrings', 'Gluteus maximus', 'Triceps surae',
+    'Rectus abdominis', 'Cardio', 'Overig',
+  ];
   // fixed colour per muscle group, straight off the weight plates: red 25, blue 20, yellow 15, green 10.
   // groups without a plate colour stay neutral rather than inventing a fifth hue.
   const GROUP_COLOURS = {
-    Borst: 'var(--series-1)',
-    Rug: 'var(--series-2)',
-    Schouders: 'var(--series-3)',
-    Benen: 'var(--series-4)',
+    'Pectoralis major': 'var(--series-1)',
+    Deltoideus: 'var(--series-1)',
+    'Triceps brachii': 'var(--series-1)',
+    'Latissimus dorsi': 'var(--series-2)',
+    Trapezius: 'var(--series-2)',
+    'Biceps brachii': 'var(--series-2)',
+    'Erector spinae': 'var(--series-2)',
+    Quadriceps: 'var(--series-4)',
+    Hamstrings: 'var(--series-4)',
+    'Gluteus maximus': 'var(--series-4)',
+    'Triceps surae': 'var(--series-4)',
+    'Rectus abdominis': 'var(--series-3)',
   };
   const groupColor = (group) => GROUP_COLOURS[group] || 'var(--baseline)';
   const groupColour = (name, kind) => groupColor(groupOf(name, kind));
