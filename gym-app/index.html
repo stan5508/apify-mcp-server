@@ -334,6 +334,42 @@
   @media (prefers-reduced-motion: reduce) { .session-bar .fill { transition: none; } }
   .set-row .n { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
   .set-row .n b { color: var(--accent-strong); font-weight: 700; }
+  .mg-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  .spark { display: block; flex: none; }
+  .spark-empty { display: inline-block; width: 76px; height: 24px; }
+  .trend {
+    font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px;
+    white-space: nowrap; font-variant-numeric: tabular-nums;
+  }
+  .trend.up { background: var(--good-wash); color: var(--good); }
+  .trend.down { background: rgba(200, 16, 46, 0.14); color: var(--danger); }
+  .trend.flat { background: var(--raised); color: var(--muted); }
+  .ring { flex: none; }
+
+  /* one scrolling row of tabs instead of two wrapped rows */
+  /* position:relative makes the strip the offset parent, so centring the active tab can be measured */
+  .chips.tabstrip { position: relative; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+  .chips.tabstrip::-webkit-scrollbar { display: none; }
+  .chips.tabstrip .chip { flex: none; }
+
+  /* client header: who you are looking at, before the tabs */
+  .client-hero { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
+  .client-hero .avatar { width: 60px; height: 60px; font-size: 21px; }
+  .client-hero h2 { margin: 0; font-size: 22px; font-weight: 650; }
+  .client-hero .sub { margin-top: 2px; }
+
+  /* day overview on Vandaag */
+  .day-head { display: flex; align-items: center; gap: 14px; padding: 12px 14px; }
+  .day-head .next-name { font-weight: 650; font-size: 17px; }
+  .addbox { margin-top: 20px; }
+  .addbox > summary {
+    cursor: pointer; list-style: none; padding: 11px 14px;
+    border: 1px solid var(--border); border-radius: 10px;
+    background: var(--surface); color: var(--accent-strong); font-weight: 600;
+  }
+  .addbox > summary::-webkit-details-marker { display: none; }
+  .addbox[open] > summary { margin-bottom: 4px; }
+
   .ex-menu { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; padding: 9px; border: 1px solid var(--grid); border-radius: 8px; }
   .set-more { display: grid; grid-template-columns: auto 1fr; gap: 8px 10px; align-items: center; margin: -2px 0 10px 30px; padding: 10px; border: 1px solid var(--grid); border-radius: 8px; }
   .set-more .lbl { font-size: 12px; color: var(--muted); }
@@ -498,7 +534,7 @@
 <script>
 (() => {
   'use strict';
-  const APP_VERSION = 46; // bump when publishing; shown on the home screen
+  const APP_VERSION = 47; // bump when publishing; shown on the home screen
   const KEY = 'coachlog-v1';
   const $app = document.getElementById('app');
 
@@ -1795,7 +1831,16 @@
   const inPeriod = (iso, period) => { const s = periodStart(period); return !s || iso >= s; };
 
   const MUSCLE_GROUPS = ['Borst', 'Rug', 'Benen', 'Schouders', 'Armen', 'Core', 'Cardio', 'Overig'];
-  const groupColor = (group) => `var(--series-${(Math.max(0, MUSCLE_GROUPS.indexOf(group)) % 4) + 1})`;
+  // fixed colour per muscle group, straight off the weight plates: red 25, blue 20, yellow 15, green 10.
+  // groups without a plate colour stay neutral rather than inventing a fifth hue.
+  const GROUP_COLOURS = {
+    Borst: 'var(--series-1)',
+    Rug: 'var(--series-2)',
+    Schouders: 'var(--series-3)',
+    Benen: 'var(--series-4)',
+  };
+  const groupColor = (group) => GROUP_COLOURS[group] || 'var(--baseline)';
+  const groupColour = (name, kind) => groupColor(groupOf(name, kind));
   const groupKey = (name) => name.trim().toLowerCase();
   const groupOf = (name, kind) => {
     const rec = exerciseByName(name);
@@ -2222,6 +2267,40 @@
     else box.innerHTML = '<p class="mut">Nog geen eerdere sessies voor deze oefening.</p>';
   }
 
+  // tiny inline trend line for a list row: no axes, just the shape and where it ends
+  function sparklineHtml(values, colour) {
+    if (values.length < 2) return '<span class="spark-empty"></span>';
+    const w = 76, h = 24, pad = 3;
+    const lo = Math.min(...values), hi = Math.max(...values);
+    const x = (i) => pad + (i / (values.length - 1)) * (w - pad * 2);
+    const y = (v) => h - pad - ((v - lo) / (hi - lo || 1)) * (h - pad * 2);
+    const d = values.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+    const last = values.length - 1;
+    return `<svg class="spark" viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" aria-hidden="true">
+      <path d="${d}" fill="none" stroke="${colour}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="${x(last).toFixed(1)}" cy="${y(values[last]).toFixed(1)}" r="2.6" fill="${colour}"/>
+    </svg>`;
+  }
+
+  // up/down chip next to a trend line
+  function trendChipHtml(delta, fmt) {
+    if (!delta) return '<span class="trend flat">gelijk</span>';
+    const up = delta > 0;
+    return `<span class="trend ${up ? 'up' : 'down'}">${up ? '+' : '−'}${esc(fmt(Math.abs(delta)))} ${up ? '↑' : '↓'}</span>`;
+  }
+
+  // progress ring used for the day overview and the streak avatars
+  function ringHtml(done, total, label) {
+    const r = 20, c = 2 * Math.PI * r;
+    const pct = total ? Math.min(1, done / total) : 0;
+    return `<svg class="ring" viewBox="0 0 48 48" width="48" height="48" role="img" aria-label="${esc(label)}">
+      <circle cx="24" cy="24" r="${r}" fill="none" stroke="var(--grid)" stroke-width="5"/>
+      <circle cx="24" cy="24" r="${r}" fill="none" stroke="var(--accent)" stroke-width="5" stroke-linecap="round"
+        stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${(c * (1 - pct)).toFixed(1)}" transform="rotate(-90 24 24)"/>
+      <text x="24" y="28" text-anchor="middle" font-size="13" font-weight="650" fill="var(--ink)">${done}/${total}</text>
+    </svg>`;
+  }
+
   // ---------- end-of-session summary ----------
   // little burst of confetti in the plate colours; purely decorative, skipped when motion is reduced
   function confettiBurst(host) {
@@ -2560,7 +2639,6 @@
   // --- vandaag: what the day looks like ---
   function viewToday() {
     const clients = sortedClients().filter((c) => !c.archived);
-    const archivedCount = db.clients.length - clients.length;
     const lowCredit = clients.map((c) => ({ c, l: creditLedger(c.id) })).filter((x) => x.l && x.l.low);
     const today = appointmentsOn(todayIso());
     const tomorrow = appointmentsOn(addDays(todayIso(), 1));
@@ -2573,12 +2651,23 @@
     const apptLine = (a) => `<div class="row" style="margin-bottom:4px"><div class="grow sub">${a.time ? esc(a.time) + ' · ' : ''}${esc(apptTitle(a))}</div>
       <span class="badge${a.status === 'geweest' ? ' pr' : ''}">${APPT_STATUS[a.status]}</span>${
       a.status === 'gepland' ? `<button class="small" data-nav="${apptHash(a)}">Start ›</button>` : ''}</div>`;
+    // how the day stands: what is done, and who is next
+    const dayDone = today.filter((a) => a.status === 'geweest' || a.status === 'no-show').length;
+    const nextAppt = today.find((a) => a.status === 'gepland');
+    const nextName = nextAppt ? apptTitle(nextAppt) : null;
+    const nextCredit = nextAppt && nextAppt.clientId ? creditLedger(nextAppt.clientId) : null;
     $app.innerHTML = topbar('Vandaag') +
-      `<div class="stat-grid">
-        <div class="stat"><div class="lbl">Klanten</div><div class="val">${clients.length}</div>${archivedCount ? `<div class="mut">${archivedCount} gearchiveerd</div>` : ''}</div>
-        <div class="stat"><div class="lbl">Duo's</div><div class="val">${sortedDuos().length}</div></div>
-        <div class="stat"><div class="lbl">Trainingen</div><div class="val">${db.workouts.length}</div></div>
-      </div>` +
+      (today.length ? `<div class="card day-head">
+        ${ringHtml(dayDone, today.length, `${dayDone} van ${today.length} sessies gedaan`)}
+        <div class="grow">
+          ${nextAppt
+            ? `<div class="sub">${nextAppt.time ? 'Om ' + esc(nextAppt.time) : 'Nog te gaan'}</div>
+               <div class="next-name">${esc(nextName)}</div>
+               <div class="sub">${nextCredit ? `nog ${nextCredit.remaining} sessie${nextCredit.remaining === 1 ? '' : 's'} tegoed` : 'volgende sessie'}</div>`
+            : `<div class="next-name">Dag rond</div><div class="sub">Alle ${today.length} sessies afgewerkt.</div>`}
+        </div>
+        ${nextAppt ? `<button class="primary" data-nav="${apptHash(nextAppt)}">Start</button>` : ''}
+      </div>` : '') +
       `<div class="eyebrow">Agenda</div>
       <div class="card tappable" data-nav="/agenda" role="link" tabindex="0">
         ${today.length ? `<div class="title" style="margin-bottom:6px">Vandaag (${today.length})</div>${today.map(apptLine).join('')}`
@@ -2600,7 +2689,9 @@
             <span class="delta down">nog ${l.remaining}</span></div>`).join('')}
         </div>` : '') +
       (clients.length ? '' : `<div class="empty"><p>Nog geen klanten. Voeg je eerste klant toe, of bekijk de app met voorbeelddata.</p><button class="primary" id="demo-btn">Voorbeelddata laden</button></div>`) +
-      `<div class="eyebrow">Nieuwe klant</div>
+      `<details class="addbox"${clients.length ? '' : ' open'}>
+        <summary>+ Klant of duo toevoegen</summary>
+      <div class="eyebrow">Nieuwe klant</div>
       <form class="card" id="add-client">
         <label class="field"><span>Naam nieuwe klant</span><input name="name" required placeholder="bijv. Sanne de Vries"></label>
         <label class="field"><span>Doel (optioneel)</span><input name="goal" placeholder="bijv. kracht opbouwen, 5 kg afvallen"></label>
@@ -2613,7 +2704,8 @@
         <label class="field"><span>Naam duo (optioneel)</span><input name="name" placeholder="bijv. Sanne & Piet"></label>
         <button class="primary wide" type="submit">Duo toevoegen</button>
       </form>` : `<p class="mut">Voeg minstens twee klanten toe om een duo te maken.</p>`) +
-      `<hr class="divider">
+      `</details>
+      <hr class="divider">
       <div class="actions"><button data-nav="/instellingen">Instellingen ›</button></div>
       <p class="mut" style="margin-top:16px">Coachlog versie ${APP_VERSION}</p>`;
 
@@ -3016,18 +3108,35 @@
       const lastSession = sessions[sessions.length - 1];
       const pr = Math.max(...sessions.map((s) => s.top));
       const k = lastSession.kind || 'kracht';
-      const prTxt = k === 'cardio' ? `${fmtNum(pr)} km` : k === 'lichaamsgewicht' && pr === 0 ? `${Math.max(...sessions.map((s) => s.bestReps))} herh.` : fmtKg(pr);
+      const repsOnly = k === 'lichaamsgewicht' && pr === 0;
+      const valueOf = (x) => repsOnly ? x.bestReps : x.top;
+      const fmtV = (v) => k === 'cardio' ? `${fmtNum(v)} km` : repsOnly ? `${Math.round(v)} herh.` : fmtKg(v);
+      const series = sessions.map(valueOf).filter((v) => Number.isFinite(v) && v > 0);
+      const delta = series.length > 1 ? series[series.length - 1] - series[0] : 0;
       return `<div class="card tappable" data-nav="/klant/${id}/oefening/${encodeURIComponent(name)}" role="link" tabindex="0">
-        <div class="row"><div class="grow">
-          <div class="title">${esc(name)}${k !== 'kracht' ? ` <span class="badge">${KIND_LABELS[k]}</span>` : ''}</div>
-          <div class="sub">PR ${esc(prTxt)} · laatst gedaan ${esc(fmtDate(lastSession.date))}</div>
-        </div><span class="mut">›</span></div>
+        <div class="row" style="margin-bottom:6px">
+          <span class="mg-dot" style="background:${groupColour(name, k)}"></span>
+          <div class="grow title" style="margin:0">${esc(name)}${k !== 'kracht' ? ` <span class="badge">${KIND_LABELS[k]}</span>` : ''}</div>
+          ${series.length > 1 ? trendChipHtml(delta, fmtV) : ''}
+        </div>
+        <div class="row">
+          ${sparklineHtml(series.slice(-12), 'var(--data)')}
+          <div class="grow sub">PR ${esc(fmtV(pr))} · ${sessions.length} sessie${sessions.length === 1 ? '' : 's'} · ${esc(fmtDate(lastSession.date))}</div>
+          <span class="mut">›</span>
+        </div>
       </div>`;
     }).join('');
 
+    const since = workouts.length ? workouts[0].date : null;
     $app.innerHTML = topbar(c.name, '/') +
+      `<div class="client-hero">
+        ${avatarHtml(c)}
+        <div class="grow">
+          <h2>${esc(c.name)}</h2>
+          <div class="sub">${workouts.length} training${workouts.length === 1 ? '' : 'en'}${since ? ` · sinds ${esc(fmtDate(since))}` : ''}${c.goal ? ` · ${esc(c.goal)}` : ''}</div>
+        </div>
+      </div>` +
       clientTabs(id, '') +
-      (c.goal ? `<p class="sub" style="margin:0 0 12px">Doel: ${esc(c.goal)}</p>` : '') +
       ((c.injuries || c.medical) ? `<div class="note-box"><strong>Let op:</strong> ${esc([c.injuries, c.medical].filter(Boolean).join(' · '))}</div>` : '') +
       draftResumeHtml(`/klant/${id}/`) +
       statHtml +
@@ -3109,9 +3218,20 @@
       ['voeding', 'Voeding'],
       ['rapport', 'Rapport'],
     ];
-    return `<div class="chips no-print" style="margin-bottom:14px">${tabs.map(([slug, label]) =>
+    // runs after this markup lands in the DOM, so every tabbed page keeps its active tab visible
+    requestAnimationFrame(scrollActiveTabIntoView);
+    return `<div class="chips tabstrip no-print" style="margin-bottom:14px">${tabs.map(([slug, label]) =>
       `<button class="chip" data-nav="/klant/${id}${slug ? '/' + slug : ''}" aria-pressed="${active === slug}">${label}</button>`
     ).join('')}</div>`;
+  }
+
+  // the active tab can sit off-screen in the scrolling strip; nudge it into view
+  function scrollActiveTabIntoView() {
+    const strip = document.querySelector('.chips.tabstrip');
+    const active = strip && strip.querySelector('[aria-pressed="true"]');
+    if (!active) return;
+    const left = active.offsetLeft - (strip.clientWidth - active.clientWidth) / 2;
+    strip.scrollTo({ left: Math.max(0, left), behavior: motionOk() ? 'smooth' : 'auto' });
   }
 
   // period filter row
