@@ -14,7 +14,7 @@ Dit is geen onderdeel van de MCP-server in deze repo; het is een losstaande app 
 
 ## Werkwijze — houd je hieraan
 
-1. **Elke wijziging**: `APP_VERSION` in `index.html` én `CACHE` in `sw.js` ophogen (nu **49**).
+1. **Elke wijziging**: `APP_VERSION` in `index.html` én `CACHE` in `sw.js` ophogen (nu **50**).
    Zonder die twee ziet hij de wijziging niet op zijn tablet.
 2. **Testen** met Playwright (`playwright-core`, `executablePath: '/opt/pw-browsers/chromium'`)
    tegen `python3 -m http.server` in `gym-app/`. Schrijf per functie een klein `.mjs`-scriptje

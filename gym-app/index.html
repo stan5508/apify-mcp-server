@@ -383,6 +383,7 @@
 
   /* day overview on Vandaag */
   .day-head { display: flex; align-items: center; gap: 14px; padding: 12px 14px; }
+  .day-head > .grow { flex: 1; min-width: 0; }
   .day-head .next-name { font-weight: 650; font-size: 17px; }
   .addbox { margin-top: 20px; }
   .addbox > summary {
@@ -556,7 +557,7 @@
 <script>
 (() => {
   'use strict';
-  const APP_VERSION = 49; // bump when publishing; shown on the home screen
+  const APP_VERSION = 50; // bump when publishing; shown on the home screen
   const KEY = 'coachlog-v1';
   const $app = document.getElementById('app');
 
