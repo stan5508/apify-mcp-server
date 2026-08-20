@@ -272,6 +272,22 @@
 
   .chart-wrap { position: relative; }
   .chart-wrap svg { display: block; width: 100%; height: auto; }
+  /* charts draw themselves in: line wipes on, bars rise, dots pop */
+  @keyframes bar-rise { from { transform: scaleY(0); } to { transform: scaleY(1); } }
+  @keyframes dot-pop { from { opacity: 0; transform: scale(0); } 70% { transform: scale(1.35); } to { opacity: 1; transform: scale(1); } }
+  @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+  .chart-wrap .bar {
+    transform-box: fill-box; transform-origin: bottom;
+    animation: bar-rise 0.55s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  }
+  .chart-wrap .dot {
+    transform-box: fill-box; transform-origin: center;
+    animation: dot-pop 0.4s cubic-bezier(0.22, 1, 0.36, 1) backwards;
+  }
+  .chart-wrap .wash, .chart-wrap .end-label { animation: fade-in 0.5s ease-out backwards; }
+  @media (prefers-reduced-motion: reduce) {
+    .chart-wrap .bar, .chart-wrap .dot, .chart-wrap .wash, .chart-wrap .end-label { animation: none; }
+  }
   .tooltip {
     position: absolute; pointer-events: none; display: none;
     background: var(--ink); color: var(--page);
@@ -440,7 +456,7 @@
 <script>
 (() => {
   'use strict';
-  const APP_VERSION = 44; // bump when publishing; shown on the home screen
+  const APP_VERSION = 45; // bump when publishing; shown on the home screen
   const KEY = 'coachlog-v1';
   const $app = document.getElementById('app');
 
@@ -1985,6 +2001,20 @@
   }
 
   // ---------- chart ----------
+  const motionOk = () => !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // wipe a line path on from left to right
+  function animateLine(path, seconds, delay) {
+    if (!path || !motionOk()) return;
+    const len = path.getTotalLength();
+    path.style.strokeDasharray = `${len}`;
+    path.style.strokeDashoffset = `${len}`;
+    path.getBoundingClientRect(); // force a reflow so the transition runs
+    path.style.transition = `stroke-dashoffset ${seconds}s cubic-bezier(0.4, 0, 0.2, 1) ${delay}s`;
+    path.style.strokeDashoffset = '0';
+  }
+  // spread point animations across the line wipe so dots land as the line reaches them
+  const dotDelay = (i, n) => (0.12 + (n > 1 ? (i / (n - 1)) * 0.7 : 0)).toFixed(3);
+
   function niceTicks(min, max, count) {
     if (min === max) { min = Math.max(0, min - 1); max = max + 1; }
     const span = max - min;
@@ -2028,24 +2058,26 @@
     ).join('');
 
     const dots = points.map((p, i) =>
-      `<circle cx="${x(i)}" cy="${y(p.value)}" r="4" fill="var(--data)" stroke="var(--surface)" stroke-width="2"/>`
+      `<circle class="dot" style="animation-delay:${dotDelay(i, points.length)}s" cx="${x(i)}" cy="${y(p.value)}" r="4" fill="var(--data)" stroke="var(--surface)" stroke-width="2"/>`
     ).join('');
 
     const last = points[points.length - 1];
-    const endLabel = `<text x="${x(points.length - 1) - 8}" y="${y(last.value) - 10}" text-anchor="end" font-size="12" font-weight="650" fill="var(--ink)" style="font-variant-numeric:tabular-nums">${esc(fmtVal(last.value))}</text>`;
+    const endLabel = `<text class="end-label" x="${x(points.length - 1) - 8}" y="${y(last.value) - 10}" text-anchor="end" font-size="12" font-weight="650" fill="var(--ink)" style="font-variant-numeric:tabular-nums;animation-delay:0.75s">${esc(fmtVal(last.value))}</text>`;
 
     container.innerHTML =
       `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Progressiegrafiek">` +
       grid +
       `<line x1="${padL}" y1="${padT + ih}" x2="${W - padR}" y2="${padT + ih}" stroke="var(--baseline)" stroke-width="1"/>` +
-      (areaD ? `<path d="${areaD}" fill="var(--data-wash)"/>` : '') +
-      (points.length > 1 ? `<path d="${lineD}" fill="none" stroke="var(--data)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>` : '') +
+      (areaD ? `<path class="wash" style="animation-delay:0.25s" d="${areaD}" fill="var(--data-wash)"/>` : '') +
+      (points.length > 1 ? `<path class="line" d="${lineD}" fill="none" stroke="var(--data)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>` : '') +
       `<line class="xh" x1="0" y1="${padT}" x2="0" y2="${padT + ih}" stroke="var(--baseline)" stroke-width="1" visibility="hidden"/>` +
       dots + endLabel + xLabels +
       `</svg><div class="tooltip"></div>`;
 
-    // hover: nearest point -> crosshair + tooltip
     const svg = container.querySelector('svg');
+    animateLine(svg.querySelector('.line'), 0.85, 0);
+
+    // hover: nearest point -> crosshair + tooltip
     const tip = container.querySelector('.tooltip');
     const xh = svg.querySelector('.xh');
     const onMove = (ev) => {
@@ -2125,8 +2157,8 @@
       const col = `var(--series-${(si % 4) + 1})`;
       const pts = [...s.points].sort((a, b) => a.date.localeCompare(b.date));
       const d = pts.map((p, i) => `${i ? 'L' : 'M'}${x(p.date).toFixed(1)},${y(p.value).toFixed(1)}`).join(' ');
-      const dots = pts.map((p) => `<circle cx="${x(p.date)}" cy="${y(p.value)}" r="4" fill="${col}" stroke="var(--surface)" stroke-width="2"/>`).join('');
-      return (pts.length > 1 ? `<path d="${d}" fill="none" stroke="${col}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>` : '') + dots;
+      const dots = pts.map((p, i) => `<circle class="dot" style="animation-delay:${dotDelay(i, pts.length)}s" cx="${x(p.date)}" cy="${y(p.value)}" r="4" fill="${col}" stroke="var(--surface)" stroke-width="2"/>`).join('');
+      return (pts.length > 1 ? `<path class="line" d="${d}" fill="none" stroke="${col}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>` : '') + dots;
     }).join('');
 
     const xLabels = `<text x="${padL}" y="${H - 8}" text-anchor="start" font-size="11" fill="var(--muted)">${esc(fmtDate(dates[0]))}</text>` +
@@ -2141,6 +2173,9 @@
       `<div class="legend">${series.map((s, si) =>
         `<span><i style="background:var(--series-${(si % 4) + 1})"></i>${esc(s.label)}</span>`).join('')}</div>` +
       (unit ? `<p class="mut" style="margin:6px 0 0">Waarden in ${esc(unit)}.</p>` : '');
+
+    // stagger the series so the lines draw one after another
+    container.querySelectorAll('.line').forEach((path, si) => animateLine(path, 0.7, si * 0.12));
   }
 
   function renderBarChart(container, points) {
@@ -2163,7 +2198,7 @@
     const bars = points.map((p, i) => {
       const x0 = bx(i), yv = y(p.value), h = padT + ih - yv;
       const r = Math.min(4, bw / 2, h);
-      return `<path d="M${x0.toFixed(1)},${padT + ih} L${x0.toFixed(1)},${(yv + r).toFixed(1)} Q${x0.toFixed(1)},${yv.toFixed(1)} ${(x0 + r).toFixed(1)},${yv.toFixed(1)} L${(x0 + bw - r).toFixed(1)},${yv.toFixed(1)} Q${(x0 + bw).toFixed(1)},${yv.toFixed(1)} ${(x0 + bw).toFixed(1)},${(yv + r).toFixed(1)} L${(x0 + bw).toFixed(1)},${padT + ih} Z" fill="var(--data)"/>`;
+      return `<path class="bar" style="animation-delay:${dotDelay(i, points.length)}s" d="M${x0.toFixed(1)},${padT + ih} L${x0.toFixed(1)},${(yv + r).toFixed(1)} Q${x0.toFixed(1)},${yv.toFixed(1)} ${(x0 + r).toFixed(1)},${yv.toFixed(1)} L${(x0 + bw - r).toFixed(1)},${yv.toFixed(1)} Q${(x0 + bw).toFixed(1)},${yv.toFixed(1)} ${(x0 + bw).toFixed(1)},${(yv + r).toFixed(1)} L${(x0 + bw).toFixed(1)},${padT + ih} Z" fill="var(--data)"/>`;
     }).join('');
 
     const xLabels =
@@ -2171,7 +2206,7 @@
       (points.length > 1 ? `<text x="${bx(points.length - 1) + bw}" y="${H - 8}" text-anchor="end" font-size="11" fill="var(--muted)">${esc(fmtDate(points[points.length - 1].date))}</text>` : '');
 
     container.innerHTML =
-      `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Volume per training">` +
+      `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Staafgrafiek per training">` +
       grid + bars +
       `<line x1="${padL}" y1="${padT + ih}" x2="${W - padR}" y2="${padT + ih}" stroke="var(--baseline)" stroke-width="1"/>` +
       xLabels +
@@ -4819,7 +4854,7 @@
     if (!c) { location.hash = '/'; return; }
     const exercises = loggedExercises(clientId);
     const picks = uiState.comparePicks.filter((n) => exercises.includes(n));
-    const metricLabels = { top: 'Zwaarste set', volume: 'Volume', e1rm: 'Geschat 1RM' };
+    const metricLabels = { top: 'Zwaarste set', e1rm: 'Geschat 1RM' };
     if (!metricLabels[uiState.compareMetric]) uiState.compareMetric = 'top';
 
     const series = picks.map((name) => ({
@@ -5028,8 +5063,6 @@
         metrics: { top: 'Zwaarste set', e1rm: 'Geschat 1RM' },
         fmt: fmtKg, unit: 'kg',
         lineTitle: 'Gewicht per training',
-        barKey: 'volume', barTitle: 'Volume per training',
-        barNote: 'Volume = som van gewicht × herhalingen per training.',
         prLabel: 'PR · zwaarste set', pr2Label: 'PR · geschat 1RM', pr2: (ss) => fmtKg(Math.max(...ss.map((x) => x.e1rm))), pr2Note: 'Epley-formule',
       },
       lichaamsgewicht: {
@@ -5105,11 +5138,11 @@
         <p class="mut" style="margin:6px 0 0">${uiState.metric === 'e1rm' ? 'Geschat 1RM via de Epley-formule op basis van de beste set.' : cfg.metrics[uiState.metric] + ' per training.'} Warming-upsets tellen niet mee.</p>
       </div>` +
 
-      `<div class="eyebrow">${cfg.barTitle}</div>
+      (cfg.barKey ? `<div class="eyebrow">${cfg.barTitle}</div>
       <div class="card">
         <div class="chart-wrap" id="bar-chart"></div>
         <p class="mut" style="margin:6px 0 0">${cfg.barNote}</p>
-      </div>` +
+      </div>` : '') +
 
       `<div class="eyebrow">Alle sessies</div>` +
       [...sessions].reverse().map((s) => `<div class="card">
@@ -5133,8 +5166,9 @@
     const lineBox = document.getElementById('line-chart');
     if (linePts.length) renderChart(lineBox, linePts, lineUnit);
     else lineBox.innerHTML = '<p class="mut">Nog geen waarden voor deze meetwaarde.</p>';
-    const barPts = sessions.map((s) => ({ date: s.date, value: s[cfg.barKey] || 0 }));
-    renderBarChart(document.getElementById('bar-chart'), barPts);
+    if (cfg.barKey) {
+      renderBarChart(document.getElementById('bar-chart'), sessions.map((s) => ({ date: s.date, value: s[cfg.barKey] || 0 })));
+    }
     document.querySelectorAll('[data-metric]').forEach((b) => b.addEventListener('click', () => {
       uiState.metric = b.dataset.metric; render();
     }));
