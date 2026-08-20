@@ -30,6 +30,8 @@
     --on-accent: #17130a;
     --wash: rgba(227, 148, 24, 0.16);
     --good: #0f7b4f;
+    --good-wash: rgba(15, 123, 79, 0.12);
+    --good-line: rgba(15, 123, 79, 0.5);
     --danger: #c0392b;
     --shadow: 0 1px 2px rgba(22, 24, 26, 0.07);
     --data: #c8102e;
@@ -55,6 +57,8 @@
       --on-accent: #0b0d0f;
       --wash: rgba(242, 169, 59, 0.14);
       --good: #3f9e6c;
+      --good-wash: rgba(63, 158, 108, 0.17);
+      --good-line: rgba(63, 158, 108, 0.55);
       --danger: #e5645c;
       --shadow: none;
       --data: #e8384f;
@@ -80,6 +84,8 @@
     --on-accent: #17130a;
     --wash: rgba(227, 148, 24, 0.16);
     --good: #0f7b4f;
+    --good-wash: rgba(15, 123, 79, 0.12);
+    --good-line: rgba(15, 123, 79, 0.5);
     --danger: #c0392b;
     --shadow: 0 1px 2px rgba(22, 24, 26, 0.07);
     --data: #c8102e;
@@ -104,6 +110,8 @@
     --on-accent: #0b0d0f;
     --wash: rgba(242, 169, 59, 0.14);
     --good: #3f9e6c;
+    --good-wash: rgba(63, 158, 108, 0.17);
+    --good-line: rgba(63, 158, 108, 0.55);
     --danger: #e5645c;
     --shadow: none;
     --data: #e8384f;
@@ -298,10 +306,35 @@
   }
   .tooltip .tv { font-weight: 650; font-variant-numeric: tabular-nums; }
 
-  .set-row { display: grid; grid-template-columns: 30px 1fr 1fr 58px 34px; gap: 8px; align-items: center; margin-bottom: 8px; }
-  .set-row.cardio { grid-template-columns: 30px 1fr 1fr 34px; }
+  .set-row { display: grid; grid-template-columns: 26px 1fr 1fr 48px 44px 30px; gap: 7px; align-items: center; margin-bottom: 8px; }
+  .set-row.cardio { grid-template-columns: 26px 1fr 1fr 44px 30px; }
+  /* ticking a set off: the row turns green and the rest timer starts */
+  .set-tick {
+    height: 40px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--raised); color: var(--muted);
+    font-size: 16px; line-height: 1; display: grid; place-items: center; cursor: pointer;
+    transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease, transform 0.12s ease;
+  }
+  .set-tick[aria-pressed="true"] { background: var(--good); border-color: var(--good); color: #fff; }
+  .set-tick:active { transform: scale(0.92); }
+  .set-row.done input { border-color: var(--good-line); background: var(--good-wash); }
+  @media (prefers-reduced-motion: reduce) { .set-tick { transition: none; } }
+
+  /* sticky session bar: elapsed time and how far you are */
+  .session-bar {
+    position: sticky; top: 0; z-index: 6;
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 0 10px; margin-bottom: 10px;
+    background: var(--page); border-bottom: 1px solid var(--grid);
+  }
+  .session-bar .clock { font-variant-numeric: tabular-nums; font-weight: 650; font-size: 15px; }
+  .session-bar .count { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .session-bar .track { flex: 1; height: 7px; border-radius: 99px; background: var(--grid); overflow: hidden; }
+  .session-bar .fill { display: block; height: 100%; border-radius: 99px; background: var(--accent); width: 0; transition: width 0.35s cubic-bezier(0.22, 1, 0.36, 1); }
+  @media (prefers-reduced-motion: reduce) { .session-bar .fill { transition: none; } }
   .set-row .n { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
   .set-row .n b { color: var(--accent-strong); font-weight: 700; }
+  .ex-menu { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; padding: 9px; border: 1px solid var(--grid); border-radius: 8px; }
   .set-more { display: grid; grid-template-columns: auto 1fr; gap: 8px 10px; align-items: center; margin: -2px 0 10px 30px; padding: 10px; border: 1px solid var(--grid); border-radius: 8px; }
   .set-more .lbl { font-size: 12px; color: var(--muted); }
   .pillbar { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -337,6 +370,15 @@
   .info-panel { border: 1px solid var(--grid); border-radius: 8px; padding: 10px; margin-bottom: 10px; }
   .chart-overlay { position: fixed; inset: 0; z-index: 45; background: var(--page); overflow-y: auto; padding: 0 16px 32px; }
   .chart-overlay .inner { max-width: 640px; margin: 0 auto; }
+  .summary-overlay { display: grid; align-items: start; padding-top: 26px; }
+  .summary-overlay .confetti { position: fixed; inset: 0; pointer-events: none; z-index: 2; }
+  .summary-overlay .inner { position: relative; z-index: 1; }
+  .summary-head { margin-bottom: 16px; }
+  .summary-head h2 { font-size: 24px; font-weight: 650; }
+  .pr-banner { border: 1px solid var(--accent); background: var(--wash); border-radius: 10px; padding: 13px 14px; margin: 14px 0; }
+  .pr-title { font-weight: 650; margin-bottom: 8px; }
+  .pr-line { display: flex; align-items: baseline; gap: 10px; padding: 3px 0; font-variant-numeric: tabular-nums; }
+  .pr-line .pr-val { font-weight: 650; color: var(--accent-strong); }
 
   .legend { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px; }
   .legend span { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink-2); }
@@ -456,7 +498,7 @@
 <script>
 (() => {
   'use strict';
-  const APP_VERSION = 45; // bump when publishing; shown on the home screen
+  const APP_VERSION = 46; // bump when publishing; shown on the home screen
   const KEY = 'coachlog-v1';
   const $app = document.getElementById('app');
 
@@ -1116,31 +1158,72 @@
     return sessions.length ? Math.max(...sessions.map((s) => s.top)) : null;
   }
 
+  // one line summarising what was logged for this exercise last time
+  function prevSummary(prev, kind) {
+    if (!prev) return 'eerste keer';
+    const sets = prev.entry.sets.filter((x) => filledSet(x, kind)).slice(0, 4);
+    const txt = sets.map((x) => kind === 'cardio'
+      ? `${fmtNum(x.distance || 0)}km/${fmtNum(x.minutes || 0)}min`
+      : `${fmtNum(x.weight || 0)}×${x.reps || 0}`).join(' · ');
+    return `vorige sessie ${fmtDate(prev.date)}${txt ? ' — ' + txt : ''}`;
+  }
+
+  // sticky bar at the top of a session: elapsed time and how many sets are ticked off
+  function sessionBarHtml() {
+    return `<div class="session-bar">
+      <span class="clock" id="sess-clock">0:00</span>
+      <span class="track"><span class="fill" id="sess-fill"></span></span>
+      <span class="count" id="sess-count">0 / 0 sets</span>
+    </div>`;
+  }
+  function paintSessionBar(startedAt, sets) {
+    const clock = document.getElementById('sess-clock');
+    if (!clock) return;
+    const done = sets.filter((x) => x.done).length;
+    clock.textContent = mmss((Date.now() - startedAt) / 1000);
+    document.getElementById('sess-count').textContent = `${done} / ${sets.length} sets`;
+    document.getElementById('sess-fill').style.width = sets.length ? `${Math.round((done / sets.length) * 100)}%` : '0%';
+  }
+  // keeps the clock running without repainting the whole form
+  function runSessionClock(startedAt, getSets) {
+    clearInterval(runSessionClock.id);
+    runSessionClock.id = setInterval(() => {
+      if (!document.getElementById('sess-clock')) { clearInterval(runSessionClock.id); return; }
+      paintSessionBar(startedAt, getSets());
+    }, 1000);
+    paintSessionBar(startedAt, getSets());
+  }
+
   // set input rows for workout logging: kind-specific fields, per-set options, previous-session hints
   function setRowsHtml(attr, idx, sets, prevSets, kind, openMore) {
     const isCardio = kind === 'cardio';
     const weightHead = kind === 'lichaamsgewicht' ? `Extra (${unitLbl()})` : `Gewicht (${unitLbl()})`;
     const header = isCardio
-      ? `<div class="set-row cardio"><span></span><span class="col-head">Afstand (km)</span><span class="col-head">Tijd (min)</span><span></span></div>`
-      : `<div class="set-row"><span></span><span class="col-head">${weightHead}</span><span class="col-head">Herh.</span><span class="col-head">RIR</span><span></span></div>`;
+      ? `<div class="set-row cardio"><span></span><span class="col-head">Afstand (km)</span><span class="col-head">Tijd (min)</span><span></span><span></span></div>`
+      : `<div class="set-row"><span></span><span class="col-head">${weightHead}</span><span class="col-head">Herh.</span><span class="col-head">RIR</span><span></span><span></span></div>`;
 
     return header + sets.map((s, si) => {
       const key = `${idx}.${si}`;
       const p = prevSets && prevSets[si];
       const marks = [SET_TYPES[setType(s)], setSide(s) !== 'beide' ? setSide(s) : ''].filter(Boolean).join('');
       const nCell = `<span class="n">${si + 1}${marks ? ` <b>${esc(marks)}</b>` : ''}</span>`;
+      // last time's numbers sit in the field as a ghost, so an empty row still tells you what to beat
+      const ghost = (f, fallback) => (p && p[f] ? esc(fmtNum(p[f])) : fallback);
+      const tickCell = `<button type="button" class="set-tick" data-tick-${attr}="${key}" aria-pressed="${!!s.done}" aria-label="Set ${si + 1} afvinken">${s.done ? '✓' : ''}</button>`;
       const row = isCardio
-        ? `<div class="set-row cardio">
+        ? `<div class="set-row cardio${s.done ? ' done' : ''}">
             ${nCell}
-            <input data-${attr}="${key}" data-f="distance" type="text" inputmode="decimal" value="${s.distance || ''}" placeholder="km">
-            <input data-${attr}="${key}" data-f="minutes" type="text" inputmode="decimal" value="${s.minutes || ''}" placeholder="min">
+            <input data-${attr}="${key}" data-f="distance" type="text" inputmode="decimal" value="${s.distance || ''}" placeholder="${ghost('distance', 'km')}">
+            <input data-${attr}="${key}" data-f="minutes" type="text" inputmode="decimal" value="${s.minutes || ''}" placeholder="${ghost('minutes', 'min')}">
+            ${tickCell}
             <button type="button" class="small ghost" data-more-${attr}="${key}" aria-label="Meer opties">⋯</button>
           </div>`
-        : `<div class="set-row">
+        : `<div class="set-row${s.done ? ' done' : ''}">
             ${nCell}
-            <input data-${attr}="${key}" data-f="weight" type="text" inputmode="decimal" value="${s.weight || ''}" placeholder="${kind === 'lichaamsgewicht' ? '+' + unitLbl() : unitLbl()}">
-            <input data-${attr}="${key}" data-f="reps" type="number" min="0" inputmode="numeric" value="${s.reps || ''}" placeholder="herh.">
+            <input data-${attr}="${key}" data-f="weight" type="text" inputmode="decimal" value="${s.weight || ''}" placeholder="${ghost('weight', kind === 'lichaamsgewicht' ? '+' + unitLbl() : unitLbl())}">
+            <input data-${attr}="${key}" data-f="reps" type="number" min="0" inputmode="numeric" value="${s.reps || ''}" placeholder="${ghost('reps', 'herh.')}">
             <input data-${attr}="${key}" data-f="rir" type="number" min="0" max="10" inputmode="numeric" value="${s.rir ?? ''}" placeholder="–" aria-label="Reps in reserve">
+            ${tickCell}
             <button type="button" class="small ghost" data-more-${attr}="${key}" aria-label="Meer opties">⋯</button>
           </div>`;
 
@@ -1157,11 +1240,7 @@
           <div class="pillbar"><button type="button" class="danger" data-rm-${attr}="${key}">Set verwijderen</button></div>
         </div>` : '';
 
-      const hint = p ? `<div class="prev-hint">vorige keer: ${kind === 'cardio'
-        ? `${fmtNum(p.distance || 0)} km in ${fmtNum(p.minutes || 0)} min`
-        : `${esc(fmtKg(p.weight || 0))} × ${p.reps || 0}${p.rir != null ? ' · RIR ' + p.rir : ''}`}</div>` : '';
-
-      return row + hint + more;
+      return row + more;
     }).join('');
   }
 
@@ -1185,6 +1264,7 @@
   // wire up the per-set controls shared by solo and duo logging
   function bindSetControls(attr, o) {
     const camel = (p) => p + attr.charAt(0).toUpperCase() + attr.slice(1);
+    const restSecondsFor = (key) => (o.restFor && key ? o.restFor(key) : db.settings.restSeconds) || 90;
     document.querySelectorAll(`[data-more-${attr}]`).forEach((b) => b.addEventListener('click', () => {
       o.syncDraft();
       const key = b.dataset[camel('more')];
@@ -1205,25 +1285,31 @@
       o.getSet(raw.slice(0, raw.lastIndexOf('.'))).side = side;
       o.repaint();
     }));
+    // ticking a set off: green row, short buzz, rest timer starts by itself
+    document.querySelectorAll(`[data-tick-${attr}]`).forEach((b) => b.addEventListener('click', () => {
+      o.syncDraft();
+      const key = b.dataset[camel('tick')];
+      const set = o.getSet(key);
+      set.done = !set.done;
+      if (set.done) {
+        tick();
+        if (db.settings.autoRest !== false) startRest(restSecondsFor(key.slice(0, key.lastIndexOf('.'))));
+      }
+      o.repaint();
+    }));
     document.querySelectorAll(`[data-rm-${attr}]`).forEach((b) => b.addEventListener('click', () => {
       o.syncDraft();
       o.removeSet(b.dataset[camel('rm')]);
       o.setOpenMore(null);
       o.repaint();
     }));
-    // rest timer: per-exercise button, plus auto-start once a set's reps/time is entered
-    const restSecondsFor = (key) => (o.restFor && key ? o.restFor(key) : db.settings.restSeconds) || 90;
     document.querySelectorAll(`[data-rest-${attr}]`).forEach((b) => b.addEventListener('click', () => {
       const key = b.dataset[camel('rest')];
       startRest(restSecondsFor(key === 'all' ? null : key));
     }));
+    // the rest timer now hangs off the tick, so filling in reps only buzzes
     document.querySelectorAll(`[data-${attr}][data-f="reps"], [data-${attr}][data-f="minutes"]`).forEach((inp) => {
-      inp.addEventListener('change', () => {
-        const key = inp.dataset[attr] || '';
-        if (num(inp.value) <= 0) return;
-        tick();
-        if (db.settings.autoRest) startRest(restSecondsFor(key.slice(0, key.lastIndexOf('.'))));
-      });
+      inp.addEventListener('change', () => { if (num(inp.value) > 0) tick(); });
     });
   }
 
@@ -2134,6 +2220,92 @@
     const box = el.querySelector('#session-chart');
     if (points.length) renderChart(box, points, unit);
     else box.innerHTML = '<p class="mut">Nog geen eerdere sessies voor deze oefening.</p>';
+  }
+
+  // ---------- end-of-session summary ----------
+  // little burst of confetti in the plate colours; purely decorative, skipped when motion is reduced
+  function confettiBurst(host) {
+    if (!motionOk()) return;
+    const cv = document.createElement('canvas');
+    cv.className = 'confetti';
+    host.appendChild(cv);
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const w = host.clientWidth, h = host.clientHeight;
+    cv.width = w * dpr; cv.height = h * dpr;
+    cv.style.width = w + 'px'; cv.style.height = h + 'px';
+    const ctx = cv.getContext('2d');
+    ctx.scale(dpr, dpr);
+    const cols = ['#c8102e', '#0057b8', '#f2c200', '#009639', '#f2a93b'];
+    const bits = Array.from({ length: 90 }, (_, i) => ({
+      x: w / 2 + (i % 7 - 3) * 12, y: h * 0.28,
+      vx: (i % 11 - 5) * 0.55, vy: -3.4 - (i % 5) * 0.7,
+      rot: i, vr: (i % 7 - 3) * 0.12,
+      col: cols[i % cols.length], size: 5 + (i % 4),
+    }));
+    const t0 = performance.now();
+    const frame = (t) => {
+      const age = t - t0;
+      ctx.clearRect(0, 0, w, h);
+      for (const b of bits) {
+        b.vy += 0.12; b.x += b.vx; b.y += b.vy; b.rot += b.vr;
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, 1 - age / 2600);
+        ctx.translate(b.x, b.y);
+        ctx.rotate(b.rot);
+        ctx.fillStyle = b.col;
+        ctx.fillRect(-b.size / 2, -b.size / 2, b.size, b.size * 0.6);
+        ctx.restore();
+      }
+      if (age < 2600 && cv.isConnected) requestAnimationFrame(frame);
+      else cv.remove();
+    };
+    requestAnimationFrame(frame);
+  }
+
+  // shown right after saving a session: what was done, and which records fell
+  function openSessionSummary({ title, entries, durationMin, prs, backHash }) {
+    const sets = entries.reduce((t, e) => t + e.sets.length, 0);
+    const volume = entries.reduce((t, e) => t + entryVolumeKg(e), 0);
+    const el = document.createElement('div');
+    el.className = 'chart-overlay summary-overlay';
+    el.innerHTML = `<div class="inner">
+      <div class="summary-head">
+        <div class="eyebrow" style="margin:0">Sessie afgerond</div>
+        <h2 style="margin:2px 0 0">${esc(title)}</h2>
+      </div>
+      <div class="stat-grid">
+        <div class="stat"><div class="lbl">Duur</div><div class="val">${durationMin} min</div></div>
+        <div class="stat"><div class="lbl">Sets</div><div class="val">${sets}</div></div>
+        <div class="stat"><div class="lbl">Getild</div><div class="val">${esc(fmtKg(volume))}</div></div>
+      </div>
+      ${prs.length ? `<div class="pr-banner">
+        <div class="pr-title">🏆 ${prs.length === 1 ? 'Nieuw persoonlijk record' : `${prs.length} nieuwe records`}</div>
+        ${prs.map((r) => `<div class="pr-line"><span class="grow">${esc(r.name)}</span>
+          <span class="pr-val">${esc(fmtKg(r.top))}</span>
+          <span class="mut">was ${esc(fmtKg(r.prev))}</span></div>`).join('')}
+      </div>` : `<p class="mut">Geen records deze keer — netjes weggezet.</p>`}
+      <div class="eyebrow">Gedaan</div>
+      ${entries.map((e) => `<div class="card"><div class="row">
+        <span class="grow">${esc(e.name)}</span>
+        <span class="mut">${e.sets.length} set${e.sets.length === 1 ? '' : 's'}</span>
+      </div></div>`).join('')}
+      <button class="primary wide" id="summary-close" style="margin-top:14px">Klaar</button>
+    </div>`;
+    document.body.appendChild(el);
+    const onKey = (ev) => { if (ev.key === 'Escape') close(); };
+    const close = () => { el.remove(); document.removeEventListener('keydown', onKey); location.hash = backHash; };
+    el.querySelector('#summary-close').addEventListener('click', close);
+    document.addEventListener('keydown', onKey);
+    if (prs.length) confettiBurst(el);
+  }
+
+  // records broken by these entries, measured against everything logged before now
+  function prsIn(clientId, entries) {
+    return entries.map((e) => {
+      const m = exerciseMetrics(e);
+      const prev = bestTopFor(clientId, e.name);
+      return m && m.top > 0 && prev != null && m.top > prev ? { name: e.name, top: m.top, prev } : null;
+    }).filter(Boolean);
   }
 
   // multi-series line chart with legend (used to compare exercises)
@@ -5674,6 +5846,7 @@
     const restoredAt = stored ? stored.savedAt : null;
     let swapping = null; // "mi.xi" of exercise currently in swap mode
     let infoOpen = null; // "mi.xi" of the exercise whose explanation is open
+    let menuOpen = null; // "mi.xi" of the exercise whose ⋯ menu is open
     let openMore = null; // "mi.xi.si" of the set whose options are open
     let tool = null;
     const startedAt = (stored && stored.startedAt) || Date.now();
@@ -5689,6 +5862,7 @@
             <button type="button" class="small" id="tool-interval">⏲ Interval</button>
           </div>
           ${toolPanelHtml(tool)}
+          ${sessionBarHtml()}
           <label class="field"><span>Datum</span><input type="date" name="date" value="${esc(initDate)}" required></label>
           <div class="duo-cols">
           ${draft.map((mem, mi) =>
@@ -5701,16 +5875,19 @@
               return `<div class="card${linked ? ' ss-mark' : ''}">
               <div class="row" style="margin-bottom:2px">
                 <div class="title grow">${esc(ex.name)}${linked ? ` <span class="badge">Superset ${esc(ex.superset)}</span>` : ''}${ex.kind !== 'kracht' ? ` <span class="badge">${KIND_LABELS[ex.kind]}</span>` : ''}</div>
-                <button type="button" class="small ghost" data-dup="${key}" aria-label="Omhoog" ${xi === 0 ? 'disabled' : ''}>↑</button>
-                <button type="button" class="small ghost" data-ddown="${key}" aria-label="Omlaag" ${xi === mem.exercises.length - 1 ? 'disabled' : ''}>↓</button>
-                <button type="button" class="small ghost" data-dlink="${key}" aria-label="Superset met vorige" ${xi === 0 ? 'disabled' : ''}>⛓</button>
-                <button type="button" class="small ghost" data-rest-dset="${key}" aria-label="Start rusttimer">⏱</button>
                 <button type="button" class="small ghost" data-dchart="${key}" aria-label="Progressiegrafiek" ${prev ? '' : 'disabled'}>📈</button>
                 <button type="button" class="small ghost" data-dinfo="${key}" aria-label="Uitleg">${hasInfo(exerciseByName(ex.name)) || clientNote(mem.client.id, ex.name) ? 'ℹ️' : 'ℹ'}</button>
-                <button type="button" class="small ghost" data-dswap="${key}">⇄</button>
+                <button type="button" class="small ghost" data-dexmenu="${key}" aria-label="Meer voor deze oefening" aria-expanded="${menuOpen === key}">⋯</button>
               </div>
+              ${menuOpen === key ? `<div class="ex-menu">
+                <button type="button" class="small" data-dup="${key}" ${xi === 0 ? 'disabled' : ''}>↑ Omhoog</button>
+                <button type="button" class="small" data-ddown="${key}" ${xi === mem.exercises.length - 1 ? 'disabled' : ''}>↓ Omlaag</button>
+                <button type="button" class="small" data-dlink="${key}" ${xi === 0 ? 'disabled' : ''}>⛓ Superset</button>
+                <button type="button" class="small" data-rest-dset="${key}">⏱ Rust</button>
+                <button type="button" class="small" data-dswap="${key}">⇄ Vervangen</button>
+              </div>` : ''}
               ${infoOpen === key ? `<div class="info-panel">${exerciseInfoHtml(ex.name, mem.client.id)}</div>` : ''}
-              ${prev ? `<div class="mut" style="margin-bottom:8px">vorige sessie: ${esc(fmtDate(prev.date))}</div>` : `<div class="mut" style="margin-bottom:8px">eerste keer</div>`}
+              <div class="mut" style="margin-bottom:8px">${esc(prevSummary(prev, ex.kind))}</div>
               ${swapping === key ? `<div class="row" style="margin-bottom:10px">
                 <input id="swap-input" class="grow" list="swap-list" placeholder="Vervangende oefening">
                 <button type="button" class="small primary" id="swap-ok">OK</button>
@@ -5816,6 +5993,12 @@
         const [mi, xi] = b.dataset.dchart.split('.').map(Number);
         openSessionChart(draft[mi].client.id, draft[mi].exercises[xi].name);
       }));
+      document.querySelectorAll('[data-dexmenu]').forEach((b) => b.addEventListener('click', () => {
+        syncDraft();
+        menuOpen = menuOpen === b.dataset.dexmenu ? null : b.dataset.dexmenu;
+        repaintKeeping();
+      }));
+      runSessionClock(startedAt, () => draft.flatMap((mem) => mem.exercises.flatMap((ex) => ex.sets)));
       document.querySelectorAll('[data-dinfo]').forEach((b) => b.addEventListener('click', () => {
         syncDraft();
         infoOpen = infoOpen === b.dataset.dinfo ? null : b.dataset.dinfo;
@@ -5865,14 +6048,17 @@
         const notes = String(f.get('notes')).trim();
         const durationMin = Math.max(1, Math.round((Date.now() - startedAt) / 60000));
         let saved = 0;
+        const allEntries = [], allPrs = [];
         for (const mem of draft) {
           const entries = mem.exercises
             .map((ex) => ({
               name: ex.name, exerciseId: ensureExercise(ex.name, ex.kind).id, kind: ex.kind, superset: ex.superset || null,
-              sets: ex.sets.filter((s) => filledSet(s, ex.kind)),
+              sets: ex.sets.filter((s) => filledSet(s, ex.kind)).map(({ done, ...rest }) => rest),
             }))
             .filter((ex) => ex.sets.length);
           if (!entries.length) continue;
+          allPrs.push(...prsIn(mem.client.id, entries).map((r) => ({ ...r, name: `${mem.client.name} — ${r.name}` })));
+          allEntries.push(...entries.map((e) => ({ ...e, name: `${mem.client.name} — ${e.name}` })));
           db.workouts.push({
             id: uid(), clientId: mem.client.id, schemaId: duoSchema ? duoSchema.id : null,
             duoId, date, notes, durationMin, coach: db.settings.coachName || undefined, entries,
@@ -5881,10 +6067,17 @@
         }
         if (!saved) { alert('Vul minstens één set in.'); return; }
         stopTimer();
+        clearInterval(runSessionClock.id);
         save();
         clearTrainingDraft(draftRef);
         pendingDuo = null;
-        location.hash = `/duo/${duoId}`;
+        openSessionSummary({
+          title: duoName(duo),
+          entries: allEntries,
+          durationMin,
+          prs: allPrs,
+          backHash: `/duo/${duoId}`,
+        });
       });
     };
     paint();
@@ -6060,6 +6253,7 @@
     const restoredAt = stored ? stored.savedAt : null;
     let swapping = null; // exercise index currently in swap mode
     let infoOpen = null; // exercise index whose explanation is open
+    let menuOpen = null; // exercise index whose ⋯ menu is open
     let openMore = null; // "xi.si" of the set whose options are open
     let tool = null; // 'plates' | 'interval'
     const startedAt = (stored && stored.startedAt) || Date.now();
@@ -6079,6 +6273,7 @@
             <button type="button" class="small" id="tool-interval">⏲ Interval</button>
           </div>
           ${toolPanelHtml(tool)}
+          ${editing ? '' : sessionBarHtml()}
           <label class="field"><span>Datum</span><input type="date" name="date" value="${esc(initDate)}" required></label>
           ${editing ? `<label class="field"><span>Duur (min)</span><input type="number" min="0" name="duration" value="${esc(String(initDuration))}" placeholder="–"></label>` : ''}
           ${draft.map((ex, xi) => {
@@ -6087,16 +6282,19 @@
             return `<div class="card${linked ? ' ss-mark' : ''}">
             <div class="row" style="margin-bottom:2px">
               <div class="title grow">${esc(ex.name)}${linked ? ` <span class="badge">Superset ${esc(ex.superset)}</span>` : ''}${ex.kind !== 'kracht' ? ` <span class="badge">${KIND_LABELS[ex.kind]}</span>` : ''}</div>
-              <button type="button" class="small ghost" data-up="${xi}" aria-label="Omhoog" ${xi === 0 ? 'disabled' : ''}>↑</button>
-              <button type="button" class="small ghost" data-down="${xi}" aria-label="Omlaag" ${xi === draft.length - 1 ? 'disabled' : ''}>↓</button>
-              <button type="button" class="small ghost" data-link="${xi}" aria-label="Superset met vorige" ${xi === 0 ? 'disabled' : ''}>⛓</button>
-              <button type="button" class="small ghost" data-rest-set="${xi}" aria-label="Start rusttimer">⏱</button>
               <button type="button" class="small ghost" data-chart="${xi}" aria-label="Progressiegrafiek" ${prev ? '' : 'disabled'}>📈</button>
               <button type="button" class="small ghost" data-info="${xi}" aria-label="Uitleg">${hasInfo(exerciseByName(ex.name)) || clientNote(clientId, ex.name) ? 'ℹ️' : 'ℹ'}</button>
-              <button type="button" class="small ghost" data-swap="${xi}">⇄</button>
+              <button type="button" class="small ghost" data-exmenu="${xi}" aria-label="Meer voor deze oefening" aria-expanded="${menuOpen === xi}">⋯</button>
             </div>
+            ${menuOpen === xi ? `<div class="ex-menu">
+              <button type="button" class="small" data-up="${xi}" ${xi === 0 ? 'disabled' : ''}>↑ Omhoog</button>
+              <button type="button" class="small" data-down="${xi}" ${xi === draft.length - 1 ? 'disabled' : ''}>↓ Omlaag</button>
+              <button type="button" class="small" data-link="${xi}" ${xi === 0 ? 'disabled' : ''}>⛓ Superset</button>
+              <button type="button" class="small" data-rest-set="${xi}">⏱ Rust</button>
+              <button type="button" class="small" data-swap="${xi}">⇄ Vervangen</button>
+            </div>` : ''}
             ${infoOpen === xi ? `<div class="info-panel">${exerciseInfoHtml(ex.name, clientId)}</div>` : ''}
-            ${prev ? `<div class="mut" style="margin-bottom:8px">vorige sessie: ${esc(fmtDate(prev.date))}</div>` : `<div class="mut" style="margin-bottom:8px">eerste keer</div>`}
+            <div class="mut" style="margin-bottom:8px">${esc(prevSummary(prev, ex.kind))}</div>
             ${swapping === xi ? `<div class="row" style="margin-bottom:10px">
               <input id="swap-input" class="grow" list="swap-list" placeholder="Vervangende oefening">
               <button type="button" class="small primary" id="swap-ok">OK</button>
@@ -6201,6 +6399,12 @@
       document.querySelectorAll('[data-chart]').forEach((b) => b.addEventListener('click', () => {
         openSessionChart(clientId, draft[+b.dataset.chart].name, editing && editing.id);
       }));
+      document.querySelectorAll('[data-exmenu]').forEach((b) => b.addEventListener('click', () => {
+        syncDraft();
+        menuOpen = menuOpen === +b.dataset.exmenu ? null : +b.dataset.exmenu;
+        repaintKeeping();
+      }));
+      if (!editing) runSessionClock(startedAt, () => draft.flatMap((ex) => ex.sets));
       document.querySelectorAll('[data-swap]').forEach((b) => b.addEventListener('click', () => {
         syncDraft();
         swapping = swapping === +b.dataset.swap ? null : +b.dataset.swap;
@@ -6241,10 +6445,12 @@
         const entries = draft
           .map((ex) => ({
             name: ex.name, exerciseId: ensureExercise(ex.name, ex.kind).id, kind: ex.kind, superset: ex.superset || null,
-            sets: ex.sets.filter((s) => filledSet(s, ex.kind)),
+            // `done` is only for the tick boxes during the session, it does not belong in the log
+            sets: ex.sets.filter((s) => filledSet(s, ex.kind)).map(({ done, ...rest }) => rest),
           }))
           .filter((ex) => ex.sets.length);
         if (!entries.length) { alert('Vul minstens één set in.'); return; }
+        const prs = editing ? [] : prsIn(clientId, entries);
         if (editing) {
           editing.entries = entries;
           editing.date = String(f.get('date'));
@@ -6263,10 +6469,18 @@
           });
         }
         stopTimer();
+        clearInterval(runSessionClock.id);
         save();
         clearTrainingDraft(draftRef);
         if (isFree) pendingFree = [];
-        location.hash = `/klant/${clientId}`;
+        if (editing) { location.hash = `/klant/${clientId}`; return; }
+        openSessionSummary({
+          title: c.name,
+          entries,
+          durationMin: Math.max(1, Math.round((Date.now() - startedAt) / 60000)),
+          prs,
+          backHash: `/klant/${clientId}`,
+        });
       });
     };
     paint();
