@@ -1,7 +1,26 @@
 # CBO schaal-routine
 
 Dagafsluiting voor Meta CBO-campagnes van `smayip-je.myshopify.com`. Draait één keer per dag om
-23:00 Nederlandse tijd (cron `5 21 * * *` in UTC) en werkt de sheets bij.
+01:05 Nederlandse tijd (cron `5 23 * * *` in UTC) en werkt de sheets bij.
+
+## Welke dag wordt gerapporteerd
+
+01:05 NL is **00:05 in de adaccount-tijdzone**, dus net na de dagovergang van Meta. De routine sluit
+daarmee de dag af die zojuist is afgelopen — niet de dag waarin ze draait.
+
+| | |
+|---|---|
+| fire | 21 aug 23:05 UTC |
+| London | 22 aug 00:05 |
+| Nederland | 22 aug 01:05 |
+| rapportagedag | **21 augustus** |
+
+Dit is de reden dat het tijdstip niet op 23:00 NL staat: daar zou de laatste twee uur van de
+advertentiedag buiten beeld vallen, en zouden orders tussen 23:00 en 01:00 in de verkeerde dag
+belanden.
+
+Let op de maandgrens: rapporteren over de 31e gebeurt op de 1e, en moet dan in de tab van de
+**vorige** maand.
 
 Deze routine **wijzigt niets** aan campagnes of budgetten. Ze rekent, beslist en legt vast.
 Pauzeren doet de kill-routine; budget aanpassen doet Stan met de hand.
@@ -10,7 +29,7 @@ Pauzeren doet de kill-routine; budget aanpassen doet Stan met de hand.
 
 | | Kill | Schaal |
 |---|---|---|
-| Ritme | elke 10 min, 's nachts | 1× per dag, 23:00 |
+| Ritme | elke 10 min, 's nachts | 1× per dag, 01:05 |
 | Kijkt naar | cumulatieve spend vandaag | 48 uur |
 | Doet | campagne pauzeren | vastleggen en adviseren |
 
@@ -80,6 +99,3 @@ Rij-gebaseerd schrijven werkt niet op een layout waar het derde product in kolom
 - **Percentage boven €150** is nog niet vastgesteld. Tot die tijd laat de routine Nieuw budget leeg.
 - **Campagne op de laagste trede die negatief blijft** heeft geen regel. Nu wordt het gemeld, niet
   besloten.
-- **23:00 NL is 22:00 in de adaccount-tijdzone.** De Meta-dag loopt door tot 00:00 London (01:00 NL),
-  dus de laatste twee uur van de advertentiedag zitten er niet in. Bewuste keuze; om 01:05 NL zou de
-  dag compleet zijn.
