@@ -43,8 +43,28 @@
   .tabs { display: flex; gap: 6px; margin-bottom: 14px; }
   .tabs button { flex: 1; }
   .tabs button[aria-pressed="true"] { background: var(--wash); border-color: var(--accent); color: var(--accent-strong); font-weight: 650; }
-  .set-row { display: grid; grid-template-columns: 26px 1fr 1fr 34px; gap: 8px; align-items: center; margin-bottom: 8px; }
+  .set-row { display: grid; grid-template-columns: 24px 1fr 1fr 44px 30px; gap: 7px; align-items: center; margin-bottom: 8px; }
   .set-row .n { color: var(--muted); font-size: 13px; }
+  .set-tick {
+    height: 40px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--raised, var(--surface)); color: var(--baseline, var(--muted));
+    font-size: 16px; line-height: 1; display: grid; place-items: center; cursor: pointer;
+  }
+  .set-tick[aria-pressed="true"] { background: var(--good); border-color: var(--good); color: #fff; }
+  .set-row.done input { border-color: var(--good); background: rgba(63, 158, 108, 0.16); }
+  .prev-line { color: var(--muted); font-size: 12.5px; margin: -2px 0 8px; }
+
+  #rest-bar {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
+    background: var(--ink); color: var(--page);
+    box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.25);
+  }
+  #rest-bar[hidden] { display: none; }
+  #rest-bar .t-time { font-variant-numeric: tabular-nums; font-weight: 700; font-size: 19px; margin-left: auto; }
+  #rest-bar button { background: transparent; border: 1px solid currentColor; color: inherit; border-radius: 7px; padding: 5px 10px; font-size: 13px; }
+  body.rest-on { padding-bottom: 70px; }
   .col-head { font-size: 12px; color: var(--muted); }
   .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; }
   .stat { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
@@ -60,6 +80,13 @@
 </head>
 <body>
 <main id="app"><p class="mut">Laden…</p></main>
+<div id="rest-bar" hidden>
+  <span class="t-label">⏱ Rust</span>
+  <span class="t-time">0:00</span>
+  <button type="button" class="t-plus" aria-label="30 seconden erbij">+30s</button>
+  <button type="button" class="t-pause" aria-label="Pauzeer">⏸</button>
+  <button type="button" class="t-stop" aria-label="Stop">✕</button>
+</div>
 <div class="status" id="status" hidden></div>
 <script>
 (() => {
@@ -71,6 +98,7 @@
   const todayIso = () => new Date().toISOString().slice(0, 10);
   const addDays = (iso, n) => { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
   const fmtDateFull = (iso) => new Date(iso + 'T12:00:00').toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' });
+  const fmtDate = (iso) => new Date(iso + 'T12:00:00').toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' });
   const fmtNum = (n) => (Math.round(n * 10) / 10).toLocaleString('nl-NL');
   const MOMENTS = ['Ontbijt', 'Lunch', 'Diner', 'Snack'];
 
@@ -195,7 +223,7 @@
   let local = load();
   const saveLocal = () => localStorage.setItem(LOCAL_KEY, JSON.stringify(local));
 
-  let ui = { tab: 'training', date: todayIso(), draft: null, meals: [], workouts: [], water: 0, schemas: [], schemaError: '', profile: null, busy: false };
+  let ui = { tab: 'training', date: todayIso(), draft: null, meals: [], workouts: [], water: 0, schemas: [], schemaError: '', history: new Map(), profile: null, busy: false };
 
   // ---------- views ----------
   function setupView(message) {
@@ -293,18 +321,27 @@
       </div>`).join('')}
       ${draft ? `<div class="card">
         <div class="title" style="margin-bottom:8px">${draft.schemaName ? esc(draft.schemaName) : 'Training bezig'}</div>
-        ${draft.entries.map((e, xi) => `<div class="card" style="margin-bottom:8px">
-          <div class="row" style="margin-bottom:6px"><div class="grow title">${esc(e.name)}</div>
+        ${draft.entries.map((e, xi) => {
+          const prev = lastTime(e.name);
+          const ghost = (si, f, fallback) => {
+            const p = prev && prev.sets[si];
+            return p && p[f] ? esc(fmtNum(p[f])) : fallback;
+          };
+          return `<div class="card" style="margin-bottom:8px">
+          <div class="row" style="margin-bottom:4px"><div class="grow title">${esc(e.name)}</div>
             <button class="small danger ghost" data-del-ex="${xi}">✕</button></div>
-          <div class="set-row"><span></span><span class="col-head">Gewicht</span><span class="col-head">Herh.</span><span></span></div>
-          ${e.sets.map((st, si) => `<div class="set-row">
+          <div class="prev-line">${esc(prevLine(e.name))}</div>
+          <div class="set-row"><span></span><span class="col-head">Gewicht</span><span class="col-head">Herh.</span><span></span><span></span></div>
+          ${e.sets.map((st, si) => `<div class="set-row${st.done ? ' done' : ''}">
             <span class="n">${si + 1}</span>
-            <input data-set="${xi}.${si}" data-f="weight" type="text" inputmode="decimal" value="${st.weight || ''}" placeholder="kg">
-            <input data-set="${xi}.${si}" data-f="reps" type="number" inputmode="numeric" value="${st.reps || ''}" placeholder="herh.">
+            <input data-set="${xi}.${si}" data-f="weight" type="text" inputmode="decimal" value="${st.weight || ''}" placeholder="${ghost(si, 'weight', 'kg')}">
+            <input data-set="${xi}.${si}" data-f="reps" type="number" inputmode="numeric" value="${st.reps || ''}" placeholder="${ghost(si, 'reps', 'herh.')}">
+            <button type="button" class="set-tick" data-tick="${xi}.${si}" aria-pressed="${!!st.done}" aria-label="Set ${si + 1} afvinken">✓</button>
             <button class="small danger ghost" data-del-set="${xi}.${si}">✕</button>
           </div>`).join('')}
           <button class="small" data-add-set="${xi}">+ Set</button>
-        </div>`).join('')}
+        </div>`;
+        }).join('')}
         <div class="row" style="margin-top:8px">
           <input id="new-ex" class="grow" placeholder="Oefening toevoegen" list="known-ex">
           <button class="small" id="add-ex">+</button>
@@ -442,6 +479,18 @@
       saveLocal();
       appView();
     });
+    document.querySelectorAll('[data-tick]').forEach((b) => b.addEventListener('click', () => {
+      syncDraft();
+      const [xi, si] = b.dataset.tick.split('.').map(Number);
+      const entry = ui.draft.entries[xi];
+      const set = entry.sets[si];
+      set.done = !set.done;
+      if (set.done) {
+        buzz(35);
+        startRest(entry.rest > 0 ? entry.rest : 90);
+      }
+      appView();
+    }));
     document.querySelectorAll('[data-add-set]').forEach((b) => b.addEventListener('click', () => {
       syncDraft();
       const e = ui.draft.entries[Number(b.dataset.addSet)];
@@ -537,7 +586,11 @@
   async function saveWorkout() {
     syncDraft();
     const entries = ui.draft.entries
-      .map((e) => ({ name: e.name, kind: 'kracht', sets: e.sets.filter((s) => s.weight > 0 || s.reps > 0) }))
+      .map((e) => ({
+        name: e.name,
+        kind: e.kind || 'kracht',
+        sets: e.sets.filter((s) => s.weight > 0 || s.reps > 0).map(({ done, ...rest }) => rest),
+      }))
       .filter((e) => e.sets.length);
     if (!entries.length) { toast('Vul minstens één set in.'); return; }
     try {
@@ -547,7 +600,8 @@
         notes: ui.draft.notes || '',
       }]);
       ui.draft = null;
-      await loadDay();
+      stopRest();
+      await Promise.all([loadDay(), loadHistory()]);
       appView();
       toast('Opgeslagen. Je coach ziet dit.');
     } catch (e) {
@@ -601,6 +655,75 @@
     ui.water = water.length ? water[0].ml : 0;
   }
 
+  // ---------- rusttimer ----------
+  const rest = { endsAt: 0, tick: null, paused: false, left: 0 };
+  const mmss = (sec) => {
+    const t = Math.max(0, Math.round(sec));
+    return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
+  };
+  const buzz = (ms) => { if (navigator.vibrate) navigator.vibrate(ms); };
+
+  function stopRest() {
+    clearInterval(rest.tick);
+    rest.tick = null;
+    rest.paused = false;
+    document.getElementById('rest-bar').hidden = true;
+    document.body.classList.remove('rest-on');
+  }
+  function startRest(seconds) {
+    clearInterval(rest.tick);
+    rest.paused = false;
+    rest.endsAt = Date.now() + seconds * 1000;
+    const bar = document.getElementById('rest-bar');
+    bar.hidden = false;
+    document.body.classList.add('rest-on');
+    const paint = () => {
+      const left = rest.paused ? rest.left : (rest.endsAt - Date.now()) / 1000;
+      bar.querySelector('.t-time').textContent = mmss(left);
+      bar.querySelector('.t-pause').textContent = rest.paused ? '▶' : '⏸';
+      if (!rest.paused && left <= 0) { buzz([200, 100, 200]); stopRest(); }
+    };
+    paint();
+    rest.tick = setInterval(paint, 250);
+  }
+  function bindRestBar() {
+    const bar = document.getElementById('rest-bar');
+    bar.querySelector('.t-plus').addEventListener('click', () => {
+      if (rest.paused) rest.left += 30; else rest.endsAt += 30000;
+    });
+    bar.querySelector('.t-pause').addEventListener('click', () => {
+      if (rest.paused) { rest.endsAt = Date.now() + rest.left * 1000; rest.paused = false; }
+      else { rest.left = (rest.endsAt - Date.now()) / 1000; rest.paused = true; }
+    });
+    bar.querySelector('.t-stop').addEventListener('click', stopRest);
+  }
+
+  // the last 60 logged sessions, used to show what was done last time per exercise
+  async function loadHistory() {
+    try {
+      const rows = await cloud.select('client_workouts',
+        `client_id=eq.${cloud.userId()}&select=date,entries&order=date.desc&limit=60`);
+      const map = new Map();
+      for (const w of rows) {
+        for (const e of w.entries || []) {
+          const key = String(e.name || '').trim().toLowerCase();
+          if (key && !map.has(key)) map.set(key, { date: w.date, sets: e.sets || [] });
+        }
+      }
+      ui.history = map;
+    } catch {
+      ui.history = new Map();
+    }
+  }
+  const lastTime = (name) => ui.history.get(String(name || '').trim().toLowerCase()) || null;
+  const prevLine = (name) => {
+    const p = lastTime(name);
+    if (!p) return 'eerste keer';
+    const txt = p.sets.filter((x) => x.weight > 0 || x.reps > 0).slice(0, 4)
+      .map((x) => `${fmtNum(x.weight || 0)}×${x.reps || 0}`).join(' · ');
+    return `vorige keer ${fmtDate(p.date)}${txt ? ' — ' + txt : ''}`;
+  };
+
   // schemas the coach put ready; missing table or no rows simply means nothing to show
   async function loadSchemas() {
     ui.schemaError = '';
@@ -622,6 +745,7 @@
       entries: (schema.exercises || []).map((e) => ({
         name: e.name,
         kind: e.kind || 'kracht',
+        rest: e.rest || 0,
         sets: (e.targets && e.targets.length ? e.targets : [{ weight: 0, reps: 0 }])
           .map((t) => ({ weight: t.weight || 0, reps: t.reps || 0 })),
       })),
@@ -640,8 +764,9 @@
       const profile = await cloud.ensureProfile('client', '');
       ui.profile = profile;
       if (!profile.coach_id) { inviteView(); return; }
-      await Promise.all([loadDay(), loadSchemas()]);
+      await Promise.all([loadDay(), loadSchemas(), loadHistory()]);
       appView();
+      bindRestBar();
     } catch (e) {
       $app.innerHTML = `<div class="card"><p class="sub">Verbinden mislukt: ${esc(e.message)}</p>
         <button class="small" id="retry">Opnieuw</button> <button class="small ghost" id="out">Uitloggen</button></div>`;

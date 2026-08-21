@@ -14,7 +14,7 @@ Dit is geen onderdeel van de MCP-server in deze repo; het is een losstaande app 
 
 ## Werkwijze — houd je hieraan
 
-1. **Elke wijziging**: `APP_VERSION` in `index.html` én `CACHE` in `sw.js` ophogen (nu **56**).
+1. **Elke wijziging**: `APP_VERSION` in `index.html` én `CACHE` in `sw.js` ophogen (nu **57**).
    Zonder die twee ziet hij de wijziging niet op zijn tablet.
 2. **Testen** met Playwright (`playwright-core`, `executablePath: '/opt/pw-browsers/chromium'`)
    tegen `python3 -m http.server` in `gym-app/`. Schrijf per functie een klein `.mjs`-scriptje
@@ -115,7 +115,9 @@ en apart afgetikt wordt.
 **Voeding** — dagboek per maaltijdmoment, Open Food Facts met barcodescan, water,
 weekgemiddelden, macroplan.
 
-**Klantaccounts** — `sporter.html`, magic link, uitnodigingscode, klant logt zelf; komt bij
+**Klantaccounts** — `sporter.html`, magic link, uitnodigingscode, klant logt zelf met dezelfde
+hulpmiddelen als jij: vorige keer per oefening (uit `loadHistory()`), sets afvinken met trilling,
+en een rusttimer die vanzelf start op de rusttijd die met het schema meekomt; komt bij
 de coach binnen onder **Van klanten** en is met één tik over te nemen. Koppeling cloudaccount ↔
 lokale klant loopt via `client.cloudId`; matcht de naam niet, dan kies je de klant zelf uit een
 lijst (naam-matching is alleen nog de eerste gok). Daar staat ook

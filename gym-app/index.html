@@ -570,7 +570,7 @@
 <script>
 (() => {
   'use strict';
-  const APP_VERSION = 56; // bump when publishing; shown on the home screen
+  const APP_VERSION = 57; // bump when publishing; shown on the home screen
   const KEY = 'coachlog-v1';
   const $app = document.getElementById('app');
 
@@ -5316,6 +5316,8 @@
       exercises: sc.exercises.map((e) => ({
         name: e.name,
         kind: e.kind || kindFor(localClient.id, e.name),
+        // the client's app has no settings screen, so send your rest time along
+        rest: restFor(e.name),
         targets: (e.targets || []).map((t) => ({ ...t })),
       })),
     }));
