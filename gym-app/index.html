@@ -557,7 +557,7 @@
 <script>
 (() => {
   'use strict';
-  const APP_VERSION = 51; // bump when publishing; shown on the home screen
+  const APP_VERSION = 52; // bump when publishing; shown on the home screen
   const KEY = 'coachlog-v1';
   const $app = document.getElementById('app');
 
@@ -823,7 +823,7 @@
     const map = new Map();
     const get = (key) => {
       let u = map.get(key);
-      if (!u) { u = { sessions: 0, sets: 0, volume: 0, clients: new Set(), firstDate: null, lastDate: null, best: 0 }; map.set(key, u); }
+      if (!u) { u = { sessions: 0, sets: 0, clients: new Set(), firstDate: null, lastDate: null, best: 0 }; map.set(key, u); }
       return u;
     };
     for (const w of db.workouts) {
@@ -836,14 +836,13 @@
         if (!u.lastDate || w.date > u.lastDate) u.lastDate = w.date;
         const m = exerciseMetrics(e);
         if (m) {
-          u.volume += m.kind === 'kracht' ? m.volume : 0;
           u.best = Math.max(u.best, m.top || 0);
         }
       }
     }
     return map;
   }
-  const emptyUsage = () => ({ sessions: 0, sets: 0, volume: 0, clients: new Set(), firstDate: null, lastDate: null, best: 0 });
+  const emptyUsage = () => ({ sessions: 0, sets: 0, clients: new Set(), firstDate: null, lastDate: null, best: 0 });
   function exerciseUsage(name) {
     return usageMap().get(exKey(name)) || emptyUsage();
   }
@@ -1181,18 +1180,17 @@
     if (kind === 'cardio') {
       const distance = sets.reduce((t, s) => t + (s.distance || 0), 0);
       const minutes = sets.reduce((t, s) => t + (s.minutes || 0), 0);
-      return { kind, distance, minutes, pace: distance > 0 ? minutes / distance : 0, top: distance, volume: minutes };
+      return { kind, distance, minutes, pace: distance > 0 ? minutes / distance : 0, top: distance };
     }
     if (kind === 'lichaamsgewicht') {
       const extra = Math.max(...sets.map((s) => s.weight || 0));
       const bestReps = Math.max(...sets.map((s) => s.reps || 0));
       const totalReps = sets.reduce((t, s) => t + (s.reps || 0), 0);
-      return { kind, extra, bestReps, totalReps, top: extra, volume: totalReps };
+      return { kind, extra, bestReps, totalReps, top: extra };
     }
     const top = Math.max(...sets.map((s) => s.weight));
-    const volume = sets.reduce((t, s) => t + s.weight * s.reps, 0);
     const e1rm = Math.max(...sets.map((s) => s.reps > 0 ? s.weight * (1 + s.reps / 30) : s.weight));
-    return { kind, top, volume, e1rm };
+    return { kind, top, e1rm };
   }
 
   // one logged set as text, incl. type/side/note markers
@@ -1675,7 +1673,7 @@
       const kind = ss[ss.length - 1].kind || 'kracht';
       return {
         name, kind,
-        sessions: ss.map((x) => ({ date: x.date, top: x.top, volume: x.volume, sets: x.sets })),
+        sessions: ss.map((x) => ({ date: x.date, top: x.top, sets: x.sets })),
       };
     });
     return {
@@ -1934,13 +1932,11 @@
     save();
   }
 
-  // workload of one entry expressed in kg (cardio and rep-only work contribute 0 kg)
-  const entryVolumeKg = (entry) => {
-    const m = exerciseMetrics(entry);
-    return m && m.kind === 'kracht' ? m.volume : 0;
-  };
+  // working sets in one logged entry: warming-up and empty rows do not count
+  const entrySetCount = (entry) =>
+    entry.sets.filter((x) => setType(x) !== 'warmup' && filledSet(x, entryKind(entry))).length;
 
-  // per-month totals for a client: sessions, volume, PR count
+  // per-month totals for a client: sessions, sets, PR count
   function monthlyStats(clientId, period) {
     const ws = workoutsOf(clientId).filter((w) => inPeriod(w.date, period));
     const prDates = new Map(); // month -> count
@@ -1954,14 +1950,14 @@
     const months = new Map();
     for (const w of ws) {
       const m = w.date.slice(0, 7);
-      const cur = months.get(m) || { month: m, sessions: 0, volume: 0, minutes: 0, prs: 0 };
+      const cur = months.get(m) || { month: m, sessions: 0, sets: 0, minutes: 0, prs: 0 };
       cur.sessions++;
       cur.minutes += w.durationMin || 0;
-      cur.volume += w.entries.reduce((t, e) => t + entryVolumeKg(e), 0);
+      cur.sets += w.entries.reduce((t, e) => t + entrySetCount(e), 0);
       months.set(m, cur);
     }
     for (const [m, n] of prDates) {
-      const cur = months.get(m) || { month: m, sessions: 0, volume: 0, minutes: 0, prs: 0 };
+      const cur = months.get(m) || { month: m, sessions: 0, sets: 0, minutes: 0, prs: 0 };
       cur.prs = n;
       months.set(m, cur);
     }
@@ -1989,7 +1985,30 @@
     return d.toISOString().slice(0, 10);
   }
 
-  // volume per muscle group for a client in a period
+  // best guess at the muscle a lift trains, from its name. First match wins, so the
+  // narrow patterns sit above the broad ones ("leg curl" before "curl", "face pull" before "pull").
+  const GROUP_HINTS = [
+    [/kuit|calf|calve|seated calf/, 'Triceps surae'],
+    [/leg ?curl|hamstring|romanian|rdl|nordic|good ?morning/, 'Hamstrings'],
+    [/hip thrust|glute|bil(len)?|bridge|kickback|abduct/, 'Gluteus maximus'],
+    [/squat|leg ?press|beenpers|lunge|uitval|leg ?extension|beenstrek|step ?up|hack/, 'Quadriceps'],
+    [/deadlift|back ?extension|hyperextension|rugstrek|erector/, 'Erector spinae'],
+    [/shrug|face ?pull|upright row|trapez/, 'Trapezius'],
+    [/triceps|pushdown|skull|french press|kop ?over/, 'Triceps brachii'],
+    [/pulldown|pull ?up|pull-up|chin ?up|chin-up|optrekken|\brow\b|roei(en)?machine|barbell row|dumbbell row|seated row|\blat\b/, 'Latissimus dorsi'],
+    [/curl|biceps/, 'Biceps brachii'],
+    [/shoulder press|overhead press|\bohp\b|lateral raise|zijwaarts|arnold|reverse fly|front raise|delt|schouderdrukken/, 'Deltoideus'],
+    [/bench|bank(druk|en)|chest|borst|\bfly\b|push ?up|push-up|opdruk|\bdip/, 'Pectoralis major'],
+    [/crunch|plank|sit ?up|sit-up|leg raise|buik|russian twist|hollow|\babs?\b|abdomin/, 'Rectus abdominis'],
+  ];
+  function suggestGroup(name, kind) {
+    if (kind === 'cardio') return 'Cardio';
+    const n = String(name || '').toLowerCase();
+    for (const [re, group] of GROUP_HINTS) if (re.test(n)) return group;
+    return null;
+  }
+
+  // sets per muscle group for a client in a period
   function groupTotals(clientId, period) {
     const totals = new Map();
     for (const w of workoutsOf(clientId)) {
@@ -1998,14 +2017,13 @@
         const m = exerciseMetrics(e);
         if (!m) continue;
         const g = groupOf(e.name, m.kind);
-        const cur = totals.get(g) || { group: g, volume: 0, sets: 0, minutes: 0 };
-        cur.sets += e.sets.filter((x) => setType(x) !== 'warmup').length;
-        cur.volume += m.kind === 'kracht' ? m.volume : 0;
+        const cur = totals.get(g) || { group: g, sets: 0, minutes: 0 };
+        cur.sets += entrySetCount(e);
         cur.minutes += m.kind === 'cardio' ? m.minutes : 0;
         totals.set(g, cur);
       }
     }
-    return [...totals.values()].sort((a, b) => (b.volume - a.volume) || (b.sets - a.sets));
+    return [...totals.values()].sort((a, b) => (b.sets - a.sets) || (b.minutes - a.minutes));
   }
 
   // ---------- CSV export ----------
@@ -2448,7 +2466,7 @@
   // shown right after saving a session: what was done, and which records fell
   function openSessionSummary({ title, entries, durationMin, prs, backHash }) {
     const sets = entries.reduce((t, e) => t + e.sets.length, 0);
-    const volume = entries.reduce((t, e) => t + entryVolumeKg(e), 0);
+
     const el = document.createElement('div');
     el.className = 'chart-overlay summary-overlay';
     el.innerHTML = `<div class="inner">
@@ -2459,7 +2477,7 @@
       <div class="stat-grid">
         <div class="stat"><div class="lbl">Duur</div><div class="val">${durationMin} min</div></div>
         <div class="stat"><div class="lbl">Sets</div><div class="val">${sets}</div></div>
-        <div class="stat"><div class="lbl">Getild</div><div class="val">${esc(fmtKg(volume))}</div></div>
+        <div class="stat"><div class="lbl">Oefeningen</div><div class="val">${entries.length}</div></div>
       </div>
       ${prs.length ? `<div class="pr-banner">
         <div class="pr-title">🏆 ${prs.length === 1 ? 'Nieuw persoonlijk record' : `${prs.length} nieuwe records`}</div>
@@ -2533,7 +2551,7 @@
     container.querySelectorAll('.line').forEach((path, si) => animateLine(path, 0.7, si * 0.12));
   }
 
-  function renderBarChart(container, points) {
+  function renderBarChart(container, points, unit) {
     const W = 600, H = 240, padL = 48, padR = 16, padT = 14, padB = 30;
     const iw = W - padL - padR, ih = H - padT - padB;
     const ticks = niceTicks(0, Math.max(...points.map((p) => p.value)), 4);
@@ -2542,7 +2560,7 @@
     const band = iw / points.length;
     const bw = Math.max(2, Math.min(24, band - 2));
     const bx = (i) => padL + i * band + (band - bw) / 2;
-    const fmtVal = (v) => Math.round(v).toLocaleString('nl-NL') + ' ' + unitLbl();
+    const fmtVal = (v) => Math.round(v).toLocaleString('nl-NL') + ' ' + (unit || unitLbl());
 
     const grid = ticks.map((t) =>
       `<line x1="${padL}" y1="${y(t)}" x2="${W - padR}" y2="${y(t)}" stroke="var(--grid)" stroke-width="1"/>` +
@@ -2732,6 +2750,7 @@
     if (parts[0] === 'vanklanten') return viewClientFeed(parts[1] || null);
     if (parts[0] === 'instellingen') return viewSettings();
     if (parts[0] === 'cloud') return viewSettings('cloud-card');
+    if (parts[0] === 'spiergroepen') return viewGroupReview();
     if (parts[0] === 'bibliotheek') return viewLibrary(parts[1] ? decodeURIComponent(parts[1]) : null);
     if (parts[0] === 'duo' && parts[2] === 'vrij') return viewDuoPick(parts[1]);
     if (parts[0] === 'duo' && parts[2] === 'sjabloon') return viewTemplatePick('duo', parts[1]);
@@ -3253,8 +3272,8 @@
       draftResumeHtml(`/klant/${id}/`) +
       statHtml +
       `<div style="margin-top:16px" class="actions">` +
-      schemas.map((s) => `<button class="primary" data-nav="/klant/${id}/training/${s.id}">Start: ${esc(s.name)}</button>`).join('') +
-      `<button class="primary" data-nav="/klant/${id}/vrij">+ Vrije training</button>` +
+      schemas.map((s, i) => `<button class="${i === 0 ? 'primary' : ''}" data-nav="/klant/${id}/training/${s.id}">Start: ${esc(s.name)}</button>`).join('') +
+      `<button class="${schemas.length ? '' : 'primary'}" data-nav="/klant/${id}/vrij">+ Vrije training</button>` +
       `</div>` +
 
       `<div class="eyebrow">Progressie per oefening</div>` +
@@ -4211,6 +4230,62 @@
   }
 
   // --- exercise library ---
+  // exercises whose name says one muscle while the record says another; the list you work
+  // through after the groups were renamed and everything legacy landed on one group
+  function groupMismatches() {
+    return db.exercises
+      .filter((e) => !e.archived && e.kind !== 'cardio')
+      .map((e) => ({ rec: e, suggested: suggestGroup(e.name, e.kind) }))
+      .filter((x) => x.suggested && x.suggested !== x.rec.group)
+      .sort((a, b) => byName(a.rec.name, b.rec.name));
+  }
+
+  function viewGroupReview() {
+    const rows = groupMismatches();
+    $app.innerHTML = topbar('Spiergroepen nalopen', '/bibliotheek') +
+      (rows.length
+        ? `<p class="sub">Bij deze oefeningen wijst de naam een andere spier aan dan er nu ingesteld staat.
+             Vink aan wat klopt en pas ze in één keer toe. Je kunt per regel een andere spier kiezen.</p>
+           <div class="actions" style="margin-bottom:12px">
+             <button class="primary" id="gr-apply">Aangevinkte toepassen</button>
+             <button id="gr-none">Niets aanvinken</button>
+           </div>` +
+          rows.map((x, i) => `<div class="card mg-edge" style="--mg:${groupColor(x.suggested)}">
+            <div class="row" style="gap:10px">
+              <input type="checkbox" id="gr-${i}" data-gr="${i}" checked style="width:22px;height:22px;flex:none">
+              <label class="grow" for="gr-${i}">
+                <div class="title">${esc(x.rec.name)}</div>
+                <div class="sub">nu: ${esc(x.rec.group)}</div>
+              </label>
+              <select data-gr-pick="${i}" style="max-width:190px">
+                ${MUSCLE_GROUPS.map((g) => `<option value="${esc(g)}" ${g === x.suggested ? 'selected' : ''}>${esc(g)}</option>`).join('')}
+              </select>
+            </div>
+          </div>`).join('')
+        : `<div class="empty"><p>Niets te doen — bij elke oefening past de spiergroep bij de naam.</p>
+            <div class="actions"><button class="primary" data-nav="/bibliotheek">Naar de bibliotheek</button></div></div>`);
+
+    bindNav();
+    const noneBtn = document.getElementById('gr-none');
+    if (noneBtn) noneBtn.addEventListener('click', () => {
+      document.querySelectorAll('[data-gr]').forEach((b) => { b.checked = false; });
+    });
+    const applyBtn = document.getElementById('gr-apply');
+    if (applyBtn) applyBtn.addEventListener('click', () => {
+      let n = 0;
+      document.querySelectorAll('[data-gr]').forEach((box) => {
+        if (!box.checked) return;
+        const x = rows[+box.dataset.gr];
+        const pick = document.querySelector(`[data-gr-pick="${box.dataset.gr}"]`).value;
+        if (!x || pick === x.rec.group) return;
+        setGroup(x.rec.name, pick);
+        n++;
+      });
+      alert(n ? `${n} oefening${n === 1 ? '' : 'en'} bijgewerkt.` : 'Niets aangevinkt.');
+      render();
+    });
+  }
+
   function viewLibrary(group) {
     const q = uiState.libQuery.trim().toLowerCase();
     const uses = usageMap();
@@ -4286,7 +4361,7 @@
             <div class="card" style="margin:12px 0 0;background:transparent">
               <div class="eyebrow" style="margin-top:0">Gebruik</div>
               ${usage.sessions ? `<div class="sub">${usage.sessions} sessie${usage.sessions === 1 ? '' : 's'} · ${usage.sets} sets · ${usage.clients.size} klant${usage.clients.size === 1 ? '' : 'en'}</div>
-              <div class="mut">Van ${esc(fmtDate(usage.firstDate))} tot ${esc(fmtDate(usage.lastDate))}${usage.volume ? ' · totaal volume ' + esc(fmtKg(usage.volume)) : ''}${usage.best ? ' · beste ' + esc(fmtKg(usage.best)) : ''}</div>`
+              <div class="mut">Van ${esc(fmtDate(usage.firstDate))} tot ${esc(fmtDate(usage.lastDate))}${usage.best ? ' · beste ' + esc(fmtKg(usage.best)) : ''}</div>`
                 : '<div class="mut">Nog niet gebruikt — veilig te archiveren.</div>'}
             </div>
             <div class="card" style="margin:10px 0 0;background:transparent">
@@ -4322,6 +4397,11 @@
             <button id="lib-drop-import">Ongebruikte verwijderen</button>
           </div>` : '') +
 
+      (groupMismatches().length && !uiState.libShowArchived
+        ? `<div class="note-box"><strong>${groupMismatches().length} oefening${groupMismatches().length === 1 ? '' : 'en'}</strong>
+             staan op een spiergroep die niet bij de naam past.
+             <div class="actions" style="margin-top:8px"><button class="small primary" data-nav="/spiergroepen">Nalopen</button></div>
+           </div>` : '') +
       (activeExercises().length < 20 && !uiState.libShowArchived
         ? `<hr class="divider"><div class="card">
             <div class="title">Standaardlijst</div>
@@ -5173,14 +5253,13 @@
     const period = uiState.period;
     const months = monthlyStats(clientId, period);
     const totals = months.reduce((t, m) => ({
-      sessions: t.sessions + m.sessions, volume: t.volume + m.volume, prs: t.prs + m.prs, minutes: t.minutes + m.minutes,
-    }), { sessions: 0, volume: 0, prs: 0, minutes: 0 });
+      sessions: t.sessions + m.sessions, sets: t.sets + m.sets, prs: t.prs + m.prs, minutes: t.minutes + m.minutes,
+    }), { sessions: 0, sets: 0, prs: 0, minutes: 0 });
     const streak = weekStreak(clientId);
     const groups = groupTotals(clientId, period);
-    const maxVolume = Math.max(1, ...groups.map((g) => g.volume));
     const maxMinutes = Math.max(1, ...groups.map((g) => g.minutes));
     const maxSets = Math.max(1, ...groups.map((g) => g.sets));
-    const barPct = (g) => Math.round(100 * (g.volume ? g.volume / maxVolume : g.minutes ? g.minutes / maxMinutes : g.sets / maxSets));
+    const barPct = (g) => Math.round(100 * (g.sets ? g.sets / maxSets : g.minutes / maxMinutes));
 
     // attendance: last 12 weeks of days
     const days = [];
@@ -5206,22 +5285,22 @@
       </div>` +
       `<div class="stat-grid cols2">
         <div class="stat"><div class="lbl">Trainingen</div><div class="val">${totals.sessions}</div><div class="mut">${totals.minutes ? Math.round(totals.minutes / 60) + ' uur totaal' : 'geen tijd gelogd'}</div></div>
-        <div class="stat"><div class="lbl">Totaal volume</div><div class="val">${esc(fmtKg(totals.volume))}</div><div class="mut">krachtoefeningen</div></div>
+        <div class="stat"><div class="lbl">Sets</div><div class="val">${totals.sets}</div><div class="mut">zonder warming-up</div></div>
         <div class="stat"><div class="lbl">Persoonlijke records</div><div class="val">${totals.prs}</div><div class="mut">in deze periode</div></div>
         <div class="stat"><div class="lbl">Reeks</div><div class="val">${streak} ${streak === 1 ? 'week' : 'weken'}</div><div class="mut">op rij getraind</div></div>
       </div>` +
 
       `<div class="eyebrow">Per maand</div>` +
       (months.length ? `<div class="card table-wrap"><table class="data">
-        <thead><tr><th>Maand</th><th class="num">Trainingen</th><th class="num">Volume</th><th class="num">PR's</th></tr></thead>
+        <thead><tr><th>Maand</th><th class="num">Trainingen</th><th class="num">Sets</th><th class="num">PR's</th></tr></thead>
         <tbody>${[...months].reverse().map((m) => `<tr>
           <td>${esc(monthLabel(m.month))}</td>
           <td class="num">${m.sessions}</td>
-          <td class="num">${esc(fmtKg(m.volume))}</td>
+          <td class="num">${m.sets}</td>
           <td class="num">${m.prs}</td>
         </tr>`).join('')}</tbody>
       </table></div>
-      <div class="eyebrow">Volume per maand</div>
+      <div class="eyebrow">Sets per maand</div>
       <div class="card"><div class="chart-wrap" id="month-chart"></div></div>` : `<p class="mut">Nog geen trainingen in deze periode.</p>`) +
 
       `<div class="eyebrow">Aanwezigheid (12 weken)</div>
@@ -5236,7 +5315,7 @@
         ${groups.length ? groups.map((g) => `<div class="bar-row">
           <span>${esc(g.group)}</span>
           <span class="track"><span class="fill" style="width:${barPct(g)}%;background:${groupColor(g.group)}"></span></span>
-          <span class="val">${g.volume ? esc(fmtKg(g.volume)) : g.minutes ? fmtNum(g.minutes) + ' min' : g.sets + ' sets'}</span>
+          <span class="val">${g.sets ? g.sets + ' sets' : fmtNum(g.minutes) + ' min'}</span>
         </div>`).join('') : '<p class="mut">Nog geen gegevens.</p>'}
         <p class="mut" style="margin:10px 0 0">Stel de spiergroep per oefening in op de oefeningpagina.</p>
       </div>` +
@@ -5247,7 +5326,7 @@
     bindNav();
     bindPeriodBar();
     if (months.length) {
-      renderBarChart(document.getElementById('month-chart'), months.map((m) => ({ date: m.month + '-15', value: m.volume })));
+      renderBarChart(document.getElementById('month-chart'), months.map((m) => ({ date: m.month + '-15', value: m.sets })), 'sets');
     }
     document.getElementById('csv-client').addEventListener('click', () => downloadCsv(clientId));
   }
@@ -5307,7 +5386,7 @@
     if (!c) { location.hash = '/'; return; }
     const period = uiState.period;
     const months = monthlyStats(clientId, period);
-    const totals = months.reduce((t, m) => ({ sessions: t.sessions + m.sessions, volume: t.volume + m.volume, prs: t.prs + m.prs }), { sessions: 0, volume: 0, prs: 0 });
+    const totals = months.reduce((t, m) => ({ sessions: t.sessions + m.sessions, sets: t.sets + m.sets, prs: t.prs + m.prs }), { sessions: 0, sets: 0, prs: 0 });
     const exercises = loggedExercises(clientId).map((name) => {
       const ss = exerciseSessions(clientId, name).filter((s) => inPeriod(s.date, period));
       if (!ss.length) return null;
@@ -5329,7 +5408,7 @@
       <p class="mut" style="margin:0 0 16px">${esc(PERIODS[period])} · opgemaakt ${esc(fmtDateFull(todayIso()))}${c.goal ? ' · doel: ' + esc(c.goal) : ''}</p>
       <div class="stat-grid">
         <div class="stat"><div class="lbl">Trainingen</div><div class="val">${totals.sessions}</div></div>
-        <div class="stat"><div class="lbl">Totaal volume</div><div class="val">${esc(fmtKg(totals.volume))}</div></div>
+        <div class="stat"><div class="lbl">Sets</div><div class="val">${totals.sets}</div></div>
         <div class="stat"><div class="lbl">Records</div><div class="val">${totals.prs}</div></div>
       </div>` +
       `<div class="eyebrow">Progressie per oefening</div>
@@ -5473,7 +5552,7 @@
         metrics: { extra: 'Extra gewicht', bestReps: 'Beste set (herh.)' },
         fmt: fmtKg, unit: 'kg',
         lineTitle: 'Belasting per training',
-        barKey: 'totalReps', barTitle: 'Totaal herhalingen per training',
+        barKey: 'totalReps', barUnit: 'herh.', barTitle: 'Totaal herhalingen per training',
         barNote: 'Som van alle herhalingen per training.',
         prLabel: 'PR · extra gewicht', pr2Label: 'PR · meeste herhalingen', pr2: (ss) => `${Math.max(...ss.map((x) => x.bestReps))} herh.`, pr2Note: 'beste set',
       },
@@ -5481,7 +5560,7 @@
         metrics: { distance: 'Afstand (km)', pace: 'Tempo (min/km)' },
         fmt: (v) => fmtNum(v) + ' km', unit: 'km',
         lineTitle: 'Afstand en tempo',
-        barKey: 'minutes', barTitle: 'Tijd per training',
+        barKey: 'minutes', barUnit: 'min', barTitle: 'Tijd per training',
         barNote: 'Totale tijd per training in minuten.',
         prLabel: 'PR · langste afstand', pr2Label: 'PR · beste tempo',
         pr2: (ss) => { const p = ss.filter((x) => x.pace > 0); return p.length ? fmtNum(Math.min(...p.map((x) => x.pace))) + ' min/km' : '—'; }, pr2Note: 'min per km',
@@ -5572,7 +5651,7 @@
     if (linePts.length) renderChart(lineBox, linePts, lineUnit);
     else lineBox.innerHTML = '<p class="mut">Nog geen waarden voor deze meetwaarde.</p>';
     if (cfg.barKey) {
-      renderBarChart(document.getElementById('bar-chart'), sessions.map((s) => ({ date: s.date, value: s[cfg.barKey] || 0 })));
+      renderBarChart(document.getElementById('bar-chart'), sessions.map((s) => ({ date: s.date, value: s[cfg.barKey] || 0 })), cfg.barUnit);
     }
     document.querySelectorAll('[data-metric]').forEach((b) => b.addEventListener('click', () => {
       uiState.metric = b.dataset.metric; render();
@@ -5806,20 +5885,20 @@
         const month = todayIso().slice(0, 7);
         const rows = members.map((m) => {
           const ws = workoutsOf(m.id).filter((w) => w.date.slice(0, 7) === month);
-          const volume = ws.reduce((t, w) => t + w.entries.reduce((x, e) => x + entryVolumeKg(e), 0), 0);
+          const sets = ws.reduce((t, w) => t + w.entries.reduce((x, e) => x + entrySetCount(e), 0), 0);
           let prs = 0;
           for (const name of loggedExercises(m.id)) {
             prs += exerciseSessions(m.id, name).filter((s) => s.isPr && s.date.slice(0, 7) === month).length;
           }
-          return { name: m.name, sessions: ws.length, volume, prs };
+          return { name: m.name, sessions: ws.length, sets, prs };
         });
         const best = Math.max(...rows.map((r) => r.prs));
         return `<div class="card table-wrap"><table class="data">
-          <thead><tr><th></th><th class="num">Trainingen</th><th class="num">Volume</th><th class="num">PR's</th></tr></thead>
+          <thead><tr><th></th><th class="num">Trainingen</th><th class="num">Sets</th><th class="num">PR's</th></tr></thead>
           <tbody>${rows.map((r) => `<tr>
             <td>${esc(r.name)}${best > 0 && r.prs === best ? ' 🏆' : ''}</td>
             <td class="num">${r.sessions}</td>
-            <td class="num">${esc(fmtKg(r.volume))}</td>
+            <td class="num">${r.sets}</td>
             <td class="num">${r.prs}</td>
           </tr>`).join('')}</tbody>
         </table></div>` +
