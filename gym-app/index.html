@@ -398,6 +398,7 @@
     border: 1px solid var(--good-line); background: var(--good-wash);
     border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; font-size: 13.5px;
   }
+  .linklike { background: none; border: 0; padding: 0; color: var(--accent-strong); text-decoration: underline; font-size: inherit; cursor: pointer; }
   .day-strip { display: flex; flex-wrap: wrap; gap: 6px; }
   .day-chip {
     font-size: 13px; padding: 5px 11px; border-radius: 999px;
@@ -569,7 +570,7 @@
 <script>
 (() => {
   'use strict';
-  const APP_VERSION = 55; // bump when publishing; shown on the home screen
+  const APP_VERSION = 56; // bump when publishing; shown on the home screen
   const KEY = 'coachlog-v1';
   const $app = document.getElementById('app');
 
@@ -5320,6 +5321,7 @@
     }));
     await cloud.remove('client_schemas', `client_id=eq.${cloudClientId}`);
     if (rows.length) await cloud.insert('client_schemas', rows);
+    if (localClient.cloudId !== cloudClientId) { localClient.cloudId = cloudClientId; save(); }
     return rows.length;
   }
 
@@ -5365,21 +5367,37 @@
           d.water = w.ml; byDate.set(w.date, d);
         }
         const days = [...byDate.values()].sort((a, b) => b.date.localeCompare(a.date));
-        const localClient = db.clients.find((c) => c.name.toLowerCase() === (active.name || '').toLowerCase());
+        const localClient = db.clients.find((c) => c.cloudId === active.id)
+          || db.clients.find((c) => !c.cloudId && c.name.toLowerCase() === (active.name || '').toLowerCase());
 
         $app.innerHTML = topbar('Van klanten', '/') +
           `<div class="chips" style="margin-bottom:12px">${profiles.map((p) =>
             `<button class="chip" data-feed-client="${p.id}" aria-pressed="${p.id === active.id}">${esc(p.name || 'naamloos')}</button>`).join('')}</div>` +
-          `<p class="sub" style="margin:0 0 12px">Laatste 30 dagen van ${esc(active.name || 'deze klant')}.${localClient ? '' : ' <span class="mut">Nog geen klant met deze naam in je eigen administratie.</span>'}</p>` +
+          `<p class="sub" style="margin:0 0 12px">Laatste 30 dagen van ${esc(active.name || 'deze klant')}.</p>` +
           (localClient ? `<div class="card">
             <div class="row"><div class="grow">
               <div class="title">Schema's klaarzetten</div>
               <div class="sub">${schemasOf(localClient.id).length
-                ? `Stuur ${esc(localClient.name)} de ${programOf(localClient.id) ? 'dagen van het weekprogramma' : `${schemasOf(localClient.id).length} schema${schemasOf(localClient.id).length === 1 ? '' : "'s"}`} door, zodat ze in de sporter-app te zien zijn.`
-                : 'Deze klant heeft nog geen schema\'s.'}</div>
+                ? `Stuur ${esc(localClient.name)} ${programOf(localClient.id)
+                    ? 'de dagen van het weekprogramma'
+                    : `${schemasOf(localClient.id).length === 1 ? 'het schema' : `alle ${schemasOf(localClient.id).length} schema's`}`} door, zodat het in de sporter-app te zien is.`
+                : `${esc(localClient.name)} heeft nog geen schema's in je eigen administratie.`}</div>
+              <div class="mut" style="margin-top:4px">Gekoppeld aan <b>${esc(localClient.name)}</b>.
+                <button class="linklike" id="unlink-client" type="button">Andere klant kiezen</button></div>
             </div>
             <button class="small primary" id="push-schemas" ${schemasOf(localClient.id).length ? '' : 'disabled'}>Klaarzetten</button></div>
-          </div>` : '') +
+          </div>` : `<div class="note-box">
+            <strong>Nog niet gekoppeld aan een klant in je eigen administratie.</strong>
+            <p class="sub" style="margin:6px 0 8px">Dit account heet in de cloud <b>${esc(active.name || 'naamloos')}</b>. Kies hieronder wie dat is,
+              dan kun je schema's klaarzetten en trainingen overnemen.</p>
+            <div class="row">
+              <select id="link-client" class="grow">
+                <option value="">— kies een klant —</option>
+                ${sortedClients().filter((c) => !c.archived).map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}
+              </select>
+              <button class="small primary" id="link-save">Koppelen</button>
+            </div>
+          </div>`) +
           (days.length ? days.map((d) => {
             const kcal = d.meals.reduce((t, m) => t + Number(m.kcal || 0), 0);
             const protein = d.meals.reduce((t, m) => t + Number(m.protein || 0), 0);
@@ -5397,6 +5415,23 @@
         document.querySelectorAll('[data-feed-client]').forEach((b) => b.addEventListener('click', () => {
           location.hash = `/vanklanten/${b.dataset.feedClient}`;
         }));
+        const linkSave = document.getElementById('link-save');
+        if (linkSave) linkSave.addEventListener('click', () => {
+          const pick = document.getElementById('link-client').value;
+          const target = db.clients.find((c) => c.id === pick);
+          if (!target) { alert('Kies eerst een klant.'); return; }
+          db.clients.forEach((c) => { if (c.cloudId === active.id) delete c.cloudId; });
+          target.cloudId = active.id;
+          save();
+          render();
+        });
+        const unlink = document.getElementById('unlink-client');
+        if (unlink) unlink.addEventListener('click', () => {
+          db.clients.forEach((c) => { if (c.cloudId === active.id) delete c.cloudId; });
+          if (localClient) localClient.cloudId = '__none__'; // stops the name match until a new pick
+          save();
+          render();
+        });
         const pushBtn = document.getElementById('push-schemas');
         if (pushBtn) pushBtn.addEventListener('click', async () => {
           pushBtn.disabled = true;
