@@ -356,6 +356,8 @@
   .set-row .n { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
   .set-row .n b { color: var(--accent-strong); font-weight: 700; }
   .mg-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  .meal-line { display: flex; gap: 8px; align-items: baseline; font-size: 13.5px; padding: 2px 0; }
+  .meal-line .meal-when { color: var(--muted); min-width: 62px; font-size: 12px; }
   .schema-sum { display: flex; align-items: center; gap: 9px; }
   .mg-row { display: inline-flex; gap: 4px; align-items: center; }
   /* a card that carries its muscle-group colour on the leading edge */
@@ -572,7 +574,7 @@
 <script>
 (() => {
   'use strict';
-  const APP_VERSION = 61; // bump when publishing; shown on the home screen
+  const APP_VERSION = 62; // bump when publishing; shown on the home screen
   const KEY = 'coachlog-v1';
   const $app = document.getElementById('app');
 
@@ -5405,6 +5407,53 @@
     }
   }
 
+  const dayMacros = (meals) => meals.reduce((t, m) => ({
+    kcal: t.kcal + Number(m.kcal || 0), protein: t.protein + Number(m.protein || 0),
+    carbs: t.carbs + Number(m.carbs || 0), fat: t.fat + Number(m.fat || 0),
+  }), emptyTotals());
+
+  // what this client has been eating on average, next to the plan you set for them
+  function feedNutritionHtml(days, localClient) {
+    const eaten = days.filter((d) => d.meals.length);
+    if (!eaten.length) return '';
+    const avgOver = (n) => {
+      const pick = eaten.slice(0, n);
+      const sum = pick.reduce((t, d) => {
+        const m = dayMacros(d.meals);
+        return { kcal: t.kcal + m.kcal, protein: t.protein + m.protein, carbs: t.carbs + m.carbs, fat: t.fat + m.fat };
+      }, emptyTotals());
+      return { days: pick.length, avg: Object.fromEntries(MACROS.map((m) => [m.key, Math.round(sum[m.key] / pick.length)])) };
+    };
+    const week = avgOver(7);
+    const month = avgOver(30);
+    const plan = localClient ? planOf(localClient.id) : null;
+    const water = eaten.filter((d) => d.water > 0);
+    const avgWater = water.length ? Math.round(water.reduce((t, d) => t + d.water, 0) / water.length) : 0;
+
+    return `<div class="eyebrow">Voeding — gemiddelde per dag</div>
+      <div class="card">
+        <div class="table-wrap"><table class="data">
+          <thead><tr><th></th>${MACROS.map((m) => `<th class="num">${m.label}</th>`).join('')}</tr></thead>
+          <tbody>
+            <tr><td>Laatste ${week.days} ${week.days === 1 ? 'dag' : 'dagen'}</td>
+              ${MACROS.map((m) => `<td class="num">${week.avg[m.key]} ${m.unit}</td>`).join('')}</tr>
+            ${month.days > week.days ? `<tr><td>Laatste ${month.days} dagen</td>
+              ${MACROS.map((m) => `<td class="num">${month.avg[m.key]} ${m.unit}</td>`).join('')}</tr>` : ''}
+            ${plan ? `<tr><td class="mut">Jouw plan</td>
+              ${MACROS.map((m) => `<td class="num mut">${Math.round(plan[m.key] || 0)} ${m.unit}</td>`).join('')}</tr>
+            <tr><td class="mut">Verschil</td>
+              ${MACROS.map((m) => {
+                const d = week.avg[m.key] - Math.round(plan[m.key] || 0);
+                return `<td class="num"><span class="${d === 0 ? 'mut' : d > 0 ? 'delta up' : 'delta down'}">${d > 0 ? '+' : ''}${d} ${m.unit}</span></td>`;
+              }).join('')}</tr>` : ''}
+          </tbody>
+        </table></div>
+        <p class="mut" style="margin:8px 0 0">Gerekend over de dagen waarop iets is gelogd${
+          avgWater ? `. Water gemiddeld ${(avgWater / 1000).toLocaleString('nl-NL')} l per dag` : ''}.${
+          plan ? '' : localClient ? ' Zet een voedingsplan bij deze klant om er een doel naast te zien.' : ''}</p>
+      </div>`;
+  }
+
   function viewClientFeed(clientKey) {
     if (!cloud.configured() || !cloud.signedIn()) {
       $app.innerHTML = topbar('Van klanten', '/') +
@@ -5479,16 +5528,25 @@
               <button class="small primary" id="link-save">Koppelen</button>
             </div>
           </div>`) +
+          feedNutritionHtml(days, localClient) +
+          `<div class="eyebrow">Dagboek</div>` +
           (days.length ? days.map((d) => {
-            const kcal = d.meals.reduce((t, m) => t + Number(m.kcal || 0), 0);
-            const protein = d.meals.reduce((t, m) => t + Number(m.protein || 0), 0);
+            const tot = dayMacros(d.meals);
+            const byMoment = MOMENTS
+              .map((mo) => ({ mo, items: d.meals.filter((m) => (m.moment || 'Snack') === mo) }))
+              .filter((g) => g.items.length);
             return `<div class="card">
               <div class="row"><div class="grow"><div class="title">${esc(fmtDateFull(d.date))}</div></div>
                 ${d.workouts.length && localClient ? `<button class="small" data-import="${d.date}">Neem training over</button>` : ''}</div>
               ${d.workouts.map((w) => `<div class="sub">🏋️ ${w.entries.map((e) => esc(e.name)).join(' · ') || 'training'}${w.duration_min ? ` <span class="mut">${w.duration_min} min</span>` : ''}</div>`).join('')}
-              ${d.meals.length ? `<div class="sub">🍽️ ${Math.round(kcal)} kcal · ${Math.round(protein)} g eiwit <span class="mut">(${d.meals.length} items)</span></div>` : ''}
+              ${d.meals.length ? `<div class="sub" style="margin-top:4px">🍽️ ${MACROS.map((m) =>
+                `${Math.round(tot[m.key])} ${m.unit === 'kcal' ? 'kcal' : 'g ' + m.label.toLowerCase()}`).join(' · ')}</div>` : ''}
               ${d.water ? `<div class="sub">💧 ${(d.water / 1000).toLocaleString('nl-NL')} l</div>` : ''}
-              ${d.meals.length ? `<div class="mut">${d.meals.map((m) => esc(m.name)).join(', ')}</div>` : ''}
+              ${byMoment.map((g) => `<div class="meal-line">
+                <span class="meal-when">${esc(g.mo)}</span>
+                <span class="grow">${g.items.map((m) => esc(m.name)).join(', ')}</span>
+                <span class="mut">${Math.round(g.items.reduce((t, m) => t + Number(m.kcal || 0), 0))} kcal</span>
+              </div>`).join('')}
             </div>`;
           }).join('') : '<p class="mut">Deze klant heeft nog niets gelogd.</p>');
 

@@ -14,7 +14,7 @@ Dit is geen onderdeel van de MCP-server in deze repo; het is een losstaande app 
 
 ## Werkwijze — houd je hieraan
 
-1. **Elke wijziging**: `APP_VERSION` in `index.html` én `CACHE` in `sw.js` ophogen (nu **61**).
+1. **Elke wijziging**: `APP_VERSION` in `index.html` én `CACHE` in `sw.js` ophogen (nu **62**).
    Zonder die twee ziet hij de wijziging niet op zijn tablet.
 2. **Testen** met Playwright (`playwright-core`, `executablePath: '/opt/pw-browsers/chromium'`)
    tegen `python3 -m http.server` in `gym-app/`. Schrijf per functie een klein `.mjs`-scriptje
@@ -129,7 +129,9 @@ oefening een detailgrafiek met alle sessies; een melding zodra de coach iets nie
 de agenda van de coach (tabel `client_appointments`) en **Metingen** met het verschil sinds de
 vorige meting plus een grafiek per meetwaarde (tabel `client_measurements`); alle drie gaan mee
 met dezelfde Klaarzetten-knop; komt bij
-de coach binnen onder **Van klanten** en is met één tik over te nemen. Koppeling cloudaccount ↔
+de coach binnen onder **Van klanten** en is met één tik over te nemen. Daar staat ook een
+voedingsoverzicht: gemiddelde macro's per dag over 7 en 30 dagen, naast het voedingsplan van
+die klant met het verschil, en per dag de maaltijden gegroepeerd per moment. Koppeling cloudaccount ↔
 lokale klant loopt via `client.cloudId`; matcht de naam niet, dan kies je de klant zelf uit een
 lijst (naam-matching is alleen nog de eerste gok). Daar staat ook
 **Schema's klaarzetten**: `publishSchemas()` schrijft de schema's van de klant (in
