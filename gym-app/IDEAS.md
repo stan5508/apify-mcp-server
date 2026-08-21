@@ -141,7 +141,12 @@ een training mee met de doelen al ingevuld.
 Sinds versie 57/58 logt de klant met dezelfde hulpmiddelen als de coach (vorige keer,
 afvinken, rusttimer) en ziet hij zijn eigen voortgang onder het tabblad **Voortgang**.
 
-Nog open: meldingen ("je coach heeft een nieuw schema klaargezet").
+Sinds versie 59 ziet de klant een melding in de app zodra de coach iets nieuws klaarzet, en
+staan de agenda-afspraken van de coach in zijn app.
+
+Nog open: **echte pushmeldingen** naar een gesloten telefoon. Dat vraagt VAPID-sleutels, een
+tabel met push-abonnementen, een `push`-handler in `sw.js`, registratie van de service worker
+in `sporter.html` (die doet dat nu niet) en een Edge Function die de push verstuurt.
 
 ## Nog te doen (opzetwerk, niet door de app)
 
@@ -295,7 +300,12 @@ een training mee met de doelen al ingevuld.
 Sinds versie 57/58 logt de klant met dezelfde hulpmiddelen als de coach (vorige keer,
 afvinken, rusttimer) en ziet hij zijn eigen voortgang onder het tabblad **Voortgang**.
 
-Nog open: meldingen ("je coach heeft een nieuw schema klaargezet").
+Sinds versie 59 ziet de klant een melding in de app zodra de coach iets nieuws klaarzet, en
+staan de agenda-afspraken van de coach in zijn app.
+
+Nog open: **echte pushmeldingen** naar een gesloten telefoon. Dat vraagt VAPID-sleutels, een
+tabel met push-abonnementen, een `push`-handler in `sw.js`, registratie van de service worker
+in `sporter.html` (die doet dat nu niet) en een Edge Function die de push verstuurt.
 
 ## Nog te doen (opzetwerk, niet door de app)
 

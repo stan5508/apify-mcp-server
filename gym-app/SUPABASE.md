@@ -16,10 +16,13 @@ de accounts en de gegevens bewaart: **Supabase**.
 Open in Supabase de **SQL Editor** en plak onderstaande code in zijn geheel. Klik **Run**.
 
 > **Draaide je dit al eerder?** Dan bestaan de meeste tabellen al en klaagt Supabase daarover.
-> Voer in dat geval alleen het blok voor `client_schemas` uit (de tabel én de twee bijbehorende
-> `create policy`-regels plus de `alter table … enable row level security`-regel). Dat is de
-> tabel waarmee je schema's bij je klanten in de sporter-app komen; zonder die tabel werkt de
-> rest gewoon door, alleen zien klanten hun schema niet.
+> Voer in dat geval alleen de blokken uit die je nog mist — per tabel is dat de `create table`,
+> de bijbehorende `alter table … enable row level security` en de twee `create policy`-regels:
+>
+> - `client_schemas` — jouw schema's bij de klant in de sporter-app (sinds versie 55)
+> - `client_appointments` — jouw agenda-afspraken bij de klant (sinds versie 59)
+>
+> Zonder die tabellen werkt de rest gewoon door; de klant ziet dat onderdeel dan alleen niet.
 
 ```sql
 -- profielen: elke ingelogde gebruiker heeft er één
@@ -77,6 +80,19 @@ create table public.client_schemas (
   updated_at timestamptz not null default now()
 );
 
+-- afspraken die de coach met de klant heeft staan
+create table public.client_appointments (
+  id uuid primary key default gen_random_uuid(),
+  client_id uuid not null references public.profiles(id) on delete cascade,
+  coach_id uuid not null references public.profiles(id) on delete cascade,
+  date date not null,
+  time text not null default '',
+  duration_min int,
+  status text not null default 'gepland',
+  note text not null default '',
+  updated_at timestamptz not null default now()
+);
+
 -- water per dag
 create table public.client_water (
   client_id uuid not null references public.profiles(id) on delete cascade,
@@ -90,6 +106,7 @@ alter table public.invites enable row level security;
 alter table public.client_workouts enable row level security;
 alter table public.client_meals enable row level security;
 alter table public.client_schemas enable row level security;
+alter table public.client_appointments enable row level security;
 alter table public.client_water enable row level security;
 
 -- profielen: jezelf lezen/bijwerken, en als coach je eigen klanten lezen
@@ -127,6 +144,16 @@ create policy "coach beheert schema's van klanten" on public.client_schemas
     select 1 from public.profiles p where p.id = client_schemas.client_id and p.coach_id = auth.uid()
   )) with check (exists (
     select 1 from public.profiles p where p.id = client_schemas.client_id and p.coach_id = auth.uid()
+  ));
+
+-- afspraken: de coach beheert ze, de klant leest alleen de zijne
+create policy "klant leest eigen afspraken" on public.client_appointments
+  for select using (client_id = auth.uid());
+create policy "coach beheert afspraken van klanten" on public.client_appointments
+  for all using (exists (
+    select 1 from public.profiles p where p.id = client_appointments.client_id and p.coach_id = auth.uid()
+  )) with check (exists (
+    select 1 from public.profiles p where p.id = client_appointments.client_id and p.coach_id = auth.uid()
   ));
 
 create policy "klant beheert eigen water" on public.client_water

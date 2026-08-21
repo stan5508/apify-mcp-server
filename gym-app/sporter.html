@@ -53,6 +53,13 @@
   .set-tick[aria-pressed="true"] { background: var(--good); border-color: var(--good); color: #fff; }
   .set-row.done input { border-color: var(--good); background: rgba(63, 158, 108, 0.16); }
   .prev-line { color: var(--muted); font-size: 12.5px; margin: -2px 0 8px; }
+  .new-banner {
+    display: flex; align-items: center; gap: 10px;
+    border: 1px solid var(--accent); background: rgba(242, 169, 59, 0.14);
+    border-radius: 10px; padding: 12px 14px; margin-bottom: 12px;
+  }
+  .appt-rest { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--grid); }
+  .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); margin-left: 5px; vertical-align: middle; }
   .trend { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
   .trend.up { background: rgba(63, 158, 108, 0.17); color: var(--good); }
   .trend.down { background: rgba(229, 100, 92, 0.16); color: var(--danger); }
@@ -227,7 +234,7 @@
   let local = load();
   const saveLocal = () => localStorage.setItem(LOCAL_KEY, JSON.stringify(local));
 
-  let ui = { tab: 'training', date: todayIso(), draft: null, meals: [], workouts: [], water: 0, schemas: [], schemaError: '', history: new Map(), sessions: [], progressEx: null, profile: null, busy: false };
+  let ui = { tab: 'training', date: todayIso(), draft: null, meals: [], workouts: [], water: 0, schemas: [], schemaError: '', history: new Map(), sessions: [], progressEx: null, appointments: [], profile: null, busy: false };
 
   // ---------- views ----------
   function setupView(message) {
@@ -354,7 +361,13 @@
         <label class="field" style="margin-top:10px"><span>Notitie</span><input id="w-note" value="${esc(draft.notes || '')}" placeholder="hoe ging het?"></label>
         <button class="primary wide" id="save-workout">Training opslaan</button>
       </div>`
-      : `<div class="eyebrow">Van je coach</div>
+      : `${hasNewSchema() ? `<div class="new-banner">
+            <div class="grow"><strong>Je coach heeft een nieuw schema klaargezet.</strong>
+              <div class="sub">Bijgewerkt ${esc(fmtDate(newestSchemaAt().slice(0, 10)))}. Kies hieronder om ermee te starten.</div></div>
+            <button class="small" id="seen-schema">Gezien</button>
+          </div>` : ''}
+        ${apptBlock()}
+        <div class="eyebrow">Van je coach</div>
         ${(ui.schemas || []).length
           ? ui.schemas.map((sc, i) => `<div class="card">
               <div class="row"><div class="grow">
@@ -367,6 +380,25 @@
               ? esc(ui.schemaError)
               : 'Je coach heeft nog geen schema klaargezet. Zodra dat gebeurt staat het hier.'}</div></div>`}
         <button class="primary wide" id="start-workout">${(ui.schemas || []).length ? 'Losse training starten' : 'Training starten'}</button>`}`;
+  }
+
+  // upcoming sessions with your coach; the first one gets the spotlight
+  function apptBlock() {
+    const list = (ui.appointments || []).filter((a) => a.status !== 'geannuleerd');
+    if (!list.length) return '';
+    const [next, ...rest] = list;
+    const when = (a) => `${fmtDateFull(a.date)}${a.time ? ` om ${esc(a.time)}` : ''}`;
+    const today = a => a.date === todayIso();
+    return `<div class="eyebrow">Je afspraken</div>
+      <div class="card">
+        <div class="mut">${today(next) ? 'Vandaag' : 'Volgende afspraak'}</div>
+        <div class="title">${esc(when(next))}</div>
+        ${next.note ? `<div class="sub">${esc(next.note)}</div>` : ''}
+        ${next.duration_min ? `<div class="mut">${next.duration_min} minuten</div>` : ''}
+        ${rest.length ? `<div class="appt-rest">${rest.slice(0, 6).map((a) =>
+          `<div class="sub">${esc(when(a))}${a.note ? ` · ${esc(a.note)}` : ''}</div>`).join('')}
+          ${rest.length > 6 ? `<div class="mut">en nog ${rest.length - 6}.</div>` : ''}</div>` : ''}
+      </div>`;
   }
 
   function progressTab() {
@@ -504,7 +536,7 @@
         <button class="small ghost" id="sign-out">Uitloggen</button>
       </div>
       <div class="tabs">
-        <button data-tab="training" aria-pressed="${ui.tab === 'training'}">Training</button>
+        <button data-tab="training" aria-pressed="${ui.tab === 'training'}">Training${hasNewSchema() ? '<span class="dot" aria-label="nieuw"></span>' : ''}</button>
         <button data-tab="voortgang" aria-pressed="${ui.tab === 'voortgang'}">Voortgang</button>
         <button data-tab="voeding" aria-pressed="${ui.tab === 'voeding'}">Voeding</button>
       </div>
@@ -524,6 +556,8 @@
     document.querySelectorAll('[data-prog]').forEach((b) => b.addEventListener('click', () => {
       ui.progressEx = b.dataset.prog; appView();
     }));
+    const seenBtn = document.getElementById('seen-schema');
+    if (seenBtn) seenBtn.addEventListener('click', () => { markSchemasSeen(); appView(); });
     const progBack = document.getElementById('prog-back');
     if (progBack) progBack.addEventListener('click', () => { ui.progressEx = null; appView(); });
     document.querySelectorAll('[data-day]').forEach((b) => b.addEventListener('click', async () => {
@@ -541,6 +575,7 @@
     document.querySelectorAll('[data-use-schema]').forEach((b) => b.addEventListener('click', () => {
       const sc = ui.schemas[Number(b.dataset.useSchema)];
       if (!sc) return;
+      markSchemasSeen();
       startFromSchema(sc);
       appView();
     }));
@@ -881,6 +916,20 @@
     }
     return streak;
   }
+  // the moment the coach last put schemas ready; anything newer than what we saw is news
+  const newestSchemaAt = () => (ui.schemas || [])
+    .map((sc) => sc.updated_at || '')
+    .sort()
+    .pop() || '';
+  const hasNewSchema = () => {
+    const at = newestSchemaAt();
+    return !!at && at !== (local.schemasSeenAt || '');
+  };
+  const markSchemasSeen = () => {
+    const at = newestSchemaAt();
+    if (at && at !== local.schemasSeenAt) { local.schemasSeenAt = at; saveLocal(); }
+  };
+
   const lastTime = (name) => ui.history.get(String(name || '').trim().toLowerCase()) || null;
   const prevLine = (name) => {
     const p = lastTime(name);
@@ -889,6 +938,16 @@
       .map((x) => `${fmtNum(x.weight || 0)}×${x.reps || 0}`).join(' · ');
     return `vorige keer ${fmtDate(p.date)}${txt ? ' — ' + txt : ''}`;
   };
+
+  // the coach's agenda for this client, from today on
+  async function loadAppointments() {
+    try {
+      ui.appointments = await cloud.select('client_appointments',
+        `client_id=eq.${cloud.userId()}&date=gte.${todayIso()}&select=*&order=date`);
+    } catch {
+      ui.appointments = [];
+    }
+  }
 
   // schemas the coach put ready; missing table or no rows simply means nothing to show
   async function loadSchemas() {
@@ -930,7 +989,7 @@
       const profile = await cloud.ensureProfile('client', '');
       ui.profile = profile;
       if (!profile.coach_id) { inviteView(); return; }
-      await Promise.all([loadDay(), loadSchemas(), loadHistory()]);
+      await Promise.all([loadDay(), loadSchemas(), loadHistory(), loadAppointments()]);
       appView();
       bindRestBar();
     } catch (e) {
