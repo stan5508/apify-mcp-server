@@ -15,6 +15,8 @@
     --grid: #262b33; --baseline: #39414c; --border: rgba(255, 255, 255, 0.11);
     --accent: #f2a93b; --accent-strong: #ffc163; --on-accent: #0b0d0f; --wash: rgba(242, 169, 59, 0.14);
     --good: #3f9e6c; --danger: #e5645c; --data: #e8384f; --data-wash: rgba(232, 56, 79, 0.16);
+    /* de schijfkleuren, gelijk aan de coach-app: duwen rood, trekken blauw, core geel, benen groen */
+    --series-1: #e8384f; --series-2: #3d8bff; --series-3: #f2c200; --series-4: #2fbf62;
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--page); color: var(--ink); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
@@ -58,6 +60,9 @@
     border: 1px solid var(--accent); background: rgba(242, 169, 59, 0.14);
     border-radius: 10px; padding: 12px 14px; margin-bottom: 12px;
   }
+  .mg-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; display: inline-block; }
+  .schema-sum { display: flex; align-items: center; gap: 9px; }
+  .mg-row { display: inline-flex; gap: 4px; align-items: center; }
   .appt-rest { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--grid); }
   .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); margin-left: 5px; vertical-align: middle; }
   .trend { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
@@ -109,6 +114,34 @@
   const todayIso = () => new Date().toISOString().slice(0, 10);
   const addDays = (iso, n) => { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
   const fmtDateFull = (iso) => new Date(iso + 'T12:00:00').toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' });
+  // the coach's schemas carry a muscle group per exercise; these are the same colours he sees
+  const GROUP_COLOURS = {
+    'Pectoralis major': 'var(--series-1)', Deltoideus: 'var(--series-1)', 'Triceps brachii': 'var(--series-1)',
+    'Latissimus dorsi': 'var(--series-2)', Trapezius: 'var(--series-2)', 'Biceps brachii': 'var(--series-2)',
+    'Erector spinae': 'var(--series-2)',
+    Quadriceps: 'var(--series-4)', Hamstrings: 'var(--series-4)', 'Gluteus maximus': 'var(--series-4)',
+    'Triceps surae': 'var(--series-4)',
+    'Rectus abdominis': 'var(--series-3)',
+  };
+  // a schema at a glance: a dot per muscle group, then how many exercises
+  function schemaSummaryHtml(exercises) {
+    const list = exercises || [];
+    if (!list.length) return `<div class="sub">nog geen oefeningen</div>`;
+    // one dot per colour, not per group: pull work is one blue dot, not one per back muscle
+    const byColour = new Map();
+    for (const e of list) {
+      if (!e.group) continue;
+      const col = GROUP_COLOURS[e.group] || 'var(--baseline)';
+      const seen = byColour.get(col) || [];
+      if (!seen.includes(e.group)) byColour.set(col, [...seen, e.group]);
+    }
+    return `<div class="schema-sum">
+      ${byColour.size ? `<span class="mg-row">${[...byColour].slice(0, 5).map(([col, names]) =>
+        `<span class="mg-dot" style="background:${col}" title="${esc(names.join(', '))}"></span>`).join('')}</span>` : ''}
+      <span class="sub">${list.length} oefening${list.length === 1 ? '' : 'en'}</span>
+    </div>`;
+  }
+
   const fmtDate = (iso) => new Date(iso + 'T12:00:00').toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' });
   const fmtNum = (n) => (Math.round(n * 10) / 10).toLocaleString('nl-NL');
   const MOMENTS = ['Ontbijt', 'Lunch', 'Diner', 'Snack'];
@@ -372,7 +405,7 @@
           ? ui.schemas.map((sc, i) => `<div class="card">
               <div class="row"><div class="grow">
                 <div class="title">${esc(sc.name || 'Schema')}</div>
-                <div class="sub">${(sc.exercises || []).map((e) => esc(e.name)).join(' · ') || 'nog geen oefeningen'}</div>
+                ${schemaSummaryHtml(sc.exercises)}
               </div>
               <button class="small primary" data-use-schema="${i}">Start</button></div>
             </div>`).join('')
