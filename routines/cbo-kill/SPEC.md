@@ -5,7 +5,7 @@ Draait elke 10 minuten tussen 23:00 en 09:00 Europe/London (de advertiser-tijdzo
 
 ## Planning
 
-**Eén Routine**, `2 22,23,0-7 * * *` (UTC; London = UTC+1 in de zomertijd). Elke fire draait **zes checks binnen
+**Eén Routine**, `2 23,0-7 * * *` (UTC; London = UTC+1 in de zomertijd). Elke fire draait **zes checks binnen
 dat uur**, telkens 10 minuten uit elkaar: op :02, :12, :22, :32, :42 en :52.
 
 Wachten tussen checks gaat met `sleep 600` als achtergrond-Bash, nooit op de voorgrond.
@@ -18,24 +18,27 @@ op die je zes keer moet instellen en onderhouden. Eén Routine met een interne l
 De prijs daarvan: valt een sessie halverwege om, dan mis je de rest van dat uur in plaats van één check.
 Dat weegt niet op tegen zes keer configureren.
 
-### Tijdzones — het venster start een uur eerder dan je zou denken
+### Tijdzones — gemeten, niet aangenomen
 
 Het adaccount staat op **Europe/London**, de eigenaar zit in **Nederland**. In de zomertijd is NL = UTC+2 en
-London = UTC+1, dus een uur verschil.
+London = UTC+1.
+
+De livegang-routine (`trig_016uvyEs7cUJyCxuQdFMKnLH`, cron `1 23 * * *`) zet de campagnes aan op **00:01 in de
+adaccount-tijdzone**, niet om 00:01 Nederlandse tijd.
 
 | | NL | London (adaccount) | UTC |
 |---|---|---|---|
-| campagnes gaan live | 00:01 | 23:01 | 22:01 |
 | Meta-dag rolt om | 01:00 | 00:00 | 23:00 |
+| campagnes gaan live | 01:01 | 00:01 | 23:01 |
+| eerste kill-check | 01:02 | 00:02 | 23:02 |
 
-Campagnes die om 00:01 Nederlandse tijd starten, starten om 23:01 in de adaccount-tijdzone — dus nog op de
-**vorige** Meta-dag. Het venster begint daarom om 22:02 UTC en niet om 23:02, anders staat er 61 minuten
-onbewaakte spend voor de eerste check.
+Campagnes starten dus precies één minuut ná de dagovergang. Er lekt geen spend naar de vorige Meta-dag en er
+is geen blind uur. Het venster begint om 23:02 UTC; een fire om 22:02 UTC zou een uur vóór de livegang draaien
+en niets doen.
 
-**Gevolg voor de kill-regels:** die eerste 59 minuten tellen mee in de dagtotalen van gisteren. Om 00:00 London
-rolt de Meta-dag om en gaat `spend` terug naar nul. Een campagne die in dat eerste uur onder de €10 blijft,
-begint daarna opnieuw bij nul en kan dus meer verbranden dan de regel bedoelt. Campagnes starten op 00:01
-London (01:01 NL) haalt dit weg.
+Gemeten op de nacht van 20 op 21 augustus: de eerste spend van de nieuwe batch valt in het uur
+`01:00 - 01:59` London — ongeveer een uur na livegang. De eerste checks van een run zien dus normaal nog niets.
+Dat is opstartgedrag van Meta, geen storing.
 
 ### Connectors
 
@@ -49,8 +52,18 @@ Er wordt nooit iets gepauzeerd zonder data.
 ## Stap 0 — poortwachter
 
 Eén lichte query: `campaign` + `campaign_status` + `spend` via Windsor, `date_preset: "last_1dT"`.
-Staat er geen enkele campagne op `ACTIVE`, stop dan onmiddellijk. Geen verdere queries, geen document-update,
-geen melding. Dit voorkomt dat een lege nacht ~50 volledige runs kost.
+
+Een campagne telt als **levend** wanneer `campaign_status` op `ACTIVE` staat **of** ze vandaag spend heeft.
+Die tweede voorwaarde is nodig omdat Windsor `campaign_status` als momentopname teruggeeft en die achterloopt:
+in de data van 20 augustus staat élke rij op `PAUSED`, ook de uren waarin de campagne aantoonbaar spendde.
+
+Is er geen levende campagne, stop dan de hele run. Geen verdere queries, geen document-update, geen melding.
+Dit voorkomt dat een lege nacht ~50 volledige runs kost.
+
+**Uitzondering in de 23-uursrun.** Die fire draait één minuut na de livegang. Dan staat de status bij Windsor
+vaak nog op `PAUSED` en is de spend nog nul, terwijl de campagnes wel degelijk aan staan. Stoppen op dat moment
+kost het hele eerste uur — precies het venster waarin de €10-grens valt. In die run wordt de poortwachter
+daarom pas vanaf **check 3** (:22) toegepast.
 
 ## Stap 1 — data
 
@@ -269,7 +282,8 @@ CBO binnen 2 euro van een drempel zit.
 
 HARDE GRENZEN
 - Fout, lege respons of ontbrekende data: niets pauzeren, document bijwerken met de storing.
-- Nooit een campagne pauzeren die al PAUSED is.
+- Nooit twee keer dezelfde campagne pauzeren binnen een run. Ga af op wat je zelf al gepauzeerd hebt,
+  niet op `campaign_status` — dat veld loopt achter.
 - Nooit ad sets of ads pauzeren, altijd de campagne.
 - Nooit een regel versoepelen, aanscherpen of aanvullen op eigen oordeel.
 - Bij twijfel niets doen en het in het document vermelden.
