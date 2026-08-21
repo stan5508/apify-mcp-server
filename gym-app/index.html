@@ -398,6 +398,14 @@
     border: 1px solid var(--good-line); background: var(--good-wash);
     border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; font-size: 13.5px;
   }
+  .day-strip { display: flex; flex-wrap: wrap; gap: 6px; }
+  .day-chip {
+    font-size: 13px; padding: 5px 11px; border-radius: 999px;
+    border: 1px solid var(--border); color: var(--ink-2); background: var(--raised);
+  }
+  .day-chip b { color: var(--muted); margin-right: 4px; }
+  .day-chip.up { border-color: var(--accent); background: var(--wash); color: var(--accent-strong); font-weight: 600; }
+  .day-chip.up b { color: var(--accent-strong); }
   .ex-menu { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; padding: 9px; border: 1px solid var(--grid); border-radius: 8px; }
   .set-more { display: grid; grid-template-columns: auto 1fr; gap: 8px 10px; align-items: center; margin: -2px 0 10px 30px; padding: 10px; border: 1px solid var(--grid); border-radius: 8px; }
   .set-more .lbl { font-size: 12px; color: var(--muted); }
@@ -561,7 +569,7 @@
 <script>
 (() => {
   'use strict';
-  const APP_VERSION = 53; // bump when publishing; shown on the home screen
+  const APP_VERSION = 54; // bump when publishing; shown on the home screen
   const KEY = 'coachlog-v1';
   const $app = document.getElementById('app');
 
@@ -569,7 +577,7 @@
   const emptyDb = () => ({
     clients: [], schemas: [], workouts: [], duos: [], duoSchemas: [], templates: [], measurements: [],
     exercises: [], clientNotes: {}, appointments: [], packages: [], subTypes: [], subscriptions: [],
-    nutritionPlans: {}, meals: [], foods: [], water: {}, muscleGroups: {}, settings: { unit: 'kg', restSeconds: 90, autoRest: true, sound: true, barWeight: 20 }, updatedAt: 0,
+    programs: [], nutritionPlans: {}, meals: [], foods: [], water: {}, muscleGroups: {}, settings: { unit: 'kg', restSeconds: 90, autoRest: true, sound: true, barWeight: 20 }, updatedAt: 0,
   });
   // the Dutch group names this app shipped with, mapped onto their closest Latin equivalent
   const LEGACY_GROUPS = {
@@ -596,6 +604,7 @@
       appointments: d.appointments || [], packages: d.packages || [],
       subTypes: d.subTypes || [], subscriptions: d.subscriptions || [],
       nutritionPlans: d.nutritionPlans || {}, meals: d.meals || [], foods: d.foods || [], water: d.water || {},
+      programs: d.programs || [],
       muscleGroups: d.muscleGroups || {},
       settings: { unit: 'kg', restSeconds: 90, autoRest: true, sound: true, barWeight: 20, noShowCounts: true, currency: '€', theme: 'dark', pin: null, lockMinutes: 15, coachName: '', lastBackupAt: null,
         countTrainingBurn: true, kcalPerMin: 6, waterTargetMl: 2000, mailCopy: true,
@@ -1138,6 +1147,19 @@
   const schemaById = (id) => db.schemas.find((s) => s.id === id);
   const schemasOf = (clientId) => db.schemas.filter((s) => s.clientId === clientId);
   const workoutsOf = (clientId) => db.workouts.filter((w) => w.clientId === clientId).sort((a, b) => a.date.localeCompare(b.date));
+  const programOf = (clientId) => db.programs.find((p) => p.clientId === clientId) || null;
+  const dayLetter = (i) => String.fromCharCode(65 + i);
+
+  // which day of the rotation is up: the one after the schema that was trained last
+  function nextProgramDay(clientId) {
+    const p = programOf(clientId);
+    const ids = p ? p.schemaIds.filter((id) => schemaById(id)) : [];
+    if (!ids.length) return null;
+    const done = workoutsOf(clientId).filter((w) => ids.includes(w.schemaId));
+    const last = done.length ? done[done.length - 1] : null;
+    const index = last ? (ids.indexOf(last.schemaId) + 1) % ids.length : 0;
+    return { program: p, ids, index, schema: schemaById(ids[index]), lastDate: last ? last.date : null };
+  }
 
   // ---------- helpers ----------
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -2777,6 +2799,7 @@
     if (parts[0] === 'klant' && parts[2] === 'vergelijk') return viewCompare(parts[1]);
     if (parts[0] === 'klant' && parts[2] === 'rapport') return viewReport(parts[1]);
     if (parts[0] === 'klant' && parts[2] === 'oefening') return viewExercise(parts[1], parts[3]);
+    if (parts[0] === 'klant' && parts[2] === 'programma') return viewProgram(parts[1]);
     if (parts[0] === 'klant' && parts[2] === 'vrij') return viewPickExercises(parts[1]);
     if (parts[0] === 'klant' && parts[2] === 'sjabloon') return viewTemplatePick('klant', parts[1]);
     if (parts[0] === 'klant') return viewClient(parts[1]);
@@ -2826,6 +2849,7 @@
     const nextAppt = today.find((a) => a.status === 'gepland');
     const nextName = nextAppt ? apptTitle(nextAppt) : null;
     const nextCredit = nextAppt && nextAppt.clientId ? creditLedger(nextAppt.clientId) : null;
+    const nextDay = nextAppt && nextAppt.clientId ? nextProgramDay(nextAppt.clientId) : null;
     $app.innerHTML = topbar('Vandaag') +
       (today.length ? `<div class="card day-head">
         ${ringHtml(dayDone, today.length, `${dayDone} van ${today.length} sessies gedaan`)}
@@ -2833,10 +2857,15 @@
           ${nextAppt
             ? `<div class="sub">${nextAppt.time ? 'Om ' + esc(nextAppt.time) : 'Nog te gaan'}</div>
                <div class="next-name">${esc(nextName)}</div>
-               <div class="sub">${nextCredit ? `nog ${nextCredit.remaining} sessie${nextCredit.remaining === 1 ? '' : 's'} tegoed` : 'volgende sessie'}</div>`
+               <div class="sub">${[
+                 nextDay ? `dag ${dayLetter(nextDay.index)} — ${esc(nextDay.schema.name)}` : '',
+                 nextCredit ? `nog ${nextCredit.remaining} sessie${nextCredit.remaining === 1 ? '' : 's'} tegoed` : '',
+               ].filter(Boolean).join(' · ') || 'volgende sessie'}</div>`
             : `<div class="next-name">Dag rond</div><div class="sub">Alle ${today.length} sessies afgewerkt.</div>`}
         </div>
-        ${nextAppt ? `<button class="primary" data-nav="${apptHash(nextAppt)}">Start</button>` : ''}
+        ${nextAppt ? `<button class="primary" data-nav="${nextDay
+          ? `/klant/${nextAppt.clientId}/training/${nextDay.schema.id}`
+          : apptHash(nextAppt)}">Start</button>` : ''}
       </div>` : '') +
       `<div class="eyebrow">Agenda</div>
       <div class="card tappable" data-nav="/agenda" role="link" tabindex="0">
@@ -3281,6 +3310,91 @@
 
   let pendingFree = []; // exercises picked for a free session, set by viewPickExercises
   let pendingDuo = null; // { duoId, picks: { [clientId]: [names] } }, set by viewDuoPick
+  // put the client's schemas in a fixed order; the app then knows which day is up
+  function viewProgram(clientId) {
+    const c = clientById(clientId);
+    if (!c) { location.hash = '/'; return; }
+    const schemas = schemasOf(clientId);
+    const existing = programOf(clientId);
+    const draft = {
+      name: existing ? existing.name : 'Weekprogramma',
+      schemaIds: existing ? existing.schemaIds.filter((id) => schemaById(id)) : [],
+    };
+
+    const paint = () => {
+      const spare = schemas.filter((sc) => !draft.schemaIds.includes(sc.id));
+      $app.innerHTML = topbar(`Programma — ${c.name}`, `/klant/${clientId}`) +
+        (schemas.length
+          ? `<label class="field"><span>Naam</span><input id="pr-name" value="${esc(draft.name)}" placeholder="bijv. Push/Pull/Legs"></label>
+             <div class="eyebrow">Volgorde</div>` +
+            (draft.schemaIds.length
+              ? draft.schemaIds.map((sid, i) => {
+                const sc = schemaById(sid);
+                return `<div class="card"><div class="row">
+                  <span class="day-chip"><b>${dayLetter(i)}</b></span>
+                  <div class="grow"><div class="title">${esc(sc.name)}</div>
+                    <div class="sub">${sc.exercises.map((e) => esc(e.name)).join(' · ') || 'nog geen oefeningen'}</div></div>
+                  <button type="button" class="small ghost" data-pr-up="${i}" aria-label="Omhoog" ${i === 0 ? 'disabled' : ''}>↑</button>
+                  <button type="button" class="small ghost" data-pr-down="${i}" aria-label="Omlaag" ${i === draft.schemaIds.length - 1 ? 'disabled' : ''}>↓</button>
+                  <button type="button" class="small ghost danger" data-pr-rm="${i}" aria-label="Verwijderen">✕</button>
+                </div></div>`;
+              }).join('')
+              : `<p class="mut">Nog geen dagen gekozen. Voeg hieronder een schema toe.</p>`) +
+            (spare.length
+              ? `<div class="eyebrow">Toevoegen</div>
+                 <div class="actions">${spare.map((sc) => `<button type="button" data-pr-add="${sc.id}">+ ${esc(sc.name)}</button>`).join('')}</div>`
+              : '') +
+            `<hr class="divider">
+             <div class="actions">
+               <button class="primary" id="pr-save">Programma opslaan</button>
+               ${existing ? `<button class="danger ghost" id="pr-del">Programma verwijderen</button>` : ''}
+             </div>`
+          : `<div class="empty"><p>${esc(c.name)} heeft nog geen schema's. Maak er eerst twee of drie, dan kun je ze hier in een ritme zetten.</p>
+              <div class="actions"><button class="primary" data-nav="/klant/${clientId}/schema/nieuw">+ Nieuw schema</button></div></div>`);
+
+      bindNav();
+      const nameIn = document.getElementById('pr-name');
+      const keepName = () => { if (nameIn) draft.name = nameIn.value; };
+      document.querySelectorAll('[data-pr-add]').forEach((b) => b.addEventListener('click', () => {
+        keepName();
+        draft.schemaIds.push(b.dataset.prAdd);
+        paint();
+      }));
+      document.querySelectorAll('[data-pr-rm]').forEach((b) => b.addEventListener('click', () => {
+        keepName();
+        draft.schemaIds.splice(+b.dataset.prRm, 1);
+        paint();
+      }));
+      document.querySelectorAll('[data-pr-up], [data-pr-down]').forEach((b) => b.addEventListener('click', () => {
+        keepName();
+        const up = b.dataset.prUp !== undefined;
+        const i = +(up ? b.dataset.prUp : b.dataset.prDown);
+        const to = up ? i - 1 : i + 1;
+        if (to < 0 || to >= draft.schemaIds.length) return;
+        [draft.schemaIds[i], draft.schemaIds[to]] = [draft.schemaIds[to], draft.schemaIds[i]];
+        paint();
+      }));
+      const saveBtn = document.getElementById('pr-save');
+      if (saveBtn) saveBtn.addEventListener('click', () => {
+        keepName();
+        if (!draft.schemaIds.length) { alert('Kies minstens één schema.'); return; }
+        const name = draft.name.trim() || 'Weekprogramma';
+        if (existing) { existing.name = name; existing.schemaIds = [...draft.schemaIds]; }
+        else db.programs.push({ id: uid(), clientId, name, schemaIds: [...draft.schemaIds] });
+        save();
+        location.hash = `/klant/${clientId}`;
+      });
+      const delBtn = document.getElementById('pr-del');
+      if (delBtn) delBtn.addEventListener('click', () => {
+        if (!confirm('Dit programma verwijderen? De schema\'s zelf blijven bestaan.')) return;
+        db.programs = db.programs.filter((x) => x.id !== existing.id);
+        save();
+        location.hash = `/klant/${clientId}`;
+      });
+    };
+    paint();
+  }
+
   function viewClient(id) {
     const c = clientById(id);
     if (!c) { location.hash = '/'; return; }
@@ -3321,6 +3435,7 @@
     }).join('');
 
     const since = workouts.length ? workouts[0].date : null;
+    const next = nextProgramDay(id);
     $app.innerHTML = topbar(c.name, '/') +
       `<div class="client-hero">
         ${avatarStreakHtml(c, 60)}
@@ -3334,14 +3449,38 @@
       draftResumeHtml(`/klant/${id}/`) +
       statHtml +
       `<div style="margin-top:16px" class="actions">` +
-      schemas.map((s, i) => `<button class="${i === 0 ? 'primary' : ''}" data-nav="/klant/${id}/training/${s.id}">Start: ${esc(s.name)}</button>`).join('') +
-      `<button class="${schemas.length ? '' : 'primary'}" data-nav="/klant/${id}/vrij">+ Vrije training</button>` +
+      (next
+        ? `<button class="primary" data-nav="/klant/${id}/training/${next.schema.id}">Start: dag ${dayLetter(next.index)} — ${esc(next.schema.name)}</button>`
+        : '') +
+      schemas.map((s, i) => `<button class="${!next && i === 0 ? 'primary' : ''}" data-nav="/klant/${id}/training/${s.id}">Start: ${esc(s.name)}</button>`).join('') +
+      `<button class="${schemas.length || next ? '' : 'primary'}" data-nav="/klant/${id}/vrij">+ Vrije training</button>` +
       `</div>` +
 
       `<div class="eyebrow">Progressie per oefening</div>` +
       (exerciseCards ? `<div class="cards-2">${exerciseCards}</div>` : `<div class="empty"><p>Nog geen trainingen gelogd. Zodra je de eerste sessie logt verschijnt hier de progressie per oefening.</p>
         <div class="actions"><button class="primary" data-nav="/klant/${id}/vrij">+ Vrije training</button>
         <button data-nav="/klant/${id}/sjabloon">Uit sjabloon</button></div></div>`) +
+
+      `<div class="eyebrow">Weekprogramma</div>` +
+      (next
+        ? `<div class="card">
+            <div class="row" style="margin-bottom:10px">
+              <div class="grow title" style="margin:0">${esc(next.program.name)}</div>
+              <button class="small ghost" data-nav="/klant/${id}/programma">Aanpassen</button>
+            </div>
+            <div class="day-strip">${next.ids.map((sid, i) => {
+              const sc = schemaById(sid);
+              return `<span class="day-chip${i === next.index ? ' up' : ''}">
+                <b>${dayLetter(i)}</b> ${esc(sc.name)}${i === next.index ? ' · nu' : ''}</span>`;
+            }).join('')}</div>
+            <p class="mut" style="margin:10px 0 0">${next.lastDate
+              ? `Laatste programmatraining ${esc(fmtDate(next.lastDate))}. Hierna volgt dag ${dayLetter((next.index + 1) % next.ids.length)}.`
+              : 'Nog niet gestart — dag A staat klaar.'}</p>
+          </div>`
+        : `<div class="card">
+            <div class="sub">Zet je schema's in een vaste volgorde, dan houdt de app bij welke dag aan de beurt is.</div>
+            <div class="actions" style="margin-top:10px"><button data-nav="/klant/${id}/programma">+ Programma maken</button></div>
+          </div>`) +
 
       `<div class="eyebrow">Schema's</div>` +
       schemas.map((s) => `<div class="card tappable" data-nav="/klant/${id}/schema/${s.id}" role="link" tabindex="0">

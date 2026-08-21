@@ -25,8 +25,8 @@ sync via privé GitHub Gist, offline PWA, publicatie via `gh-pages` (zie `publis
 
 Niet afgewezen, alleen nu niet van toepassing:
 
-- **Progressieregels** — automatisch gewichtsverhoging voorstellen bij alle reps gehaald.
-- **Weekprogramma's / mesocycli** — relevant zodra klanten 2×/week komen.
+- ~~**Progressieregels**~~ — gebouwd in versie 53.
+- ~~**Weekprogramma's**~~ — gebouwd in versie 54: één programma per klant, dag A/B/C op volgorde.
 
 ## Backlog
 

@@ -14,7 +14,7 @@ Dit is geen onderdeel van de MCP-server in deze repo; het is een losstaande app 
 
 ## Werkwijze — houd je hieraan
 
-1. **Elke wijziging**: `APP_VERSION` in `index.html` én `CACHE` in `sw.js` ophogen (nu **53**).
+1. **Elke wijziging**: `APP_VERSION` in `index.html` én `CACHE` in `sw.js` ophogen (nu **54**).
    Zonder die twee ziet hij de wijziging niet op zijn tablet.
 2. **Testen** met Playwright (`playwright-core`, `executablePath: '/opt/pw-browsers/chromium'`)
    tegen `python3 -m http.server` in `gym-app/`. Schrijf per functie een klein `.mjs`-scriptje
@@ -80,7 +80,9 @@ foods, water, muscleGroups, settings`.
 
 ## Wat er staat
 
-**Trainen** — progressieregels (`progressSuggestion()`: alle werksets op of boven het schemadoel
+**Trainen** — weekprogramma's (`db.programs`: één programma per klant, een geordende rij
+schema's; `nextProgramDay()` kijkt welk schema het laatst gedraaid is en zet de volgende klaar,
+zichtbaar op de klantpagina en op Vandaag), progressieregels (`progressSuggestion()`: alle werksets op of boven het schemadoel
 gehaald → volgende keer een zwaarder gewicht klaargezet, met een groene hint; aan/uit en stap in
 Instellingen, eigen stap per oefening in de bibliotheek), sets afvinken (groene regel, trilling, rusttimer start vanzelf), sessiebalk met
 verstreken tijd en voortgang, afrondscherm met PR's en confetti, twee knoppen per oefening plus
