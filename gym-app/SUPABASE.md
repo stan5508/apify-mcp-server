@@ -241,6 +241,7 @@ mail mee versturen.
 
 ## Wat klanten wel en niet zien
 
-Klanten zien alleen hun eigen gegevens. Ze zien niets van andere klanten, en niets uit
-jouw eigen Coachlog-administratie (schema's, tegoeden, betalingen). Dat wordt afgedwongen
+Klanten zien alleen hun eigen gegevens: hun trainingen, hun voeding, en de schema's die jij
+voor hén hebt klaargezet met **Van klanten → Klaarzetten**. Ze zien niets van andere klanten,
+en verder niets uit jouw administratie (tegoeden, betalingen, contracten). Dat wordt afgedwongen
 door de databaseregels, niet door de app — ook wie de app zou omzeilen komt er niet bij.
