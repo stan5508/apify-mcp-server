@@ -572,7 +572,7 @@
 <script>
 (() => {
   'use strict';
-  const APP_VERSION = 60; // bump when publishing; shown on the home screen
+  const APP_VERSION = 61; // bump when publishing; shown on the home screen
   const KEY = 'coachlog-v1';
   const $app = document.getElementById('app');
 
@@ -4751,7 +4751,11 @@
           <label class="field grow"><span>Telefoon</span><input name="phone" type="tel" value="${esc(c.phone)}" placeholder="06…"></label>
           <label class="field grow"><span>E-mail</span><input name="email" type="email" value="${esc(c.email)}" placeholder="naam@voorbeeld.nl"></label>
         </div>
-        <label class="field"><span>Doel</span><input name="goal" value="${esc(c.goal || '')}" placeholder="bijv. kracht opbouwen"></label>
+        <div class="row">
+          <label class="field grow"><span>Doel</span><input name="goal" value="${esc(c.goal || '')}" placeholder="bijv. kracht opbouwen"></label>
+          <label class="field" style="max-width:150px"><span>Lengte (cm)</span>
+            <input name="height" type="text" inputmode="decimal" value="${c.height || ''}" placeholder="bijv. 178"></label>
+        </div>
         <button class="primary" type="submit">Opslaan</button>
       </form>` +
       ((c.phone || c.email) ? `<div class="actions" style="margin-bottom:10px">
@@ -4895,6 +4899,7 @@
       c.phone = String(f.get('phone')).trim();
       c.email = String(f.get('email')).trim();
       c.goal = String(f.get('goal')).trim();
+      c.height = num(f.get('height')) > 0 ? num(f.get('height')) : undefined;
       save(); render();
     });
     document.getElementById('intake-form').addEventListener('submit', (ev) => {
@@ -5350,6 +5355,29 @@
     return rows.length;
   }
 
+  // every measurement you took of this client, so they can follow it themselves
+  async function publishMeasurements(localClient, cloudClientId) {
+    const rows = db.measurements
+      .filter((m) => m.clientId === localClient.id)
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .map((m) => ({
+        client_id: cloudClientId,
+        coach_id: cloud.userId(),
+        date: m.date,
+        // height rides along per row so the client's app can work out the BMI
+        height: localClient.height || null,
+        ...Object.fromEntries(MEAS_FIELDS.map((f) => [f.key, m[f.key] ?? null])),
+      }));
+    try {
+      await cloud.remove('client_measurements', `client_id=eq.${cloudClientId}`);
+      if (rows.length) await cloud.insert('client_measurements', rows);
+      return rows.length;
+    } catch (e) {
+      if (/client_measurements|not exist|schema cache/i.test(e.message)) return null;
+      throw e;
+    }
+  }
+
   // the coming weeks of this client's agenda, so they can see when they are expected
   async function publishAppointments(localClient, cloudClientId) {
     const from = todayIso();
@@ -5429,7 +5457,7 @@
           (localClient ? `<div class="card">
             <div class="row"><div class="grow">
               <div class="title">Schema's klaarzetten</div>
-              <div class="sub">Stuurt ook je agenda-afspraken van de komende acht weken mee.</div>
+              <div class="sub">Stuurt ook je agenda-afspraken van de komende acht weken en al je metingen mee.</div>
               <div class="sub">${schemasOf(localClient.id).length
                 ? `Stuur ${esc(localClient.name)} ${programOf(localClient.id)
                     ? 'de dagen van het weekprogramma'
@@ -5492,10 +5520,15 @@
           try {
             const n = await publishSchemas(localClient, active.id);
             const appts = await publishAppointments(localClient, active.id);
-            const agendaLine = appts === null
-              ? '\n\nAfspraken zijn niet meegestuurd: de tabel client_appointments bestaat nog niet (zie SUPABASE.md).'
-              : `\n\nOok ${appts} ${appts === 1 ? 'afspraak' : 'afspraken'} uit je agenda meegestuurd.`;
-            alert(`${n} schema${n === 1 ? '' : "'s"} klaargezet voor ${active.name || 'deze klant'}.${agendaLine}`);
+            const meas = await publishMeasurements(localClient, active.id);
+            const missing = [appts === null ? 'client_appointments' : '', meas === null ? 'client_measurements' : ''].filter(Boolean);
+            const extra = [
+              appts === null ? '' : `${appts} ${appts === 1 ? 'afspraak' : 'afspraken'}`,
+              meas === null ? '' : `${meas} meting${meas === 1 ? '' : 'en'}`,
+            ].filter(Boolean).join(' en ');
+            alert(`${n} schema${n === 1 ? '' : "'s"} klaargezet voor ${active.name || 'deze klant'}.`
+              + (extra ? `\n\nOok ${extra} meegestuurd.` : '')
+              + (missing.length ? `\n\nNiet meegestuurd — deze tabellen bestaan nog niet: ${missing.join(', ')} (zie SUPABASE.md).` : ''));
           } catch (e) {
             alert('Klaarzetten mislukt: ' + e.message);
           }
@@ -5796,16 +5829,27 @@
   const MEAS_FIELDS = [
     { key: 'weight', label: 'Lichaamsgewicht', unit: () => unitLbl() },
     { key: 'fat', label: 'Vetpercentage', unit: () => '%' },
+    { key: 'muscle', label: 'Spiermassa', unit: () => unitLbl() },
     { key: 'waist', label: 'Taille', unit: () => 'cm' },
     { key: 'chest', label: 'Borst', unit: () => 'cm' },
+    { key: 'hip', label: 'Heup', unit: () => 'cm' },
     { key: 'arm', label: 'Arm', unit: () => 'cm' },
     { key: 'leg', label: 'Bovenbeen', unit: () => 'cm' },
   ];
+  // BMI is not measured but derived; it needs the client's height from their profile
+  const bmiOf = (client, weight) => {
+    const h = client && client.height > 0 ? client.height / 100 : 0;
+    return h > 0 && weight > 0 ? Math.round((weight / (h * h)) * 10) / 10 : null;
+  };
   function viewMeasurements(clientId) {
     const c = clientById(clientId);
     if (!c) { location.hash = '/'; return; }
     const list = db.measurements.filter((m) => m.clientId === clientId).sort((a, b) => a.date.localeCompare(b.date));
     const withData = MEAS_FIELDS.filter((f) => list.some((m) => m[f.key] != null));
+    if (c.height > 0 && list.some((m) => m.weight != null)) {
+      withData.push({ key: 'bmi', label: 'BMI', unit: () => '' });
+    }
+    const valueOf = (m, key) => key === 'bmi' ? bmiOf(c, m.weight) : m[key];
     if (!withData.some((f) => f.key === uiState.measMetric)) uiState.measMetric = withData.length ? withData[0].key : null;
     const field = MEAS_FIELDS.find((f) => f.key === uiState.measMetric);
     const fmtM = (v) => (Math.round(v * 10) / 10).toLocaleString('nl-NL');
@@ -5817,7 +5861,8 @@
         <div class="stat-grid cols2" style="gap:10px">
           ${MEAS_FIELDS.map((f) => `<label class="field" style="margin:0"><span>${f.label} (${f.unit()})</span><input name="${f.key}" type="text" inputmode="decimal" placeholder="–"></label>`).join('')}
         </div>
-        <p class="mut" style="margin:8px 0 10px">Vul in wat je gemeten hebt; de rest mag leeg blijven.</p>
+        <p class="mut" style="margin:8px 0 10px">Vul in wat je gemeten hebt; de rest mag leeg blijven.${
+          c.height > 0 ? ' BMI rekent de app zelf uit.' : ' Zet de lengte op het profiel, dan rekent de app ook de BMI uit.'}</p>
         <button class="primary wide" type="submit">Meting opslaan</button>
       </form>` +
       (withData.length && field ? `
@@ -5831,14 +5876,17 @@
       `<div class="eyebrow">Alle metingen</div>` +
       (list.length ? [...list].reverse().map((m) => `<div class="card"><div class="row"><div class="grow">
           <div class="title">${esc(fmtDateFull(m.date))}</div>
-          <div class="sub">${MEAS_FIELDS.filter((f) => m[f.key] != null).map((f) => `${f.label} ${fmtM(m[f.key])} ${f.unit()}`).join(' · ')}</div>
+          <div class="sub">${[
+            ...MEAS_FIELDS.filter((f) => m[f.key] != null).map((f) => `${f.label} ${fmtM(m[f.key])} ${f.unit()}`),
+            ...(bmiOf(c, m.weight) != null ? [`BMI ${fmtM(bmiOf(c, m.weight))}`] : []),
+          ].join(' · ')}</div>
         </div><button class="small danger ghost" data-del-meas="${m.id}" aria-label="Verwijder meting">✕</button></div></div>`).join('')
         : `<p class="mut">Nog geen metingen.</p>`);
 
     bindNav();
     if (withData.length && field) {
-      const pts = list.filter((m) => m[field.key] != null).map((m) => ({ date: m.date, value: m[field.key] }));
-      renderChart(document.getElementById('meas-chart'), pts, field.key === 'weight' ? 'kg' : field.unit());
+      const pts = list.map((m) => ({ date: m.date, value: valueOf(m, field.key) })).filter((p) => p.value != null);
+      renderChart(document.getElementById('meas-chart'), pts, field.key === 'weight' ? 'kg' : field.unit() || 'BMI');
       document.getElementById('meas-metric').addEventListener('change', (ev) => {
         uiState.measMetric = ev.target.value; render();
       });

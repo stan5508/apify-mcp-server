@@ -14,7 +14,7 @@ Dit is geen onderdeel van de MCP-server in deze repo; het is een losstaande app 
 
 ## Werkwijze — houd je hieraan
 
-1. **Elke wijziging**: `APP_VERSION` in `index.html` én `CACHE` in `sw.js` ophogen (nu **60**).
+1. **Elke wijziging**: `APP_VERSION` in `index.html` én `CACHE` in `sw.js` ophogen (nu **61**).
    Zonder die twee ziet hij de wijziging niet op zijn tablet.
 2. **Testen** met Playwright (`playwright-core`, `executablePath: '/opt/pw-browsers/chromium'`)
    tegen `python3 -m http.server` in `gym-app/`. Schrijf per functie een klein `.mjs`-scriptje
@@ -102,7 +102,9 @@ door sets (per maand, per spiergroep, in rapport, overzicht en duo-vergelijking)
 (uit bij *prefers-reduced-motion*), periodefilter, vergelijken, maand-
 overzicht, aanwezigheid en streaks, spiergroepverdeling, print-/PDF-rapport, CSV-export.
 
-**Klanten** — profiel met contact en intake, doelen, progressiefoto's, archiveren, avatars
+**Klanten** — metingen (gewicht, vet%, spiermassa, taille, borst, heup, arm, bovenbeen; BMI
+rekent de app uit zodra de lengte op het profiel staat), profiel met contact en intake, doelen,
+progressiefoto's, archiveren, avatars
 in de zijbalk (nieuwste progressiefoto, anders initialen), technieknotities per klant.
 
 **Zakelijk** — agenda met statussen, strippenkaarten, openstaande betalingen, omzet per maand.
@@ -123,8 +125,10 @@ hulpmiddelen als jij: vorige keer per oefening (uit `loadHistory()`), sets afvin
 een rusttimer die vanzelf start op de rusttijd die met het schema meekomt, een tabblad
 **Voortgang** met trainingen/reeks, per oefening een mini-grafiek met trend en record, en per
 oefening een detailgrafiek met alle sessies; een melding zodra de coach iets nieuws klaarzet
-(`updated_at` van `client_schemas` tegen wat lokaal als gezien staat); en **Je afspraken** uit
-de agenda van de coach (tabel `client_appointments`, gaat mee met dezelfde Klaarzetten-knop); komt bij
+(`updated_at` van `client_schemas` tegen wat lokaal als gezien staat); **Je afspraken** uit
+de agenda van de coach (tabel `client_appointments`) en **Metingen** met het verschil sinds de
+vorige meting plus een grafiek per meetwaarde (tabel `client_measurements`); alle drie gaan mee
+met dezelfde Klaarzetten-knop; komt bij
 de coach binnen onder **Van klanten** en is met één tik over te nemen. Koppeling cloudaccount ↔
 lokale klant loopt via `client.cloudId`; matcht de naam niet, dan kies je de klant zelf uit een
 lijst (naam-matching is alleen nog de eerste gok). Daar staat ook
