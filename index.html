@@ -570,7 +570,7 @@
 <script>
 (() => {
   'use strict';
-  const APP_VERSION = 58; // bump when publishing; shown on the home screen
+  const APP_VERSION = 59; // bump when publishing; shown on the home screen
   const KEY = 'coachlog-v1';
   const $app = document.getElementById('app');
 
@@ -5327,6 +5327,33 @@
     return rows.length;
   }
 
+  // the coming weeks of this client's agenda, so they can see when they are expected
+  async function publishAppointments(localClient, cloudClientId) {
+    const from = todayIso();
+    const until = addDays(from, 56);
+    const rows = db.appointments
+      .filter((a) => a.date >= from && a.date <= until && apptClientIds(a).includes(localClient.id))
+      .sort((a, b) => (a.date + (a.time || '')).localeCompare(b.date + (b.time || '')))
+      .map((a) => ({
+        client_id: cloudClientId,
+        coach_id: cloud.userId(),
+        date: a.date,
+        time: a.time || '',
+        duration_min: a.durationMin || null,
+        status: a.status || 'gepland',
+        note: a.note || '',
+      }));
+    // the table only exists once the extra SQL was run; skip quietly if it is not there
+    try {
+      await cloud.remove('client_appointments', `client_id=eq.${cloudClientId}`);
+      if (rows.length) await cloud.insert('client_appointments', rows);
+      return rows.length;
+    } catch (e) {
+      if (/client_appointments|not exist|schema cache/i.test(e.message)) return null;
+      throw e;
+    }
+  }
+
   function viewClientFeed(clientKey) {
     if (!cloud.configured() || !cloud.signedIn()) {
       $app.innerHTML = topbar('Van klanten', '/') +
@@ -5379,6 +5406,7 @@
           (localClient ? `<div class="card">
             <div class="row"><div class="grow">
               <div class="title">Schema's klaarzetten</div>
+              <div class="sub">Stuurt ook je agenda-afspraken van de komende acht weken mee.</div>
               <div class="sub">${schemasOf(localClient.id).length
                 ? `Stuur ${esc(localClient.name)} ${programOf(localClient.id)
                     ? 'de dagen van het weekprogramma'
@@ -5440,7 +5468,11 @@
           pushBtn.textContent = 'Bezig…';
           try {
             const n = await publishSchemas(localClient, active.id);
-            alert(`${n} schema${n === 1 ? '' : "'s"} klaargezet voor ${active.name || 'deze klant'}.`);
+            const appts = await publishAppointments(localClient, active.id);
+            const agendaLine = appts === null
+              ? '\n\nAfspraken zijn niet meegestuurd: de tabel client_appointments bestaat nog niet (zie SUPABASE.md).'
+              : `\n\nOok ${appts} ${appts === 1 ? 'afspraak' : 'afspraken'} uit je agenda meegestuurd.`;
+            alert(`${n} schema${n === 1 ? '' : "'s"} klaargezet voor ${active.name || 'deze klant'}.${agendaLine}`);
           } catch (e) {
             alert('Klaarzetten mislukt: ' + e.message);
           }
