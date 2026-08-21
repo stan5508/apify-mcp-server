@@ -14,7 +14,7 @@ Dit is geen onderdeel van de MCP-server in deze repo; het is een losstaande app 
 
 ## Werkwijze — houd je hieraan
 
-1. **Elke wijziging**: `APP_VERSION` in `index.html` én `CACHE` in `sw.js` ophogen (nu **59**).
+1. **Elke wijziging**: `APP_VERSION` in `index.html` én `CACHE` in `sw.js` ophogen (nu **60**).
    Zonder die twee ziet hij de wijziging niet op zijn tablet.
 2. **Testen** met Playwright (`playwright-core`, `executablePath: '/opt/pw-browsers/chromium'`)
    tegen `python3 -m http.server` in `gym-app/`. Schrijf per functie een klein `.mjs`-scriptje
@@ -69,6 +69,9 @@ foods, water, muscleGroups, settings`.
   Hamstrings, Gluteus maximus, Triceps surae, Rectus abdominis, Cardio, Overig. De oude
   Nederlandse namen migreren automatisch via `LEGACY_GROUPS` — die staat bewust vóór
   `loadDb()`, want de migratie draait daarbinnen.
+- Een schemakaart toont geen lijst oefeningnamen meer maar `schemaSummaryHtml()`: één stip per
+  **kleur** (dus niet per spiergroep — trekwerk is één blauwe stip) plus het aantal oefeningen.
+  Geldt in beide apps; de sporter-app krijgt de spiergroep mee in het gepubliceerde schema.
 - Spiergroep bijstellen kan per oefening, of in één keer via **Bibliotheek → Nalopen**
   (`#/spiergroepen`): `suggestGroup()` gokt de spier op de naam en je vinkt af wat klopt.
 - **Kleur volgt de keten** (`GROUP_COLOURS`): duwen rood, trekken blauw, benen groen, core geel.

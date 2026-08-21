@@ -356,6 +356,8 @@
   .set-row .n { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
   .set-row .n b { color: var(--accent-strong); font-weight: 700; }
   .mg-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+  .schema-sum { display: flex; align-items: center; gap: 9px; }
+  .mg-row { display: inline-flex; gap: 4px; align-items: center; }
   /* a card that carries its muscle-group colour on the leading edge */
   .mg-edge { border-left: 3px solid var(--mg, var(--border)); }
   .spark { display: block; flex: none; }
@@ -570,7 +572,7 @@
 <script>
 (() => {
   'use strict';
-  const APP_VERSION = 59; // bump when publishing; shown on the home screen
+  const APP_VERSION = 60; // bump when publishing; shown on the home screen
   const KEY = 'coachlog-v1';
   const $app = document.getElementById('app');
 
@@ -1310,6 +1312,26 @@
   function bestTopFor(clientId, name, excludeId) {
     const sessions = exerciseSessions(clientId, name, excludeId);
     return sessions.length ? Math.max(...sessions.map((s) => s.top)) : null;
+  }
+
+  // a schema at a glance: a dot per muscle group it trains, then how many exercises.
+  // Replaces listing every exercise name, which got long and messy on a card.
+  function schemaSummaryHtml(exercises, clientId) {
+    const list = exercises || [];
+    if (!list.length) return `<div class="sub">nog geen oefeningen</div>`;
+    // one dot per colour, not per group: pull work is one blue dot, not one per back muscle
+    const byColour = new Map();
+    for (const e of list) {
+      const g = groupOf(e.name, e.kind || (clientId ? kindFor(clientId, e.name) : 'kracht'));
+      const col = groupColor(g);
+      const seen = byColour.get(col) || [];
+      if (!seen.includes(g)) byColour.set(col, [...seen, g]);
+    }
+    return `<div class="schema-sum">
+      <span class="mg-row">${[...byColour].slice(0, 5).map(([col, names]) =>
+        `<span class="mg-dot" style="background:${col}" title="${esc(names.join(', '))}"></span>`).join('')}</span>
+      <span class="sub">${list.length} oefening${list.length === 1 ? '' : 'en'}</span>
+    </div>`;
   }
 
   // one line summarising what was logged for this exercise last time
@@ -3334,7 +3356,7 @@
                 return `<div class="card"><div class="row">
                   <span class="day-chip"><b>${dayLetter(i)}</b></span>
                   <div class="grow"><div class="title">${esc(sc.name)}</div>
-                    <div class="sub">${sc.exercises.map((e) => esc(e.name)).join(' · ') || 'nog geen oefeningen'}</div></div>
+                    ${schemaSummaryHtml(sc.exercises, clientId)}</div>
                   <button type="button" class="small ghost" data-pr-up="${i}" aria-label="Omhoog" ${i === 0 ? 'disabled' : ''}>↑</button>
                   <button type="button" class="small ghost" data-pr-down="${i}" aria-label="Omlaag" ${i === draft.schemaIds.length - 1 ? 'disabled' : ''}>↓</button>
                   <button type="button" class="small ghost danger" data-pr-rm="${i}" aria-label="Verwijderen">✕</button>
@@ -3487,7 +3509,7 @@
       schemas.map((s) => `<div class="card tappable" data-nav="/klant/${id}/schema/${s.id}" role="link" tabindex="0">
           <div class="row"><div class="grow">
             <div class="title">${esc(s.name)}</div>
-            <div class="sub">${s.exercises.map((e) => esc(e.name)).join(' · ') || 'nog geen oefeningen'}</div>
+            ${schemaSummaryHtml(s.exercises, id)}
           </div><span class="mut">›</span></div>
         </div>`).join('') +
       `<div class="actions" style="margin-top:2px"><button data-nav="/klant/${id}/schema/nieuw">+ Nieuw schema</button><button data-nav="/klant/${id}/sjabloon">+ Schema uit sjabloon</button></div>` +
@@ -5316,7 +5338,8 @@
       exercises: sc.exercises.map((e) => ({
         name: e.name,
         kind: e.kind || kindFor(localClient.id, e.name),
-        // the client's app has no settings screen, so send your rest time along
+        // the client's app has no exercise register or settings, so send these along
+        group: groupOf(e.name, e.kind || kindFor(localClient.id, e.name)),
         rest: restFor(e.name),
         targets: (e.targets || []).map((t) => ({ ...t })),
       })),
@@ -6180,7 +6203,10 @@
       duoSchemasOf(duoId).map((s) => `<div class="card tappable" data-nav="/duo/${duoId}/schema/${s.id}" role="link" tabindex="0">
         <div class="row"><div class="grow">
           <div class="title">${esc(s.name)}</div>
-          <div class="sub">${members.map((m) => `${esc(m.name)}: ${(s.plans[m.id] || []).map((e) => esc(e.name)).join(', ') || '—'}`).join(' · ')}</div>
+          ${members.map((m) => `<div class="row" style="gap:8px">
+            <span class="sub grow">${esc(m.name)}</span>
+            ${schemaSummaryHtml(s.plans[m.id] || [], m.id)}
+          </div>`).join('')}
         </div><span class="mut">›</span></div>
       </div>`).join('') +
       `<div class="actions" style="margin-top:2px"><button data-nav="/duo/${duoId}/schema/nieuw">+ Nieuw duo-schema</button><button data-nav="/duo/${duoId}/sjabloon">+ Schema uit sjabloon</button></div>` +
