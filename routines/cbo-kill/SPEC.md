@@ -1,11 +1,11 @@
 # CBO kill-routine
 
 Automatische kill-check voor Meta CBO-campagnes van de Shopify-store `smayip-je.myshopify.com`.
-Draait elke 10 minuten tussen 00:00 en 09:00 Europe/London (de advertiser-tijdzone van het adaccount).
+Draait elke 10 minuten tussen 23:00 en 09:00 Europe/London (de advertiser-tijdzone van het adaccount).
 
 ## Planning
 
-**Eén Routine**, `2 23,0-7 * * *` (UTC; London = UTC+1 in de zomertijd). Elke fire draait **zes checks binnen
+**Eén Routine**, `2 22,23,0-7 * * *` (UTC; London = UTC+1 in de zomertijd). Elke fire draait **zes checks binnen
 dat uur**, telkens 10 minuten uit elkaar: op :02, :12, :22, :32, :42 en :52.
 
 Wachten tussen checks gaat met `sleep 600` als achtergrond-Bash, nooit op de voorgrond.
@@ -17,6 +17,25 @@ op die je zes keer moet instellen en onderhouden. Eén Routine met een interne l
 
 De prijs daarvan: valt een sessie halverwege om, dan mis je de rest van dat uur in plaats van één check.
 Dat weegt niet op tegen zes keer configureren.
+
+### Tijdzones — het venster start een uur eerder dan je zou denken
+
+Het adaccount staat op **Europe/London**, de eigenaar zit in **Nederland**. In de zomertijd is NL = UTC+2 en
+London = UTC+1, dus een uur verschil.
+
+| | NL | London (adaccount) | UTC |
+|---|---|---|---|
+| campagnes gaan live | 00:01 | 23:01 | 22:01 |
+| Meta-dag rolt om | 01:00 | 00:00 | 23:00 |
+
+Campagnes die om 00:01 Nederlandse tijd starten, starten om 23:01 in de adaccount-tijdzone — dus nog op de
+**vorige** Meta-dag. Het venster begint daarom om 22:02 UTC en niet om 23:02, anders staat er 61 minuten
+onbewaakte spend voor de eerste check.
+
+**Gevolg voor de kill-regels:** die eerste 59 minuten tellen mee in de dagtotalen van gisteren. Om 00:00 London
+rolt de Meta-dag om en gaat `spend` terug naar nul. Een campagne die in dat eerste uur onder de €10 blijft,
+begint daarna opnieuw bij nul en kan dus meer verbranden dan de regel bedoelt. Campagnes starten op 00:01
+London (01:01 NL) haalt dit weg.
 
 ### Connectors
 
