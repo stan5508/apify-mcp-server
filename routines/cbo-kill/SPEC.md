@@ -3,25 +3,29 @@
 Automatische kill-check voor Meta CBO-campagnes van de Shopify-store `smayip-je.myshopify.com`.
 Draait elke 10 minuten tussen 00:00 en 09:00 Europe/London (de advertiser-tijdzone van het adaccount).
 
-## Planning — en waarom het nu nog niet duurzaam is
+## Planning
 
-Draait op `CronCreate` met `*/10 23,0-7 * * *` (UTC; London = UTC+1 in de zomertijd).
+**Eén Routine**, `2 23,0-7 * * *` (UTC; London = UTC+1 in de zomertijd). Elke fire draait **zes checks binnen
+dat uur**, telkens 10 minuten uit elkaar: op :02, :12, :22, :32, :42 en :52.
 
-Dit is **niet de bedoelde oplossing**. De bedoelde oplossing was een Routine via `create_trigger`, maar die
-loopt op twee muren:
+Wachten tussen checks gaat met `sleep 600` als achtergrond-Bash, nooit op de voorgrond.
 
-1. `create_trigger` staat geen interval korter dan een uur toe. Op te lossen met zes verschoven uurschema's
-   (minuut 02/12/22/32/42/52), dus dat was geen blokkade.
-2. **Routines gevuurd via `create_trigger` krijgen geen MCP-connectors mee.** De gevuurde sessies hebben dus
-   geen Windsor en geen Shopify, en kunnen de check niet uitvoeren. De `connectors`-parameter is voor deze
-   organisatie uitgeschakeld.
+Waarom niet één cron van `*/10`: dat wordt geweigerd —
+`cron expression "*/10 23,0-7 * * *" fires more frequently than once per hour; minimum interval is 1 hour`.
+Zes losse uurschema's van 10 minuten uit elkaar zou ook werken, maar dat levert zes regels in de Routines-lijst
+op die je zes keer moet instellen en onderhouden. Eén Routine met een interne lus geeft dezelfde dekking.
 
-`CronCreate` vuurt in de huidige sessie, die de connectors wél heeft — daarom werkt het. Maar het is
-sessie-gebonden, verdwijnt zodra de sessie eindigt, vuurt alleen als de sessie idle is, en verloopt na 7 dagen.
+De prijs daarvan: valt een sessie halverwege om, dan mis je de rest van dat uur in plaats van één check.
+Dat weegt niet op tegen zes keer configureren.
 
-**Voor een duurzame opzet moeten de zes Routines vanuit de claude.ai Routines-UI aangemaakt worden**, waar
-Windsor en Shopify handmatig als connector aan de Routine gekoppeld kunnen worden. De prompt hieronder is
-daar één-op-één voor te gebruiken.
+### Connectors
+
+**Routines gevuurd via `create_trigger` krijgen geen MCP-connectors mee** — de `connectors`-parameter is voor
+deze organisatie uitgeschakeld. De Routine moet daarom in de claude.ai Routines-UI handmatig gekoppeld worden
+aan **Windsor.ai, Shopify en Google Drive**.
+
+Zonder die koppeling faalt de check niet stilletjes: stap 0 meldt dat de connectors ontbreken en stopt.
+Er wordt nooit iets gepauzeerd zonder data.
 
 ## Stap 0 — poortwachter
 
@@ -132,16 +136,27 @@ van een drempel zit. Nooit een melding voor een rustige check.
 - **Sync-vertraging van Windsor** is nog niet gemeten. Komt spend er trager in dan 10 minuten, dan schuiven
   alle kill-momenten naar achteren en is de 10-minuten-check schijnprecisie.
 - **Zomertijd.** De cron staat in UTC en gaat uit van London = UTC+1. In de wintertijd verschuift het venster
-  een uur en moeten de zes Routines bijgesteld worden.
+  een uur en moet de cron bijgesteld worden.
 
 ## Routine-prompt (voor de claude.ai Routines-UI)
 
-Zes Routines, cron in UTC: `2 23,0-7 * * *`, `12 23,0-7 * * *`, `22 …`, `32 …`, `42 …`, `52 …`.
-Elk met Windsor.ai, Shopify en Google Drive als connector, "nieuwe sessie per fire", en push-notificaties aan.
-Elke fire is onafhankelijk — valt er één om, dan mis je één check en niet een heel uur.
+Eén Routine, cron in UTC `2 23,0-7 * * *`, met Windsor.ai, Shopify en Google Drive als connector,
+"nieuwe sessie per fire" en push-notificaties aan. De prompt doet zelf zes checks binnen het uur.
 
 ```
-CBO kill-check. Handel dit volledig zelfstandig af. Stel geen vragen.
+CBO kill-check. Handel dit volledig zelfstandig af. Stel geen vragen. Houd het antwoord kort.
+
+Deze run doet ZES checks binnen dit uur, telkens 10 minuten uit elkaar (op :02, :12, :22, :32, :42, :52).
+Voer check 1 uit. Wacht daarna 10 minuten door met de Bash-tool `sleep 600` te draaien met
+run_in_background=true; zodra die klaar is voer je de volgende check uit. Herhaal tot je zes checks
+hebt gedaan, en beeindig dan de beurt. Gebruik nooit een sleep op de voorgrond.
+
+VROEGTIJDIG STOPPEN
+- Zijn er bij een check geen actieve campagnes meer? Stop dan de hele run, ook als je nog checks over
+  hebt. Geen verdere tool-calls, geen document-update, geen melding.
+- Dit spaart tokens op een lege nacht en dat is de bedoeling.
+
+=== PER CHECK ===
 
 STAP 0 - POORTWACHTER (altijd als eerste)
 mcp__Windsor_ai__get_data: connector "facebook", fields ["date","campaign","campaign_id",
