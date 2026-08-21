@@ -63,6 +63,15 @@
   .mg-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; display: inline-block; }
   .schema-sum { display: flex; align-items: center; gap: 9px; }
   .mg-row { display: inline-flex; gap: 4px; align-items: center; }
+  .meas-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(112px, 1fr)); gap: 8px; margin-top: 10px; }
+  .meas-cell {
+    display: flex; flex-direction: column; gap: 2px; align-items: flex-start; text-align: left;
+    background: var(--raised); border: 1px solid var(--border); border-radius: 9px; padding: 9px 10px;
+    font: inherit; color: var(--ink); cursor: pointer; width: 100%;
+  }
+  .meas-cell.on { border-color: var(--accent); }
+  .meas-cell .mut { font-size: 11.5px; }
+  .meas-val { font-size: 19px; font-weight: 650; font-variant-numeric: tabular-nums; }
   .appt-rest { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--grid); }
   .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); margin-left: 5px; vertical-align: middle; }
   .trend { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
@@ -267,7 +276,7 @@
   let local = load();
   const saveLocal = () => localStorage.setItem(LOCAL_KEY, JSON.stringify(local));
 
-  let ui = { tab: 'training', date: todayIso(), draft: null, meals: [], workouts: [], water: 0, schemas: [], schemaError: '', history: new Map(), sessions: [], progressEx: null, appointments: [], profile: null, busy: false };
+  let ui = { tab: 'training', date: todayIso(), draft: null, meals: [], workouts: [], water: 0, schemas: [], schemaError: '', history: new Map(), sessions: [], progressEx: null, appointments: [], measurements: [], measMetric: null, profile: null, busy: false };
 
   // ---------- views ----------
   function setupView(message) {
@@ -415,6 +424,49 @@
         <button class="primary wide" id="start-workout">${(ui.schemas || []).length ? 'Losse training starten' : 'Training starten'}</button>`}`;
   }
 
+  // measurements your coach took: where you stand now, and what changed since last time
+  function measBlock() {
+    const list = ui.measurements || [];
+    if (!list.length) return '';
+    const latest = list[list.length - 1];
+    const prev = list.length > 1 ? list[list.length - 2] : null;
+    const filled = MEAS_FIELDS.filter((f) => measValue(latest, f.key) != null);
+    if (!filled.length) return '';
+    if (!filled.some((f) => f.key === ui.measMetric)) ui.measMetric = filled[0].key;
+    const pts = list
+      .map((m) => ({ date: m.date, value: measValue(m, ui.measMetric) }))
+      .filter((x) => x.value != null);
+    const cur = MEAS_FIELDS.find((f) => f.key === ui.measMetric) || filled[0];
+    // only colour where the direction means something either way: less fat and a smaller waist
+    // is progress, more muscle is progress. Weight, BMI and the other tapes stay neutral,
+    // because whether up or down is good depends on what this client is after.
+    const goodWhenDown = ['fat', 'waist'];
+    const goodWhenUp = ['muscle'];
+    return `<div class="eyebrow">Metingen</div>
+      <div class="card">
+        <div class="mut">Laatste meting ${esc(fmtDateFull(latest.date))}${list.length > 1 ? ` · ${list.length} metingen` : ''}</div>
+        <div class="meas-grid">
+          ${filled.map((f) => {
+            const now = measValue(latest, f.key);
+            const was = prev ? measValue(prev, f.key) : null;
+            const d = was == null ? null : Math.round((now - was) * 10) / 10;
+            const cls = d === null || d === 0 ? 'flat'
+              : goodWhenDown.includes(f.key) ? (d < 0 ? 'up' : 'down')
+              : goodWhenUp.includes(f.key) ? (d > 0 ? 'up' : 'down')
+              : 'flat';
+            return `<button type="button" class="meas-cell${f.key === ui.measMetric ? ' on' : ''}" data-meas="${f.key}">
+              <span class="mut">${esc(f.label)}</span>
+              <span class="meas-val">${fmtNum(now)}${f.unit ? ' ' + esc(f.unit) : ''}</span>
+              ${d === null ? '<span class="mut">eerste meting</span>'
+                : `<span class="trend ${cls}">${d > 0 ? '+' : d < 0 ? '−' : ''}${fmtNum(Math.abs(d))}${f.unit ? ' ' + esc(f.unit) : ''}</span>`}
+            </button>`;
+          }).join('')}
+        </div>
+        ${pts.length > 1 ? `<div class="mut" style="margin-top:10px">${esc(cur.label)} door de tijd</div>
+          ${chartSvg(pts, cur.label)}` : ''}
+      </div>`;
+  }
+
   // upcoming sessions with your coach; the first one gets the spotlight
   function apptBlock() {
     const list = (ui.appointments || []).filter((a) => a.status !== 'geannuleerd');
@@ -436,9 +488,6 @@
 
   function progressTab() {
     const exercises = loggedExercises();
-    if (!ui.sessions.length) {
-      return `<div class="card"><div class="sub">Zodra je je eerste training opslaat verschijnt hier je voortgang.</div></div>`;
-    }
     // one exercise opened: the big chart plus its sessions
     if (ui.progressEx) {
       const pts = seriesFor(ui.progressEx);
@@ -464,6 +513,13 @@
         </div>`).join('')}`;
     }
 
+    // measurements stand on their own: a client can have those before their first logged session
+    if (!ui.sessions.length) {
+      return measBlock()
+        + `<div class="eyebrow">Trainingen</div>
+           <div class="card"><div class="sub">Zodra je je eerste training opslaat verschijnt hier je voortgang.</div></div>`;
+    }
+
     const thisWeek = ui.sessions.filter((w) => {
       const d = new Date(todayIso() + 'T12:00:00');
       d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
@@ -475,6 +531,7 @@
         <div class="card"><div class="mut">Deze week</div><div class="title">${thisWeek}</div></div>
         <div class="card"><div class="mut">Reeks</div><div class="title">${streak} ${streak === 1 ? 'week' : 'weken'}</div></div>
       </div>
+      ${measBlock()}
       <div class="eyebrow">Per oefening</div>
       ${exercises.map((name) => {
         const pts = seriesFor(name);
@@ -585,6 +642,9 @@
       ui.tab = b.dataset.tab;
       ui.progressEx = null;
       appView();
+    }));
+    document.querySelectorAll('[data-meas]').forEach((b) => b.addEventListener('click', () => {
+      ui.measMetric = b.dataset.meas; appView();
     }));
     document.querySelectorAll('[data-prog]').forEach((b) => b.addEventListener('click', () => {
       ui.progressEx = b.dataset.prog; appView();
@@ -972,6 +1032,33 @@
     return `vorige keer ${fmtDate(p.date)}${txt ? ' — ' + txt : ''}`;
   };
 
+  // what the coach measured, oldest first; BMI comes from the height he sent along
+  const MEAS_FIELDS = [
+    { key: 'weight', label: 'Lichaamsgewicht', unit: 'kg' },
+    { key: 'fat', label: 'Vetpercentage', unit: '%' },
+    { key: 'muscle', label: 'Spiermassa', unit: 'kg' },
+    { key: 'bmi', label: 'BMI', unit: '' },
+    { key: 'waist', label: 'Taille', unit: 'cm' },
+    { key: 'chest', label: 'Borst', unit: 'cm' },
+    { key: 'hip', label: 'Heup', unit: 'cm' },
+    { key: 'arm', label: 'Arm', unit: 'cm' },
+    { key: 'leg', label: 'Bovenbeen', unit: 'cm' },
+  ];
+  const measValue = (m, key) => {
+    if (key !== 'bmi') return m[key] == null ? null : Number(m[key]);
+    const h = Number(m.height) > 0 ? Number(m.height) / 100 : 0;
+    const w = Number(m.weight) || 0;
+    return h > 0 && w > 0 ? Math.round((w / (h * h)) * 10) / 10 : null;
+  };
+  async function loadMeasurements() {
+    try {
+      ui.measurements = await cloud.select('client_measurements',
+        `client_id=eq.${cloud.userId()}&select=*&order=date`);
+    } catch {
+      ui.measurements = [];
+    }
+  }
+
   // the coach's agenda for this client, from today on
   async function loadAppointments() {
     try {
@@ -1022,7 +1109,7 @@
       const profile = await cloud.ensureProfile('client', '');
       ui.profile = profile;
       if (!profile.coach_id) { inviteView(); return; }
-      await Promise.all([loadDay(), loadSchemas(), loadHistory(), loadAppointments()]);
+      await Promise.all([loadDay(), loadSchemas(), loadHistory(), loadAppointments(), loadMeasurements()]);
       appView();
       bindRestBar();
     } catch (e) {
