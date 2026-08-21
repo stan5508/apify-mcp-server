@@ -53,6 +53,10 @@
   .set-tick[aria-pressed="true"] { background: var(--good); border-color: var(--good); color: #fff; }
   .set-row.done input { border-color: var(--good); background: rgba(63, 158, 108, 0.16); }
   .prev-line { color: var(--muted); font-size: 12.5px; margin: -2px 0 8px; }
+  .trend { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+  .trend.up { background: rgba(63, 158, 108, 0.17); color: var(--good); }
+  .trend.down { background: rgba(229, 100, 92, 0.16); color: var(--danger); }
+  .trend.flat { background: var(--raised); color: var(--muted); }
 
   #rest-bar {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
@@ -223,7 +227,7 @@
   let local = load();
   const saveLocal = () => localStorage.setItem(LOCAL_KEY, JSON.stringify(local));
 
-  let ui = { tab: 'training', date: todayIso(), draft: null, meals: [], workouts: [], water: 0, schemas: [], schemaError: '', history: new Map(), profile: null, busy: false };
+  let ui = { tab: 'training', date: todayIso(), draft: null, meals: [], workouts: [], water: 0, schemas: [], schemaError: '', history: new Map(), sessions: [], progressEx: null, profile: null, busy: false };
 
   // ---------- views ----------
   function setupView(message) {
@@ -365,6 +369,68 @@
         <button class="primary wide" id="start-workout">${(ui.schemas || []).length ? 'Losse training starten' : 'Training starten'}</button>`}`;
   }
 
+  function progressTab() {
+    const exercises = loggedExercises();
+    if (!ui.sessions.length) {
+      return `<div class="card"><div class="sub">Zodra je je eerste training opslaat verschijnt hier je voortgang.</div></div>`;
+    }
+    // one exercise opened: the big chart plus its sessions
+    if (ui.progressEx) {
+      const pts = seriesFor(ui.progressEx);
+      const unit = pts.length ? pts[pts.length - 1].unit : 'kg';
+      const best = pts.length ? Math.max(...pts.map((p) => p.value)) : 0;
+      const bestDate = pts.find((p) => p.value === best);
+      return `<div class="row" style="margin-bottom:10px">
+          <button class="small" id="prog-back">‹ Terug</button>
+          <div class="grow title">${esc(ui.progressEx)}</div>
+        </div>
+        <div class="stat-grid" style="margin-bottom:10px">
+          <div class="card"><div class="mut">Record</div><div class="title">${fmtNum(best)} ${esc(unit)}</div>
+            <div class="mut">${bestDate ? esc(fmtDate(bestDate.date)) : ''}</div></div>
+          <div class="card"><div class="mut">Sessies</div><div class="title">${pts.length}</div></div>
+        </div>
+        <div class="card">${chartSvg(pts, unit)}</div>
+        <div class="eyebrow">Alle sessies</div>
+        ${[...pts].reverse().map((p) => `<div class="card">
+          <div class="row"><div class="grow">
+            <div class="title">${esc(fmtDateFull(p.date))}${p.value === best ? ' 🏆' : ''}</div>
+            <div class="sub">${p.sets.map((st) => `${fmtNum(st.weight || 0)} kg × ${st.reps || 0}`).join(' · ')}</div>
+          </div></div>
+        </div>`).join('')}`;
+    }
+
+    const thisWeek = ui.sessions.filter((w) => {
+      const d = new Date(todayIso() + 'T12:00:00');
+      d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+      return w.date >= d.toISOString().slice(0, 10);
+    }).length;
+    const streak = weekStreak();
+    return `<div class="stat-grid" style="margin-bottom:12px">
+        <div class="card"><div class="mut">Trainingen</div><div class="title">${ui.sessions.length}</div></div>
+        <div class="card"><div class="mut">Deze week</div><div class="title">${thisWeek}</div></div>
+        <div class="card"><div class="mut">Reeks</div><div class="title">${streak} ${streak === 1 ? 'week' : 'weken'}</div></div>
+      </div>
+      <div class="eyebrow">Per oefening</div>
+      ${exercises.map((name) => {
+        const pts = seriesFor(name);
+        if (!pts.length) return '';
+        const vals = pts.map((p) => p.value);
+        const best = Math.max(...vals);
+        const delta = vals.length > 1 ? vals[vals.length - 1] - vals[0] : 0;
+        const unit = pts[pts.length - 1].unit;
+        const trend = vals.length < 2 ? ''
+          : delta > 0 ? `<span class="trend up">+${fmtNum(delta)} ${esc(unit)} ↑</span>`
+          : delta < 0 ? `<span class="trend down">−${fmtNum(Math.abs(delta))} ${esc(unit)} ↓</span>`
+          : '<span class="trend flat">gelijk</span>';
+        return `<div class="card" data-prog="${esc(name)}" role="button" tabindex="0" style="cursor:pointer">
+          <div class="row" style="margin-bottom:4px"><div class="grow title">${esc(name)}</div>${trend}</div>
+          <div class="row">${sparkSvg(vals.slice(-12))}
+            <div class="grow sub">Record ${fmtNum(best)} ${esc(unit)} · ${pts.length} sessie${pts.length === 1 ? '' : 's'}</div>
+            <span class="mut">›</span></div>
+        </div>`;
+      }).join('')}`;
+  }
+
   function foodTab() {
     const meals = ui.meals.filter((m) => m.date === ui.date);
     const totals = meals.reduce((t, m) => ({
@@ -439,17 +505,27 @@
       </div>
       <div class="tabs">
         <button data-tab="training" aria-pressed="${ui.tab === 'training'}">Training</button>
+        <button data-tab="voortgang" aria-pressed="${ui.tab === 'voortgang'}">Voortgang</button>
         <button data-tab="voeding" aria-pressed="${ui.tab === 'voeding'}">Voeding</button>
       </div>
       <p class="sub" style="margin:0 0 12px">${esc(fmtDateFull(ui.date))}</p>
-      ${ui.tab === 'training' ? trainingTab() : foodTab()}`;
+      ${ui.tab === 'training' ? trainingTab() : ui.tab === 'voortgang' ? progressTab() : foodTab()}`;
     bindApp();
   }
 
   // ---------- interactions ----------
   function bindApp() {
     document.getElementById('sign-out').addEventListener('click', () => { cloud.signOut(); start(); });
-    document.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => { ui.tab = b.dataset.tab; appView(); }));
+    document.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => {
+      ui.tab = b.dataset.tab;
+      ui.progressEx = null;
+      appView();
+    }));
+    document.querySelectorAll('[data-prog]').forEach((b) => b.addEventListener('click', () => {
+      ui.progressEx = b.dataset.prog; appView();
+    }));
+    const progBack = document.getElementById('prog-back');
+    if (progBack) progBack.addEventListener('click', () => { ui.progressEx = null; appView(); });
     document.querySelectorAll('[data-day]').forEach((b) => b.addEventListener('click', async () => {
       ui.date = b.dataset.day; await loadDay(); appView();
     }));
@@ -655,6 +731,46 @@
     ui.water = water.length ? water[0].ml : 0;
   }
 
+  // ---------- grafiekjes ----------
+  // a plain line with an area under it; same shape as the coach app, minus the hover
+  function chartSvg(points, unit) {
+    if (points.length < 2) return '<p class="mut">Nog te weinig sessies voor een grafiek.</p>';
+    const W = 320, H = 150, padL = 34, padR = 12, padT = 12, padB = 22;
+    const iw = W - padL - padR, ih = H - padT - padB;
+    const vals = points.map((p) => p.value);
+    const lo = Math.min(...vals), hi = Math.max(...vals);
+    const span = hi - lo || 1;
+    const x = (i) => padL + (i / (points.length - 1)) * iw;
+    const y = (v) => padT + ih - ((v - lo) / span) * ih;
+    const d = points.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(p.value).toFixed(1)}`).join(' ');
+    const area = `${d} L${x(points.length - 1).toFixed(1)},${padT + ih} L${padL},${padT + ih} Z`;
+    const last = points[points.length - 1];
+    return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Verloop van ${esc(unit)}">
+      <line x1="${padL}" y1="${padT}" x2="${W - padR}" y2="${padT}" stroke="var(--grid)" stroke-width="1"/>
+      <line x1="${padL}" y1="${padT + ih}" x2="${W - padR}" y2="${padT + ih}" stroke="var(--baseline)" stroke-width="1"/>
+      <text x="${padL - 6}" y="${padT + 4}" text-anchor="end" font-size="10" fill="var(--muted)">${fmtNum(hi)}</text>
+      <text x="${padL - 6}" y="${padT + ih}" text-anchor="end" font-size="10" fill="var(--muted)">${fmtNum(lo)}</text>
+      <path d="${area}" fill="var(--data-wash)"/>
+      <path d="${d}" fill="none" stroke="var(--data)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+      ${points.map((p, i) => `<circle cx="${x(i).toFixed(1)}" cy="${y(p.value).toFixed(1)}" r="3" fill="var(--data)"/>`).join('')}
+      <text x="${padL}" y="${H - 6}" font-size="10" fill="var(--muted)">${esc(fmtDate(points[0].date))}</text>
+      <text x="${W - padR}" y="${H - 6}" text-anchor="end" font-size="10" fill="var(--muted)">${esc(fmtDate(last.date))}</text>
+    </svg>`;
+  }
+
+  function sparkSvg(values) {
+    if (values.length < 2) return '<span style="width:70px;display:inline-block"></span>';
+    const w = 70, h = 22, pad = 3;
+    const lo = Math.min(...values), hi = Math.max(...values);
+    const x = (i) => pad + (i / (values.length - 1)) * (w - pad * 2);
+    const y = (v) => h - pad - ((v - lo) / (hi - lo || 1)) * (h - pad * 2);
+    const d = values.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+    return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" aria-hidden="true" style="flex:none">
+      <path d="${d}" fill="none" stroke="var(--data)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="${x(values.length - 1).toFixed(1)}" cy="${y(values[values.length - 1]).toFixed(1)}" r="2.5" fill="var(--data)"/>
+    </svg>`;
+  }
+
   // ---------- rusttimer ----------
   const rest = { endsAt: 0, tick: null, paused: false, left: 0 };
   const mmss = (sec) => {
@@ -711,9 +827,59 @@
         }
       }
       ui.history = map;
+      ui.sessions = rows;
     } catch {
       ui.history = new Map();
+      ui.sessions = [];
     }
+  }
+
+  // every session of one exercise, oldest first, with the heaviest set of that day
+  function seriesFor(name) {
+    const key = String(name || '').trim().toLowerCase();
+    const out = [];
+    for (const w of ui.sessions) {
+      for (const e of w.entries || []) {
+        if (String(e.name || '').trim().toLowerCase() !== key) continue;
+        const sets = (e.sets || []).filter((x) => x.weight > 0 || x.reps > 0);
+        if (!sets.length) continue;
+        const top = Math.max(...sets.map((x) => x.weight || 0));
+        const reps = Math.max(...sets.map((x) => x.reps || 0));
+        out.push({ date: w.date, value: top > 0 ? top : reps, unit: top > 0 ? 'kg' : 'herh.', sets });
+      }
+    }
+    return out.sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  // the exercises this client has actually logged, most recent first
+  function loggedExercises() {
+    const seen = new Map();
+    for (const w of ui.sessions) {
+      for (const e of w.entries || []) {
+        const name = String(e.name || '').trim();
+        if (name && !seen.has(name.toLowerCase())) seen.set(name.toLowerCase(), name);
+      }
+    }
+    return [...seen.values()];
+  }
+
+  // weeks in a row with at least one session, counting back from this week
+  function weekStreak() {
+    const wk = (iso) => {
+      const d = new Date(iso + 'T12:00:00');
+      d.setDate(d.getDate() + 4 - (d.getDay() || 7));
+      return d.getFullYear() + '-' + Math.ceil(((d - new Date(d.getFullYear(), 0, 1)) / 86400000 + 1) / 7);
+    };
+    const weeks = new Set(ui.sessions.map((w) => wk(w.date)));
+    let streak = 0;
+    const cur = new Date();
+    for (let i = 0; i < 104; i++) {
+      const key = wk(cur.toISOString().slice(0, 10));
+      if (weeks.has(key)) streak++;
+      else if (i > 0) break;
+      cur.setDate(cur.getDate() - 7);
+    }
+    return streak;
   }
   const lastTime = (name) => ui.history.get(String(name || '').trim().toLowerCase()) || null;
   const prevLine = (name) => {
