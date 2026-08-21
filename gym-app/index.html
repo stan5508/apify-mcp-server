@@ -394,6 +394,10 @@
   .addbox > summary::-webkit-details-marker { display: none; }
   .addbox[open] > summary { margin-bottom: 4px; }
 
+  .progress-hint {
+    border: 1px solid var(--good-line); background: var(--good-wash);
+    border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; font-size: 13.5px;
+  }
   .ex-menu { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; padding: 9px; border: 1px solid var(--grid); border-radius: 8px; }
   .set-more { display: grid; grid-template-columns: auto 1fr; gap: 8px 10px; align-items: center; margin: -2px 0 10px 30px; padding: 10px; border: 1px solid var(--grid); border-radius: 8px; }
   .set-more .lbl { font-size: 12px; color: var(--muted); }
@@ -557,7 +561,7 @@
 <script>
 (() => {
   'use strict';
-  const APP_VERSION = 52; // bump when publishing; shown on the home screen
+  const APP_VERSION = 53; // bump when publishing; shown on the home screen
   const KEY = 'coachlog-v1';
   const $app = document.getElementById('app');
 
@@ -594,7 +598,8 @@
       nutritionPlans: d.nutritionPlans || {}, meals: d.meals || [], foods: d.foods || [], water: d.water || {},
       muscleGroups: d.muscleGroups || {},
       settings: { unit: 'kg', restSeconds: 90, autoRest: true, sound: true, barWeight: 20, noShowCounts: true, currency: '€', theme: 'dark', pin: null, lockMinutes: 15, coachName: '', lastBackupAt: null,
-        countTrainingBurn: true, kcalPerMin: 6, waterTargetMl: 2000, mailCopy: true, ...(d.settings || {}) },
+        countTrainingBurn: true, kcalPerMin: 6, waterTargetMl: 2000, mailCopy: true,
+        progression: true, progressStep: 2.5, ...(d.settings || {}) },
       updatedAt: d.updatedAt || 0,
     };
     for (const c of out.clients) {
@@ -1252,6 +1257,32 @@
     return null;
   }
 
+  // how much to add when a client clears everything: per exercise if set, otherwise the global step
+  function progressStepFor(name) {
+    const rec = exerciseByName(name);
+    const own = rec && rec.progressStep;
+    return own > 0 ? own : (db.settings.progressStep > 0 ? db.settings.progressStep : 2.5);
+  }
+
+  // double progression: cleared every working set at or above target last time -> go heavier.
+  // Returns null when there is nothing to suggest (no targets, no last session, or not cleared).
+  function progressSuggestion(clientId, name, kind, targets, excludeId) {
+    if (!db.settings.progression || kind === 'cardio') return null;
+    const prev = lastEntryFor(clientId, name, excludeId);
+    const tgt = (targets && targets.length ? targets : null) || targetsFor(clientId, name);
+    if (!prev || !tgt || !tgt.length) return null;
+    const done = prev.entry.sets.filter((x) => setType(x) !== 'warmup' && filledSet(x, kind));
+    if (done.length < tgt.length) return null;
+    const cleared = done.every((set, i) => {
+      const t = tgt[Math.min(i, tgt.length - 1)];
+      return (set.reps || 0) >= (t.reps || 0) && (set.weight || 0) >= (t.weight || 0);
+    });
+    if (!cleared) return null;
+    const from = Math.max(...done.map((x) => x.weight || 0));
+    const step = progressStepFor(name);
+    return { from, to: Math.round((from + step) * 100) / 100, step, reps: tgt[0].reps || 0 };
+  }
+
   // best logged top weight for an exercise, null if never done
   function bestTopFor(clientId, name, excludeId) {
     const sessions = exerciseSessions(clientId, name, excludeId);
@@ -1266,6 +1297,14 @@
       ? `${fmtNum(x.distance || 0)}km/${fmtNum(x.minutes || 0)}min`
       : `${fmtNum(x.weight || 0)}×${x.reps || 0}`).join(' · ');
     return `vorige sessie ${fmtDate(prev.date)}${txt ? ' — ' + txt : ''}`;
+  }
+
+  // banner above the set rows when the app went heavier on its own
+  function progressHintHtml(clientId, ex, excludeId) {
+    const step = progressSuggestion(clientId, ex.name, ex.kind, ex.targets, excludeId);
+    if (!step) return '';
+    return `<div class="progress-hint">📈 Vorige keer alles gehaald op ${esc(fmtKg(step.from))} —
+      voorstel <b>${esc(fmtKg(step.to))}</b> (+${esc(fmtKg(step.step))}). Pas gerust aan.</div>`;
   }
 
   // sticky bar at the top of a session: elapsed time and how many sets are ticked off
@@ -2887,6 +2926,21 @@
           <button id="set-sound" aria-pressed="${!!db.settings.sound}">Geluid en trilling</button>
         </div>
       </div>
+      <div class="card">
+        <div class="row">
+          <div class="grow">
+            <div class="title">Progressie voorstellen</div>
+            <div class="sub">Haalt een klant alle herhalingen uit het schema, dan zet de app de volgende
+              keer vanzelf een zwaarder gewicht klaar. Je kunt het altijd overschrijven.</div>
+          </div>
+        </div>
+        <div class="pillbar" style="margin-top:10px">
+          <button id="set-progression" aria-pressed="${!!db.settings.progression}">Progressie voorstellen</button>
+        </div>
+        <label class="field" style="margin:10px 0 0;max-width:220px"><span>Standaardstap (${unitLbl()})</span>
+          <input id="set-step" type="text" inputmode="decimal" value="${db.settings.progressStep}"></label>
+        <p class="mut" style="margin:6px 0 0">Per oefening kun je een eigen stap zetten in de bibliotheek.</p>
+      </div>
       <div class="eyebrow">Weergave</div>
       <div class="card">
         <div class="seg" role="group" aria-label="Thema" style="max-width:300px">
@@ -3026,6 +3080,14 @@
     });
     document.getElementById('set-autorest').addEventListener('click', () => {
       db.settings.autoRest = !db.settings.autoRest; save(); render();
+    });
+    document.getElementById('set-progression').addEventListener('click', () => {
+      db.settings.progression = !db.settings.progression; save(); render();
+    });
+    document.getElementById('set-step').addEventListener('change', (ev) => {
+      const v = num(ev.target.value);
+      db.settings.progressStep = v > 0 ? v : 2.5;
+      save(); render();
     });
     ['system', 'light', 'dark'].forEach((t) => document.getElementById('theme-' + t).addEventListener('click', () => {
       db.settings.theme = t; db.settings.themePicked = true; save(); applyTheme(); render();
@@ -4341,9 +4403,11 @@
             <div class="row">
               <label class="field grow"><span>Rusttijd (sec, leeg = standaard ${db.settings.restSeconds})</span>
                 <input name="rest" type="number" min="10" max="600" value="${rec.restSeconds || ''}" placeholder="${db.settings.restSeconds}"></label>
-              <label class="field grow"><span>Synoniemen (komma-gescheiden)</span>
-                <input name="aliases" value="${esc((rec.aliases || []).join(', '))}" placeholder="bijv. bench press"></label>
+              <label class="field grow"><span>Progressiestap (${unitLbl()}, leeg = standaard ${db.settings.progressStep})</span>
+                <input name="progressStep" type="text" inputmode="decimal" value="${rec.progressStep || ''}" placeholder="${db.settings.progressStep}"></label>
             </div>
+            <label class="field"><span>Synoniemen (komma-gescheiden)</span>
+              <input name="aliases" value="${esc((rec.aliases || []).join(', '))}" placeholder="bijv. bench press"></label>
             <label class="field"><span>Uitvoering</span>
               <textarea name="instructions" rows="3" placeholder="bijv. voeten op schouderbreedte, borst omhoog, tot parallel zakken">${esc(rec.instructions || '')}</textarea></label>
             <label class="field"><span>Aandachtspunten</span>
@@ -4478,6 +4542,7 @@
       rec.group = String(f.get('group'));
       rec.equipment = String(f.get('equipment'));
       rec.restSeconds = num(f.get('rest')) > 0 ? num(f.get('rest')) : null;
+      rec.progressStep = num(f.get('progressStep')) > 0 ? num(f.get('progressStep')) : null;
       rec.instructions = String(f.get('instructions')).trim();
       rec.cues = String(f.get('cues')).trim();
       rec.videoUrl = safeUrl(f.get('videoUrl'));
@@ -6133,6 +6198,13 @@
 
     const prefill = (clientId, name, kind, targets) => {
       const prev = lastEntryFor(clientId, name);
+      const step = progressSuggestion(clientId, name, kind, targets);
+      if (prev && step) {
+        return prev.entry.sets.map((s) => ({
+          ...s, note: '', type: setType(s) === 'warmup' ? 'warmup' : 'normaal',
+          weight: setType(s) === 'warmup' ? s.weight : step.to,
+        }));
+      }
       if (prev) return prev.entry.sets.map((s) => ({ ...s, note: '', type: setType(s) === 'warmup' ? 'warmup' : 'normaal' }));
       const t = (targets && targets.length ? targets : null) || targetsFor(clientId, name);
       if (t) return t.map((x) => ({ ...x }));
@@ -6200,6 +6272,7 @@
               </div>` : ''}
               ${infoOpen === key ? `<div class="info-panel">${exerciseInfoHtml(ex.name, mem.client.id)}</div>` : ''}
               <div class="mut" style="margin-bottom:8px">${esc(prevSummary(prev, ex.kind))}</div>
+              ${progressHintHtml(mem.client.id, ex, null)}
               ${swapping === key ? `<div class="row" style="margin-bottom:10px">
                 <input id="swap-input" class="grow" list="swap-list" placeholder="Vervangende oefening">
                 <button type="button" class="small primary" id="swap-ok">OK</button>
@@ -6541,6 +6614,14 @@
     const prefill = (ex) => {
       const kind = ex.kind || kindFor(clientId, ex.name);
       const prev = lastEntryFor(clientId, ex.name, editing && editing.id);
+      // everything cleared last time? then start from the heavier weight instead of a copy
+      const step = editing ? null : progressSuggestion(clientId, ex.name, kind, ex.targets, editing && editing.id);
+      if (prev && step) {
+        return prev.entry.sets.map((s) => ({
+          ...s, note: '', type: setType(s) === 'warmup' ? 'warmup' : 'normaal',
+          weight: setType(s) === 'warmup' ? s.weight : step.to,
+        }));
+      }
       if (prev) return prev.entry.sets.map((s) => ({ ...s, note: '', type: setType(s) === 'warmup' ? 'warmup' : 'normaal' }));
       const targets = (ex.targets && ex.targets.length ? ex.targets : null) || targetsFor(clientId, ex.name);
       if (targets) return targets.map((t) => ({ ...t }));
@@ -6607,6 +6688,7 @@
             </div>` : ''}
             ${infoOpen === xi ? `<div class="info-panel">${exerciseInfoHtml(ex.name, clientId)}</div>` : ''}
             <div class="mut" style="margin-bottom:8px">${esc(prevSummary(prev, ex.kind))}</div>
+            ${progressHintHtml(clientId, ex, editing && editing.id)}
             ${swapping === xi ? `<div class="row" style="margin-bottom:10px">
               <input id="swap-input" class="grow" list="swap-list" placeholder="Vervangende oefening">
               <button type="button" class="small primary" id="swap-ok">OK</button>
