@@ -138,6 +138,9 @@ Schema's van de coach zijn zichtbaar sinds versie 55: **Van klanten → Schema's
 schrijft ze naar `client_schemas`, de sporter-app toont ze onder *Van je coach* en start er
 een training mee met de doelen al ingevuld.
 
+Sinds versie 57/58 logt de klant met dezelfde hulpmiddelen als de coach (vorige keer,
+afvinken, rusttimer) en ziet hij zijn eigen voortgang onder het tabblad **Voortgang**.
+
 Nog open: meldingen ("je coach heeft een nieuw schema klaargezet").
 
 ## Nog te doen (opzetwerk, niet door de app)
@@ -288,6 +291,9 @@ gegevens, de coach die van zijn eigen klanten.
 Schema's van de coach zijn zichtbaar sinds versie 55: **Van klanten → Schema's klaarzetten**
 schrijft ze naar `client_schemas`, de sporter-app toont ze onder *Van je coach* en start er
 een training mee met de doelen al ingevuld.
+
+Sinds versie 57/58 logt de klant met dezelfde hulpmiddelen als de coach (vorige keer,
+afvinken, rusttimer) en ziet hij zijn eigen voortgang onder het tabblad **Voortgang**.
 
 Nog open: meldingen ("je coach heeft een nieuw schema klaargezet").
 
