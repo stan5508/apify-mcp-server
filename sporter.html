@@ -195,7 +195,7 @@
   let local = load();
   const saveLocal = () => localStorage.setItem(LOCAL_KEY, JSON.stringify(local));
 
-  let ui = { tab: 'training', date: todayIso(), draft: null, meals: [], workouts: [], water: 0, schemas: [], profile: null, busy: false };
+  let ui = { tab: 'training', date: todayIso(), draft: null, meals: [], workouts: [], water: 0, schemas: [], schemaError: '', profile: null, busy: false };
 
   // ---------- views ----------
   function setupView(message) {
@@ -313,14 +313,18 @@
         <label class="field" style="margin-top:10px"><span>Notitie</span><input id="w-note" value="${esc(draft.notes || '')}" placeholder="hoe ging het?"></label>
         <button class="primary wide" id="save-workout">Training opslaan</button>
       </div>`
-      : `${(ui.schemas || []).length ? `<div class="eyebrow">Van je coach</div>` +
-          ui.schemas.map((sc, i) => `<div class="card">
-            <div class="row"><div class="grow">
-              <div class="title">${esc(sc.name || 'Schema')}</div>
-              <div class="sub">${(sc.exercises || []).map((e) => esc(e.name)).join(' · ') || 'nog geen oefeningen'}</div>
-            </div>
-            <button class="small primary" data-use-schema="${i}">Start</button></div>
-          </div>`).join('') : ''}
+      : `<div class="eyebrow">Van je coach</div>
+        ${(ui.schemas || []).length
+          ? ui.schemas.map((sc, i) => `<div class="card">
+              <div class="row"><div class="grow">
+                <div class="title">${esc(sc.name || 'Schema')}</div>
+                <div class="sub">${(sc.exercises || []).map((e) => esc(e.name)).join(' · ') || 'nog geen oefeningen'}</div>
+              </div>
+              <button class="small primary" data-use-schema="${i}">Start</button></div>
+            </div>`).join('')
+          : `<div class="card"><div class="sub">${ui.schemaError
+              ? esc(ui.schemaError)
+              : 'Je coach heeft nog geen schema klaargezet. Zodra dat gebeurt staat het hier.'}</div></div>`}
         <button class="primary wide" id="start-workout">${(ui.schemas || []).length ? 'Losse training starten' : 'Training starten'}</button>`}`;
   }
 
@@ -599,11 +603,16 @@
 
   // schemas the coach put ready; missing table or no rows simply means nothing to show
   async function loadSchemas() {
+    ui.schemaError = '';
     try {
       ui.schemas = await cloud.select('client_schemas',
         `client_id=eq.${cloud.userId()}&select=*&order=day_order`);
-    } catch {
+    } catch (e) {
       ui.schemas = [];
+      // the table is only there once the coach ran the extra SQL; say so instead of staying blank
+      ui.schemaError = /client_schemas|not exist|schema cache/i.test(e.message)
+        ? 'De coach heeft dit onderdeel nog niet aangezet.'
+        : 'Schema ophalen lukte niet: ' + e.message;
     }
   }
 
