@@ -37,6 +37,19 @@ geen melding. Dit voorkomt dat een lege nacht ~50 volledige runs kost.
 | spend gisteren en eergisteren (testdag bepalen) | Windsor `facebook` | `get_data`, `date_preset: "last_3dT"` |
 | ATC en checkouts per campagne | Shopify ShopifyQL | `FROM sessions SHOW sessions, sessions_with_cart_additions, sessions_that_completed_checkout GROUP BY utm_campaign SINCE <vandaag> UNTIL <vandaag>` |
 | orders en omzet | Shopify ShopifyQL | `FROM sales SHOW orders, gross_sales GROUP BY product_title SINCE <vandaag> UNTIL <vandaag>` |
+| BER per product | Google Drive | `read_file_content` op fileId `1AgRCvIDrR6063lcoBMAtmcHvEkHcNY1u3lUUWJe3WTo` |
+
+### BER
+
+BER komt uit de **PRODUCT DATA SHEET** ("Kopie van NSA - PRODUCT DATA SHEET"), kolom `BER` naast
+`PRIJS (EUR)`, `COG` en `MARGE`. Nooit zelf berekenen of aannemen.
+
+Koppelen op productnaam: strip `ASH | ` van de campagnenaam en alles vanaf ` | CBO`, strip `Ashcroft | ` van
+`PRODUCTNAAM`, en match wat overblijft. De namen zijn niet altijd identiek — de campagne "Colourful Vintage
+Patchwork Print Midi Dress" heet in de sheet "Colourful Vintage Patchwork Print **V Neck** Midi Dress".
+
+**Is er geen eenduidige match, laat BER dan leeg.** Nooit een BER van een ander product overnemen en nooit
+een waarde gokken.
 
 `utm_campaign` in Shopify is exact het Meta `campaign_id`. De koppeling is 1-op-1, geen naam-matching.
 
@@ -95,6 +108,8 @@ Gebruik `routines/cbo-kill/template.html` als basis. Vervang de blokken die met 
 zijn. Verander niets aan de CSS of de structuur — het document moet er bij elke check identiek uitzien.
 
 Kolommen, in deze volgorde: campagne/product, spend, ATC, purchase, CPM, CPC, CTR, BER, ROAS, reach.
+BER komt per product uit de PRODUCT DATA SHEET (zie stap 1). Kleur ROAS rood zodra hij onder de BER van
+dat product ligt.
 
 Is de template niet beschikbaar, bouw dan een eenvoudige ongestileerde tabelpagina en ga gewoon door.
 **De opmaak mag degraderen, de kill-functie nooit.**
@@ -114,8 +129,6 @@ van een drempel zit. Nooit een melding voor een rustige check.
 
 ## Open punten
 
-- **BER** staat op 1,43, gerekend met een aangenomen contributiemarge van 70% op een AOV van €19,95.
-  `unitCost` is leeg voor alle producten in Shopify, dus de echte inkoopprijs ontbreekt.
 - **Sync-vertraging van Windsor** is nog niet gemeten. Komt spend er trager in dan 10 minuten, dan schuiven
   alle kill-momenten naar achteren en is de 10-minuten-check schijnprecisie.
 - **Zomertijd.** De cron staat in UTC en gaat uit van London = UTC+1. In de wintertijd verschuift het venster
@@ -124,7 +137,7 @@ van een drempel zit. Nooit een melding voor een rustige check.
 ## Routine-prompt (voor de claude.ai Routines-UI)
 
 Zes Routines, cron in UTC: `2 23,0-7 * * *`, `12 23,0-7 * * *`, `22 …`, `32 …`, `42 …`, `52 …`.
-Elk met Windsor.ai en Shopify als connector, "nieuwe sessie per fire", en push-notificaties aan.
+Elk met Windsor.ai, Shopify en Google Drive als connector, "nieuwe sessie per fire", en push-notificaties aan.
 Elke fire is onafhankelijk — valt er één om, dan mis je één check en niet een heel uur.
 
 ```
@@ -144,6 +157,9 @@ STAP 2 - DATA (vandaag, advertiser-tijdzone Europe/London)
 - Shopify: FROM sessions SHOW sessions, sessions_with_cart_additions,
   sessions_that_completed_checkout GROUP BY utm_campaign SINCE <vandaag> UNTIL <vandaag>
 - Shopify: FROM sales SHOW orders, gross_sales GROUP BY product_title SINCE <vandaag> UNTIL <vandaag>
+- BER per product: mcp__Google_Drive__read_file_content op fileId
+  1AgRCvIDrR6063lcoBMAtmcHvEkHcNY1u3lUUWJe3WTo (PRODUCT DATA SHEET), kolom BER.
+  Koppelen op productnaam; geen eenduidige match = BER leeg laten, nooit gokken.
 utm_campaign is exact het Meta campaign_id. ATC en sales komen ALTIJD uit Shopify, nooit uit Meta.
 
 STAP 3 - TESTDAG: geen spend gisteren = 1. Spend gisteren maar niet eergisteren = 2. Beide = 3+.
@@ -164,7 +180,8 @@ action "pause_campaign", params {"campaign_id":"<id>"}.
 STAP 6 - DOCUMENT: werk ALTIJD dezelfde artifact bij met de Artifact tool:
 url: https://claude.ai/code/artifact/5361745d-b1fd-40b6-838f-54e1b48e3c60
 favicon: (rode stip)
-Kolommen: campagne/product, spend, ATC, purchase, CPM, CPC, CTR, BER, ROAS, reach. BER = 1,43.
+Kolommen: campagne/product, spend, ATC, purchase, CPM, CPC, CTR, BER, ROAS, reach.
+BER per product uit de sheet. Kleur ROAS rood zodra hij onder de BER van dat product ligt.
 Onder de tabel kort: waar je op let, en per pauzering welke regel is geraakt met de cijfers erbij.
 
 STAP 7 - MELDEN: PushNotification alleen bij een daadwerkelijke pauzering, of als een actieve
