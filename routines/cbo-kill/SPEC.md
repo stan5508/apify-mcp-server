@@ -153,6 +153,9 @@ wijzigen, geen celinhoud. Onderstaande is getest op de echte sheets, niet aangen
   (DATUM) over meerdere rijen samengevoegd. Alleen de linkerbovencel van zo'n blok neemt een waarde
   aan; de rest negeert hem zonder foutmelding. De respons van `update_row` toont dan een lege cel
   terwijl de call slaagde — controleer die respons dus altijd, en ga niet af op een 200.
+  Er is geen ontkoppel-actie in de Zapier-set. Wel werkt dit: verwijder de rijen waar de
+  samenvoeging aan vastzit met `delete_spreadsheet_row` (niet `delete_row`, dat leegt alleen), en
+  schrijf de regels daarna opnieuw weg. Kijk eerst wat er in die rijen staat.
 - **Bulk schrijven kan** met `update_row_lines`: een `rows`-array met per regel een `row_number`.
   Scheelt tientallen losse calls. Let op: `add_row` plakt onder de laatste gevulde rij, en die kan
   ver naar beneden staan als er oude placeholderrijen in de tab staan. Gebruik dan `update_row_lines`
