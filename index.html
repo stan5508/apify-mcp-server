@@ -569,7 +569,7 @@
 <script>
 (() => {
   'use strict';
-  const APP_VERSION = 54; // bump when publishing; shown on the home screen
+  const APP_VERSION = 55; // bump when publishing; shown on the home screen
   const KEY = 'coachlog-v1';
   const $app = document.getElementById('app');
 
@@ -5301,6 +5301,28 @@
   }
 
   // --- data that clients logged themselves ---
+  // put this client's schemas where their sporter app can read them; replaces what was there
+  async function publishSchemas(localClient, cloudClientId) {
+    const prog = programOf(localClient.id);
+    const ordered = prog
+      ? prog.schemaIds.map(schemaById).filter(Boolean)
+      : schemasOf(localClient.id);
+    const rows = ordered.map((sc, i) => ({
+      client_id: cloudClientId,
+      coach_id: cloud.userId(),
+      name: sc.name,
+      day_order: i,
+      exercises: sc.exercises.map((e) => ({
+        name: e.name,
+        kind: e.kind || kindFor(localClient.id, e.name),
+        targets: (e.targets || []).map((t) => ({ ...t })),
+      })),
+    }));
+    await cloud.remove('client_schemas', `client_id=eq.${cloudClientId}`);
+    if (rows.length) await cloud.insert('client_schemas', rows);
+    return rows.length;
+  }
+
   function viewClientFeed(clientKey) {
     if (!cloud.configured() || !cloud.signedIn()) {
       $app.innerHTML = topbar('Van klanten', '/') +
@@ -5349,6 +5371,15 @@
           `<div class="chips" style="margin-bottom:12px">${profiles.map((p) =>
             `<button class="chip" data-feed-client="${p.id}" aria-pressed="${p.id === active.id}">${esc(p.name || 'naamloos')}</button>`).join('')}</div>` +
           `<p class="sub" style="margin:0 0 12px">Laatste 30 dagen van ${esc(active.name || 'deze klant')}.${localClient ? '' : ' <span class="mut">Nog geen klant met deze naam in je eigen administratie.</span>'}</p>` +
+          (localClient ? `<div class="card">
+            <div class="row"><div class="grow">
+              <div class="title">Schema's klaarzetten</div>
+              <div class="sub">${schemasOf(localClient.id).length
+                ? `Stuur ${esc(localClient.name)} de ${programOf(localClient.id) ? 'dagen van het weekprogramma' : `${schemasOf(localClient.id).length} schema${schemasOf(localClient.id).length === 1 ? '' : "'s"}`} door, zodat ze in de sporter-app te zien zijn.`
+                : 'Deze klant heeft nog geen schema\'s.'}</div>
+            </div>
+            <button class="small primary" id="push-schemas" ${schemasOf(localClient.id).length ? '' : 'disabled'}>Klaarzetten</button></div>
+          </div>` : '') +
           (days.length ? days.map((d) => {
             const kcal = d.meals.reduce((t, m) => t + Number(m.kcal || 0), 0);
             const protein = d.meals.reduce((t, m) => t + Number(m.protein || 0), 0);
@@ -5366,6 +5397,19 @@
         document.querySelectorAll('[data-feed-client]').forEach((b) => b.addEventListener('click', () => {
           location.hash = `/vanklanten/${b.dataset.feedClient}`;
         }));
+        const pushBtn = document.getElementById('push-schemas');
+        if (pushBtn) pushBtn.addEventListener('click', async () => {
+          pushBtn.disabled = true;
+          pushBtn.textContent = 'Bezig…';
+          try {
+            const n = await publishSchemas(localClient, active.id);
+            alert(`${n} schema${n === 1 ? '' : "'s"} klaargezet voor ${active.name || 'deze klant'}.`);
+          } catch (e) {
+            alert('Klaarzetten mislukt: ' + e.message);
+          }
+          pushBtn.disabled = false;
+          pushBtn.textContent = 'Klaarzetten';
+        });
         document.querySelectorAll('[data-import]').forEach((b) => b.addEventListener('click', () => {
           const day = byDate.get(b.dataset.import);
           if (!day || !localClient) return;
