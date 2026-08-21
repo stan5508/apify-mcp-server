@@ -119,6 +119,41 @@ Alle voorwaarden binnen een regel moeten gelijktijdig waar zijn. Eén ATC is gen
 `execute_action`, connector `facebook`, action `pause_campaign`, params `{"campaign_id": "<id>"}`.
 Omkeerbaar met `enable_campaign`.
 
+### RESULTAAT bijwerken in de PRODUCT DATA SHEET
+
+Na elke pauzering: schrijf `KILLED OP <drempel>` (10, 20 of 30) in de kolom RESULTAAT van de
+PRODUCT DATA SHEET, zoals dat voorheen met de hand gebeurde.
+
+| | |
+|---|---|
+| Spreadsheet | `1AgRCvIDrR6063lcoBMAtmcHvEkHcNY1u3lUUWJe3WTo` |
+| Worksheet | `0` (tab DATA) |
+| Kolom | `COL$T` = RESULTAAT |
+| Rij | **productnummer + 3** — kolom C bevat PRODUCT NO., de kop staat op rij 3 |
+| Actie | Zapier `update_row`, `force_all_fields` **false** |
+
+Het productnummer komt uit kolom C van dezelfde sheet, gekoppeld op productnaam.
+
+## Schrijven naar Google Sheets — geverifieerd
+
+Gaat via Zapier (`GoogleSheetsV2CLIAPI`), niet via de Drive-connector: die kan alleen titel en map
+wijzigen, geen celinhoud. Onderstaande is getest op de echte sheets, niet aangenomen.
+
+- **Worksheets worden aangesproken op sheet-ID, niet op naam.** Resolve met
+  `inspect_zapier_actions` + `enum_property: "worksheet"`, of lees ze uit `get_spreadsheet_by_id`.
+- **`force_all_fields` moet false blijven.** Op true wordt elke niet-ingevulde kolom geleegd,
+  inclusief formulekolommen.
+- **Locale verschilt per sheet.** DAILY PROFIT en ROAS & PROFIT staan op `nl_NL` → decimaal met
+  **komma** (`59,85`). PRODUCT DATA staat op `en_US` → decimaal met **punt**. Fout formaat maakt van
+  €59,85 stilzwijgend 5985.
+- **Percentages met een %-teken schrijven.** Een kale `0.0390` wordt in nl_NL gelezen als 390.
+- **Rijnummers zijn rekenwerk, geen zoekactie:** dagelijkse P&L = dagnummer + 1, product data =
+  productnummer + 3.
+
+Formulekolommen overleven een `update_row` en rekenen zichzelf door. Getest op 20-08-2026: alleen
+omzet, COG en adspend geschreven, waarna Transactie, Profit, ROAS en Profit % correct uitkwamen op
+€2,99 / −€103,31 / 0,44 / −172,62%.
+
 ## Stap 5 — document
 
 Werk altijd dezelfde artifact bij:
