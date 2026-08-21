@@ -149,6 +149,14 @@ wijzigen, geen celinhoud. Onderstaande is getest op de echte sheets, niet aangen
 - **Percentages met een %-teken schrijven.** Een kale `0.0390` wordt in nl_NL gelezen als 390.
 - **Rijnummers zijn rekenwerk, geen zoekactie:** dagelijkse P&L = dagnummer + 1, product data =
   productnummer + 3.
+- **Samengevoegde cellen slikken je schrijfactie stilzwijgend op.** In de TEST DATA-tab is kolom A
+  (DATUM) over meerdere rijen samengevoegd. Alleen de linkerbovencel van zo'n blok neemt een waarde
+  aan; de rest negeert hem zonder foutmelding. De respons van `update_row` toont dan een lege cel
+  terwijl de call slaagde — controleer die respons dus altijd, en ga niet af op een 200.
+- **Bulk schrijven kan** met `update_row_lines`: een `rows`-array met per regel een `row_number`.
+  Scheelt tientallen losse calls. Let op: `add_row` plakt onder de laatste gevulde rij, en die kan
+  ver naar beneden staan als er oude placeholderrijen in de tab staan. Gebruik dan `update_row_lines`
+  met expliciete rijnummers.
 
 Formulekolommen overleven een `update_row` en rekenen zichzelf door. Getest op 20-08-2026: alleen
 omzet, COG en adspend geschreven, waarna Transactie, Profit, ROAS en Profit % correct uitkwamen op
