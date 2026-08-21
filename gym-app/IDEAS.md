@@ -134,8 +134,11 @@ Vereist een gratis Supabase-project; opzet staat in [SUPABASE.md](./SUPABASE.md)
 Toegang wordt afgedwongen met row level security: klanten zien alleen hun eigen
 gegevens, de coach die van zijn eigen klanten.
 
-Nog open: klanten die hun schema van de coach zien, meldingen ("je coach heeft een
-nieuw schema klaargezet"), en het terugsturen van coach-schema's naar de sporter-app.
+Schema's van de coach zijn zichtbaar sinds versie 55: **Van klanten → Schema's klaarzetten**
+schrijft ze naar `client_schemas`, de sporter-app toont ze onder *Van je coach* en start er
+een training mee met de doelen al ingevuld.
+
+Nog open: meldingen ("je coach heeft een nieuw schema klaargezet").
 
 ## Nog te doen (opzetwerk, niet door de app)
 
@@ -282,8 +285,11 @@ Vereist een gratis Supabase-project; opzet staat in [SUPABASE.md](./SUPABASE.md)
 Toegang wordt afgedwongen met row level security: klanten zien alleen hun eigen
 gegevens, de coach die van zijn eigen klanten.
 
-Nog open: klanten die hun schema van de coach zien, meldingen ("je coach heeft een
-nieuw schema klaargezet"), en het terugsturen van coach-schema's naar de sporter-app.
+Schema's van de coach zijn zichtbaar sinds versie 55: **Van klanten → Schema's klaarzetten**
+schrijft ze naar `client_schemas`, de sporter-app toont ze onder *Van je coach* en start er
+een training mee met de doelen al ingevuld.
+
+Nog open: meldingen ("je coach heeft een nieuw schema klaargezet").
 
 ## Nog te doen (opzetwerk, niet door de app)
 

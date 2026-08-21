@@ -15,6 +15,12 @@ de accounts en de gegevens bewaart: **Supabase**.
 
 Open in Supabase de **SQL Editor** en plak onderstaande code in zijn geheel. Klik **Run**.
 
+> **Draaide je dit al eerder?** Dan bestaan de meeste tabellen al en klaagt Supabase daarover.
+> Voer in dat geval alleen het blok voor `client_schemas` uit (de tabel én de twee bijbehorende
+> `create policy`-regels plus de `alter table … enable row level security`-regel). Dat is de
+> tabel waarmee je schema's bij je klanten in de sporter-app komen; zonder die tabel werkt de
+> rest gewoon door, alleen zien klanten hun schema niet.
+
 ```sql
 -- profielen: elke ingelogde gebruiker heeft er één
 create table public.profiles (
@@ -60,6 +66,17 @@ create table public.client_meals (
   updated_at timestamptz not null default now()
 );
 
+-- schema's die de coach voor de klant klaarzet
+create table public.client_schemas (
+  id uuid primary key default gen_random_uuid(),
+  client_id uuid not null references public.profiles(id) on delete cascade,
+  coach_id uuid not null references public.profiles(id) on delete cascade,
+  name text not null default '',
+  day_order int not null default 0,
+  exercises jsonb not null default '[]',
+  updated_at timestamptz not null default now()
+);
+
 -- water per dag
 create table public.client_water (
   client_id uuid not null references public.profiles(id) on delete cascade,
@@ -72,6 +89,7 @@ alter table public.profiles enable row level security;
 alter table public.invites enable row level security;
 alter table public.client_workouts enable row level security;
 alter table public.client_meals enable row level security;
+alter table public.client_schemas enable row level security;
 alter table public.client_water enable row level security;
 
 -- profielen: jezelf lezen/bijwerken, en als coach je eigen klanten lezen
@@ -99,6 +117,16 @@ create policy "klant beheert eigen maaltijden" on public.client_meals
 create policy "coach leest maaltijden van klanten" on public.client_meals
   for select using (exists (
     select 1 from public.profiles p where p.id = client_meals.client_id and p.coach_id = auth.uid()
+  ));
+
+-- schema's: de coach schrijft ze, de klant leest alleen de zijne
+create policy "klant leest eigen schema's" on public.client_schemas
+  for select using (client_id = auth.uid());
+create policy "coach beheert schema's van klanten" on public.client_schemas
+  for all using (exists (
+    select 1 from public.profiles p where p.id = client_schemas.client_id and p.coach_id = auth.uid()
+  )) with check (exists (
+    select 1 from public.profiles p where p.id = client_schemas.client_id and p.coach_id = auth.uid()
   ));
 
 create policy "klant beheert eigen water" on public.client_water
