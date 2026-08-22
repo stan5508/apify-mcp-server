@@ -14,7 +14,7 @@ Dit is geen onderdeel van de MCP-server in deze repo; het is een losstaande app 
 
 ## Werkwijze — houd je hieraan
 
-1. **Elke wijziging**: `APP_VERSION` in `index.html` én `CACHE` in `sw.js` ophogen (nu **62**).
+1. **Elke wijziging**: `APP_VERSION` in `index.html` én `CACHE` in `sw.js` ophogen (nu **63**).
    Zonder die twee ziet hij de wijziging niet op zijn tablet.
 2. **Testen** met Playwright (`playwright-core`, `executablePath: '/opt/pw-browsers/chromium'`)
    tegen `python3 -m http.server` in `gym-app/`. Schrijf per functie een klein `.mjs`-scriptje
@@ -117,8 +117,11 @@ Versturen via het deelvenster, of automatisch mailen als de Edge Function is opg
 Elke verstreken maand van een getekend contract is een maandbedrag dat meetelt in de omzet
 en apart afgetikt wordt.
 
-**Voeding** — dagboek per maaltijdmoment, Open Food Facts met barcodescan, water,
-weekgemiddelden, macroplan.
+**Voeding** — de coach stelt alléén het plan vast (calorieën, macro's, richtlijnen) en stuurt
+dat met Klaarzetten naar de klant (tabel `client_nutrition_plans`); loggen doet de klant zelf in
+`sporter.html` (dagboek per maaltijdmoment, Open Food Facts met barcodescan, water). Wat hij logt
+zie je onder **Van klanten**. In de coach-app is het zelf loggen er in versie 63 uitgehaald;
+oude regels blijven wel zichtbaar.
 
 **Klantaccounts** — `sporter.html`, magic link, uitnodigingscode, klant logt zelf met dezelfde
 hulpmiddelen als jij: vorige keer per oefening (uit `loadHistory()`), sets afvinken met trilling,

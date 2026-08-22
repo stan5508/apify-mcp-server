@@ -22,6 +22,7 @@ Open in Supabase de **SQL Editor** en plak onderstaande code in zijn geheel. Kli
 > - `client_schemas` — jouw schema's bij de klant in de sporter-app (sinds versie 55)
 > - `client_appointments` — jouw agenda-afspraken bij de klant (sinds versie 59)
 > - `client_measurements` — de metingen die jij doet, bij de klant (sinds versie 61)
+> - `client_nutrition_plans` — het voedingsplan dat jij vaststelt, bij de klant (sinds versie 63)
 >
 > Zonder die tabellen werkt de rest gewoon door; de klant ziet dat onderdeel dan alleen niet.
 
@@ -106,6 +107,15 @@ create table public.client_measurements (
   updated_at timestamptz not null default now()
 );
 
+-- het voedingsplan dat de coach voor de klant vaststelt
+create table public.client_nutrition_plans (
+  client_id uuid primary key references public.profiles(id) on delete cascade,
+  coach_id uuid not null references public.profiles(id) on delete cascade,
+  kcal numeric, protein numeric, carbs numeric, fat numeric,
+  guidelines text not null default '',
+  updated_at timestamptz not null default now()
+);
+
 -- water per dag
 create table public.client_water (
   client_id uuid not null references public.profiles(id) on delete cascade,
@@ -121,6 +131,7 @@ alter table public.client_meals enable row level security;
 alter table public.client_schemas enable row level security;
 alter table public.client_appointments enable row level security;
 alter table public.client_measurements enable row level security;
+alter table public.client_nutrition_plans enable row level security;
 alter table public.client_water enable row level security;
 
 -- profielen: jezelf lezen/bijwerken, en als coach je eigen klanten lezen
@@ -178,6 +189,16 @@ create policy "coach beheert metingen van klanten" on public.client_measurements
     select 1 from public.profiles p where p.id = client_measurements.client_id and p.coach_id = auth.uid()
   )) with check (exists (
     select 1 from public.profiles p where p.id = client_measurements.client_id and p.coach_id = auth.uid()
+  ));
+
+-- voedingsplan: de coach stelt het vast, de klant leest het
+create policy "klant leest eigen voedingsplan" on public.client_nutrition_plans
+  for select using (client_id = auth.uid());
+create policy "coach beheert voedingsplan van klanten" on public.client_nutrition_plans
+  for all using (exists (
+    select 1 from public.profiles p where p.id = client_nutrition_plans.client_id and p.coach_id = auth.uid()
+  )) with check (exists (
+    select 1 from public.profiles p where p.id = client_nutrition_plans.client_id and p.coach_id = auth.uid()
   ));
 
 create policy "klant beheert eigen water" on public.client_water

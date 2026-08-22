@@ -63,6 +63,7 @@
   .mg-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; display: inline-block; }
   .schema-sum { display: flex; align-items: center; gap: 9px; }
   .mg-row { display: inline-flex; gap: 4px; align-items: center; }
+  .plan-tips { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--grid); white-space: pre-wrap; font-size: 14px; }
   .meas-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(112px, 1fr)); gap: 8px; margin-top: 10px; }
   .meas-cell {
     display: flex; flex-direction: column; gap: 2px; align-items: flex-start; text-align: left;
@@ -276,7 +277,7 @@
   let local = load();
   const saveLocal = () => localStorage.setItem(LOCAL_KEY, JSON.stringify(local));
 
-  let ui = { tab: 'training', date: todayIso(), draft: null, meals: [], workouts: [], water: 0, schemas: [], schemaError: '', history: new Map(), sessions: [], progressEx: null, appointments: [], measurements: [], measMetric: null, profile: null, busy: false };
+  let ui = { tab: 'training', date: todayIso(), draft: null, meals: [], workouts: [], water: 0, schemas: [], schemaError: '', history: new Map(), sessions: [], progressEx: null, appointments: [], measurements: [], measMetric: null, plan: null, profile: null, busy: false };
 
   // ---------- views ----------
   function setupView(message) {
@@ -553,6 +554,43 @@
       }).join('')}`;
   }
 
+  // what the coach set as a target, next to what you have eaten today
+  function planCardHtml(totals) {
+    const plan = ui.plan;
+    const rows = [
+      ['kcal', 'Calorieën', '', Math.round(totals.kcal)],
+      ['protein', 'Eiwit', 'g', Math.round(totals.protein)],
+      ['carbs', 'Koolhydraten', 'g', Math.round(totals.carbs)],
+      ['fat', 'Vet', 'g', Math.round(totals.fat)],
+    ];
+    if (!plan) {
+      return `<div class="card"><div class="stat-grid">
+        ${rows.map(([, label, unit, val]) =>
+          `<div class="stat"><div class="lbl">${label}</div><div class="val">${val}${unit ? ' ' + unit : ''}</div></div>`).join('')}
+      </div>
+      <p class="mut" style="margin:8px 0 0">Je coach heeft nog geen dagdoel klaargezet.</p></div>`;
+    }
+    const left = Math.round((Number(plan.kcal) || 0) - totals.kcal);
+    return `<div class="card">
+      ${plan.kcal ? `<div class="row" style="margin-bottom:10px">
+        <div class="grow"><div class="mut">Nog te gaan vandaag</div>
+          <div class="meas-val" style="font-size:26px;color:${left < 0 ? 'var(--danger)' : 'var(--good)'}">${left} kcal</div></div>
+        <div style="text-align:right"><div class="mut">Doel</div>
+          <div class="title">${Math.round(plan.kcal)} kcal</div></div>
+      </div>` : ''}
+      ${rows.map(([key, label, unit, val]) => {
+        const target = Math.round(Number(plan[key]) || 0);
+        const pct = target > 0 ? Math.min(100, Math.round((val / target) * 100)) : 0;
+        return `<div class="bar-row">
+          <span>${label}</span>
+          <span class="track"><span class="fill" style="width:${pct}%"></span></span>
+          <span class="val">${val}${target ? ' / ' + target : ''}${unit ? ' ' + unit : ''}</span>
+        </div>`;
+      }).join('')}
+      ${plan.guidelines ? `<div class="plan-tips"><div class="mut">Van je coach</div>${esc(plan.guidelines)}</div>` : ''}
+    </div>`;
+  }
+
   function foodTab() {
     const meals = ui.meals.filter((m) => m.date === ui.date);
     const totals = meals.reduce((t, m) => ({
@@ -574,13 +612,7 @@
     };
     return `
       ${dayHeader()}
-      <div class="card">
-        <div class="stat-grid">
-          ${[['Calorieën', Math.round(totals.kcal)], ['Eiwit', Math.round(totals.protein) + ' g'],
-             ['Koolhydraten', Math.round(totals.carbs) + ' g'], ['Vet', Math.round(totals.fat) + ' g']]
-            .map(([l, v]) => `<div class="stat"><div class="lbl">${l}</div><div class="val">${v}</div></div>`).join('')}
-        </div>
-      </div>
+      ${planCardHtml(totals)}
       ${ui.addMoment ? `<div class="card">
         <div class="row" style="margin-bottom:8px"><div class="title grow">Toevoegen aan ${esc(ui.addMoment)}</div>
           <button class="small ghost" id="meal-close">Sluiten</button></div>
@@ -1032,6 +1064,16 @@
     return `vorige keer ${fmtDate(p.date)}${txt ? ' — ' + txt : ''}`;
   };
 
+  // the calorie and macro targets the coach set for this client
+  async function loadPlan() {
+    try {
+      const rows = await cloud.select('client_nutrition_plans', `client_id=eq.${cloud.userId()}&select=*`);
+      ui.plan = rows.length ? rows[0] : null;
+    } catch {
+      ui.plan = null;
+    }
+  }
+
   // what the coach measured, oldest first; BMI comes from the height he sent along
   const MEAS_FIELDS = [
     { key: 'weight', label: 'Lichaamsgewicht', unit: 'kg' },
@@ -1109,7 +1151,7 @@
       const profile = await cloud.ensureProfile('client', '');
       ui.profile = profile;
       if (!profile.coach_id) { inviteView(); return; }
-      await Promise.all([loadDay(), loadSchemas(), loadHistory(), loadAppointments(), loadMeasurements()]);
+      await Promise.all([loadDay(), loadSchemas(), loadHistory(), loadAppointments(), loadMeasurements(), loadPlan()]);
       appView();
       bindRestBar();
     } catch (e) {
