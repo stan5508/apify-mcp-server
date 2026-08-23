@@ -1,0 +1,295 @@
+<title>CBO Kill-monitor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chivo:wght@600;700;900&family=JetBrains+Mono:wght@400;500;700&family=Source+Sans+3:wght@400;600&display=swap">
+
+<style>
+:root{
+  --bg:#F6F7F9; --surface:#FFFFFF; --surface-2:#EFF2F5;
+  --text:#15181D; --muted:#69727E; --faint:#98A1AC;
+  --border:#DEE3E9; --border-strong:#C6CDD6;
+  --accent:#2E5C8A;
+  --kill:#B23B29; --kill-bg:#FBEEEB;
+  --live:#1B7358; --live-bg:#E9F5F0;
+  --watch:#9A6B0E; --watch-bg:#FBF2E0;
+  --shadow:0 1px 2px rgba(20,28,40,.06),0 1px 8px rgba(20,28,40,.04);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#0E1115; --surface:#161A20; --surface-2:#1D222A;
+    --text:#E7EBEF; --muted:#98A1AC; --faint:#6C7681;
+    --border:#252B34; --border-strong:#333B46;
+    --accent:#7BABDB;
+    --kill:#E57761; --kill-bg:#2A1714;
+    --live:#4CC29C; --live-bg:#0F2620;
+    --watch:#DCA741; --watch-bg:#2A2113;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 1px 10px rgba(0,0,0,.25);
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#0E1115; --surface:#161A20; --surface-2:#1D222A;
+  --text:#E7EBEF; --muted:#98A1AC; --faint:#6C7681;
+  --border:#252B34; --border-strong:#333B46;
+  --accent:#7BABDB;
+  --kill:#E57761; --kill-bg:#2A1714;
+  --live:#4CC29C; --live-bg:#0F2620;
+  --watch:#DCA741; --watch-bg:#2A2113;
+  --shadow:0 1px 2px rgba(0,0,0,.4),0 1px 10px rgba(0,0,0,.25);
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--bg); color:var(--text);
+  font-family:"Source Sans 3",system-ui,-apple-system,sans-serif;
+  font-size:16px; line-height:1.5; -webkit-text-size-adjust:100%;
+}
+.wrap{max-width:1120px; margin:0 auto; padding:20px 16px 56px; display:flex; flex-direction:column; gap:20px}
+
+header{display:flex; flex-direction:column; gap:10px}
+.eyebrow{
+  font-family:"JetBrains Mono",ui-monospace,monospace;
+  font-size:11px; letter-spacing:.14em; text-transform:uppercase;
+  color:var(--muted); display:flex; flex-wrap:wrap; gap:8px; align-items:center;
+}
+.eyebrow .dot{width:4px;height:4px;border-radius:50%;background:var(--border-strong)}
+.pulse{
+  width:7px; height:7px; border-radius:50%; background:var(--live);
+  box-shadow:0 0 0 0 color-mix(in srgb,var(--live) 60%,transparent);
+  animation:p 2.4s ease-out infinite;
+}
+@keyframes p{
+  0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--live) 55%,transparent)}
+  70%{box-shadow:0 0 0 7px transparent}
+  100%{box-shadow:0 0 0 0 transparent}
+}
+@media (prefers-reduced-motion:reduce){ .pulse{animation:none} }
+h1{
+  font-family:Chivo,system-ui,sans-serif; font-weight:900;
+  font-size:clamp(26px,6vw,36px); line-height:1.05; margin:0;
+  letter-spacing:-.02em; text-wrap:balance;
+}
+
+.summary{
+  display:grid; gap:1px; background:var(--border);
+  border:1px solid var(--border); border-radius:10px; overflow:hidden;
+  grid-template-columns:repeat(2,1fr);
+}
+@media (min-width:640px){ .summary{grid-template-columns:repeat(4,1fr)} }
+.stat{background:var(--surface); padding:12px 14px; display:flex; flex-direction:column; gap:3px}
+.stat .k{
+  font-family:"JetBrains Mono",monospace; font-size:10px; letter-spacing:.1em;
+  text-transform:uppercase; color:var(--muted);
+}
+.stat .v{
+  font-family:"JetBrains Mono",monospace; font-weight:700; font-size:20px;
+  font-variant-numeric:tabular-nums; letter-spacing:-.02em;
+}
+.stat .v.bad{color:var(--kill)}
+.stat .v.ok{color:var(--live)}
+
+.panel{
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:10px; box-shadow:var(--shadow); overflow:hidden;
+}
+.panel-h{
+  padding:12px 14px; border-bottom:1px solid var(--border);
+  display:flex; justify-content:space-between; align-items:baseline; gap:10px; flex-wrap:wrap;
+}
+.panel-h h2{font-family:Chivo,sans-serif; font-weight:700; font-size:14px; margin:0}
+.panel-h .note{font-size:12px; color:var(--muted)}
+.tscroll{overflow-x:auto}
+table{width:100%; border-collapse:collapse; font-size:14px}
+thead th{
+  font-family:"JetBrains Mono",monospace; font-weight:500;
+  font-size:10px; letter-spacing:.09em; text-transform:uppercase;
+  color:var(--muted); text-align:right; padding:9px 10px;
+  border-bottom:1px solid var(--border); white-space:nowrap; background:var(--surface-2);
+}
+thead th:first-child{text-align:left}
+tbody td{
+  padding:11px 10px; text-align:right; border-bottom:1px solid var(--border);
+  font-family:"JetBrains Mono",monospace; font-variant-numeric:tabular-nums;
+  white-space:nowrap; font-size:13px;
+}
+tbody td:first-child{
+  text-align:left; font-family:"Source Sans 3",sans-serif; font-size:14px;
+  white-space:normal; min-width:190px;
+}
+tbody tr:last-child td{border-bottom:0}
+tbody tr{border-left:3px solid transparent}
+tr.is-kill{border-left-color:var(--kill)}
+tr.is-live{border-left-color:var(--live)}
+tr.is-watch{border-left-color:var(--watch)}
+.cname{display:flex; flex-direction:column; gap:4px}
+.cname .n{font-weight:600; line-height:1.25}
+.pill{
+  align-self:flex-start; font-family:"JetBrains Mono",monospace;
+  font-size:10px; font-weight:700; letter-spacing:.08em; text-transform:uppercase;
+  padding:2px 7px; border-radius:4px; white-space:nowrap;
+}
+.pill.kill{background:var(--kill-bg); color:var(--kill)}
+.pill.live{background:var(--live-bg); color:var(--live)}
+.pill.watch{background:var(--watch-bg); color:var(--watch)}
+.zero{color:var(--faint)}
+.hot{color:var(--kill); font-weight:700}
+.good{color:var(--live); font-weight:700}
+
+@media (max-width:760px){
+  .tscroll{overflow-x:visible}
+  table,tbody,tr,td{display:block; width:100%}
+  thead{display:none}
+  tbody tr{
+    display:grid; grid-template-columns:repeat(3,1fr);
+    gap:0 1px; background:var(--border);
+    border:1px solid var(--border); border-left-width:3px;
+    border-radius:9px; overflow:hidden; margin-bottom:10px;
+  }
+  tbody tr:last-child{margin-bottom:0}
+  tbody td{
+    background:var(--surface); border-bottom:0;
+    padding:8px 10px; text-align:left; display:flex; flex-direction:column; gap:2px; font-size:14px;
+  }
+  tbody td:first-child{
+    grid-column:1/-1; background:var(--surface-2); padding:10px;
+    border-bottom:1px solid var(--border);
+  }
+  tbody td:not(:first-child)::before{
+    content:attr(data-l);
+    font-family:"JetBrains Mono",monospace; font-size:9px; letter-spacing:.1em;
+    text-transform:uppercase; color:var(--muted);
+  }
+}
+
+.block{
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:10px; box-shadow:var(--shadow); padding:14px;
+  display:flex; flex-direction:column; gap:10px;
+}
+.block h2{font-family:Chivo,sans-serif; font-weight:700; font-size:14px; margin:0}
+.watchlist{margin:0; padding:0; list-style:none; display:flex; flex-direction:column; gap:7px}
+.watchlist li{display:flex; gap:9px; align-items:baseline; font-size:14.5px; line-height:1.45}
+.watchlist li::before{
+  content:""; flex:none; width:5px; height:5px; margin-top:7px;
+  border-radius:1px; background:var(--accent);
+}
+.watchlist b{font-weight:600}
+
+.log{display:flex; flex-direction:column; gap:9px}
+.entry{
+  border:1px solid var(--border); border-left:3px solid var(--kill);
+  border-radius:8px; padding:10px 12px; background:var(--surface);
+  display:flex; flex-direction:column; gap:6px;
+}
+.entry.kept{border-left-color:var(--live)}
+.entry-h{display:flex; justify-content:space-between; align-items:baseline; gap:10px; flex-wrap:wrap}
+.entry-h .t{font-weight:600; font-size:14.5px; line-height:1.25}
+.entry-h .when{
+  font-family:"JetBrains Mono",monospace; font-size:11px; color:var(--muted);
+  white-space:nowrap; font-variant-numeric:tabular-nums;
+}
+.reason{
+  font-family:"JetBrains Mono",monospace; font-size:12px; line-height:1.6;
+  color:var(--text); background:var(--surface-2);
+  border-radius:5px; padding:7px 9px; overflow-x:auto;
+}
+.reason .op{color:var(--muted)}
+.reason .hit{color:var(--kill); font-weight:700}
+.reason .miss{color:var(--live); font-weight:700}
+.verdict{font-size:13.5px; color:var(--muted)}
+.verdict b{color:var(--text); font-weight:600}
+
+.idle{
+  display:flex; flex-direction:column; gap:8px; align-items:flex-start;
+  padding:26px 16px; text-align:left;
+}
+.idle .big{
+  font-family:Chivo,sans-serif; font-weight:700; font-size:17px;
+}
+.idle p{margin:0; color:var(--muted); font-size:14.5px; max-width:60ch}
+
+footer{
+  font-size:12.5px; color:var(--muted); line-height:1.55;
+  display:flex; flex-direction:column; gap:7px;
+  border-top:1px solid var(--border); padding-top:14px;
+}
+footer b{color:var(--text); font-weight:600}
+code{
+  font-family:"JetBrains Mono",monospace; font-size:.9em;
+  background:var(--surface-2); padding:1px 5px; border-radius:4px;
+}
+</style>
+
+<div class="wrap">
+
+  <header>
+    <div class="eyebrow">
+      <span class="pulse"></span>
+      <span>Actief</span><span class="dot"></span>
+      <span>elke 10 min · 00:00–09:00 London</span><span class="dot"></span>
+      <span id="ts"><!-- SLOT:TIMESTAMP --></span>
+    </div>
+    <h1>CBO Kill-monitor</h1>
+  </header>
+
+  <!-- SLOT:SUMMARY (4x .stat: Actieve CBO's / Spend vandaag / Kills vandaag / Laatste check) -->
+  <div class="summary">
+    <div class="stat"><span class="k">Actieve CBO's</span><span class="v">—</span></div>
+    <div class="stat"><span class="k">Spend vandaag</span><span class="v">—</span></div>
+    <div class="stat"><span class="k">Kills vandaag</span><span class="v">—</span></div>
+    <div class="stat"><span class="k">Laatste check</span><span class="v">—</span></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-h">
+      <h2>Campagnes</h2>
+      <span class="note">wacht op eerste check</span>
+    </div>
+    <!-- SLOT:CAMPAIGNS — vervang dit .idle blok door de <div class="tscroll"><table>...</table></div> zodra er data is -->
+    <div class="idle">
+      <div class="big">Nog niets te tonen.</div>
+      <p>De monitor draait vanaf 00:00 London en werkt deze pagina elke 10 minuten bij. Zodra er campagnes live staan verschijnt hier de tabel met spend, ATC, purchases en de kill-status per CBO.</p>
+      <p>Je krijgt alleen een pushmelding als er daadwerkelijk gekild wordt, of als een CBO binnen €2 van een kill-moment zit.</p>
+    </div>
+  </div>
+
+  <div class="block">
+    <h2>Waar ik strak op let</h2>
+    <ul class="watchlist">
+      <li><span>Spend loopt per uur tot <b>6× het gemiddelde</b>. Ik check elke 10 minuten, want in één piekuur ga je van €10 naar €23 voorbij je kill-moment.</span></li>
+      <li><span>ATC en sales lees ik uit <b>Shopify</b>, niet uit Meta. Meta's ATC is gemodelleerd; Shopify is de echte gebeurtenis.</span></li>
+      <li><span>Ik kijk naar <b>cumulatief vandaag</b>, niet naar het laatste uur. Een ATC om 03:00 telt om 06:00 nog steeds mee.</span></li>
+      <li><span>Bij ontbrekende of verouderde data doe ik <b>niets</b>. Een kill vraagt dat alle voorwaarden van de regel hard voldaan zijn.</span></li>
+    </ul>
+  </div>
+
+  <!-- SLOT:KILLLOG — voeg hierboven een blok "Kill-log · waarom" toe met een .entry per pauzering -->
+  <div class="block">
+    <h2>Kill-regels</h2>
+    <div class="log">
+      <div class="entry">
+        <div class="entry-h"><span class="t">Testdag 1</span><span class="when">3 kill-momenten</span></div>
+        <div class="reason">
+          €10 <span class="op">→</span> CPC &gt; €1 <span class="op">EN</span> ATC = 0 <span class="op">EN</span> sales = 0<br>
+          €20 <span class="op">→</span> ATC = 0 <span class="op">EN</span> sales = 0<br>
+          €30 <span class="op">→</span> sales = 0
+        </div>
+        <div class="verdict">Bij een treffer gaat de <b>hele CBO</b> uit, niet de losse ad set.</div>
+      </div>
+      <div class="entry kept">
+        <div class="entry-h"><span class="t">Testdag 2</span><span class="when">afhankelijk van gisteren</span></div>
+        <div class="reason">
+          1 sale gisteren <span class="op">→</span> alleen €20 en €30 gelden<br>
+          meerdere sales gisteren <span class="op">→</span> <span class="miss">niet aanraken</span>
+        </div>
+        <div class="verdict">Het €10-moment vervalt zodra een campagne zijn eerste sale heeft gehad.</div>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <div><b>BER</b> komt per product uit de PRODUCT DATA SHEET (kolom <code>BER</code>, naast prijs, COG en marge). Geen aanname meer.</div>
+    <div><b>Testdag 3 en verder</b> heeft nog geen regels. Die campagnes worden wel getoond maar nooit automatisch gekild.</div>
+    <div><b>Nog niet gemeten:</b> de sync-vertraging van Windsor. Blijkt spend er trager in te komen dan 10 minuten, dan schuiven alle kill-momenten naar achteren.</div>
+  </footer>
+
+</div>
