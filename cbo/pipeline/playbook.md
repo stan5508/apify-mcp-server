@@ -36,8 +36,37 @@ zijn één bron, geen tien.
 
 *Deze regels gelden nu. De routine past ze toe.*
 
-_Nog leeg._ Er is nog geen enkele meting en Stan heeft nog niets handmatig gepromoveerd.
-Alles staat in §2.
+Gepromoveerd op 2026-08-23 op expliciet verzoek van Stan, en dezelfde dag doorgevoerd in de
+prompt van `trig_018QRfi1xAn8Y3pVVCqjspG1`. Ze zijn **niet** door eigen meting bevestigd — dit is
+de tweede promotieroute uit §0 (besluit van Stan), en dat onderscheid blijft hier staan.
+
+| Regel | Uit | Wat de routine nu doet |
+|---|---|---|
+| **A-01** | P-11 | Placements zijn `["facebook","instagram"]`. Messenger eruit, op dezelfde grond waarop Audience Network al buiten stond. |
+| **A-02** | P-04 | Elke campagne krijgt een expliciet aanbod, en nooit een kortingspercentage of een verzonnen deadline. Toegestaan: gratis verzending boven een drempel, of een cadeau bij aankoop. |
+| **A-03** | P-13 | De productbeschrijving noemt verzend- en retourbeleid met zoveel woorden, en gebruikt echte productfoto's. |
+| **A-04** | P-01 + P-02 + P-09 + P-10 | Eén concept per campagne in plaats van vijf invalshoeken door elkaar. Alle creatives binnen een campagne hebben hetzelfde formaat en dezelfde stijl; alleen de inhoud verschilt. |
+| **A-05** | campaign-naming.md | De angle-code staat als vijfde segment in de campagnenaam, achter de datum. Hierdoor is een uitkomst voor het eerst aan een invalshoek toe te wijzen. |
+
+**A-05 is degene die de lus opent.** Zolang alle invalshoeken door elkaar in één ad set zaten was
+niet te zien wélke won. Met A-04 en A-05 samen wordt dat voor het eerst meetbaar, en kan
+`cbo-leren` gebouwd worden.
+
+---
+
+## 1b. Bewust niet doorgevoerd
+
+*Kandidaten die Stan's opdracht "implementeer zoveel mogelijk" wel raakte, maar die ik heb laten
+staan. Elk met de reden, zodat het een keuze is en geen vergeten punt.*
+
+| Kandidaat | Waarom niet |
+|---|---|
+| **P-03** leeftijd versmallen | De video zegt "versmal", jouw eigen onderzoek zegt iets anders: 65+ is de groeiende groep en de winnaars mikken op 55+. Welk getal het wordt is een commerciële keuze over wie je klant is, geen instelling die ik namens jou verzin. |
+| **P-06** venster dag 5–7 | Het venster oprekken betekent langer doorbetalen op verliesgevende campagnes. De kill-regels bestaan juist om de cashflow te beschermen. Dit hoort een meting te zijn, geen aanname. |
+| **P-07** Advantage+ | Het verbod erop staat er met zoveel woorden in de prompt. Een expliciete beveiliging omdraaien op gezag van één video, zonder te weten waarom hij er staat, is precies het soort wijziging dat later niemand kan verklaren. |
+| **P-08** één product per campagne | Dit vervangt de grondgedachte van de pipeline: dagelijks breed zoeken tegenover diep gaan op één product. Een strategische ommezwaai hoort van jou te komen. |
+| **P-12** niet om middernacht | **De bestaande keuze is beter onderbouwd dan de kandidaat.** De livegang-routine legt uit waarom 00:01: dan krijgt een campagne de volle 24 uur en lekt er geen spend naar de vorige dag. De video geeft alleen "ik zie 's nachts weinig aankopen". De meetvraag over de kill-drempel blijft wel staan. |
+| **P-05** wekelijkse verversing | De pipeline zet dagelijks nieuwe producten klaar; creative-vermoeidheid op één campagne speelt dan nauwelijks. Mogelijk niet van toepassing op deze opzet. |
 
 ---
 
