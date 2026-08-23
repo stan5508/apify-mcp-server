@@ -53,9 +53,9 @@ Alles staat in §2.
 | `raakt` | STAP 3 (g) — `create_adset` / `create_ad` |
 | `nu in de routine` | 5 ads met 5 verschillende invalshoeken (emotioneel / urgentie / UBR / bezwaren / social proof) in **één** ad set, en 4 statics + 1 carousel door elkaar |
 | `redenering van de bron` | Met CBO verdeelt Meta budget op ad-set-niveau. Zitten alle concepten in één ad set, dan optimaliseert Meta binnen dat concept en kun je nooit zien wélk concept won. |
-| `bron` | BitBranding, "The NEW Proven Facebook Ads Strategy for Clothing Brands 2026", 10-06-2025, t=23:00–25:20 |
-| `bewijsklasse` | derde-claim, verkoopbelang (verkoopt coaching) |
-| `status` | onbeproefd |
+| `bron` | **Twee onafhankelijke bronnen.** (1) BitBranding, "The NEW Proven Facebook Ads Strategy for Clothing Brands 2026", 10-06-2025, t=23:00–25:20. (2) Ecommerce Alley, "Best Meta Ads Campaign Structure For Ecommerce Brands In 2026", 28:02 — noemt ad sets "batches", elke batch één geïsoleerde variabele, minimaal 3–5 ads per ad set. |
+| `bewijsklasse` | derde-claim (beide met verkoopbelang: coaching resp. Breezeway-software), maar wel twee losstaande partijen |
+| `status` | onbeproefd — sterkst onderbouwde kandidaat |
 | `notitie` | Dit is de zwaarste kandidaat: hij is een voorwaarde voor de hele lerende lus. Zolang alle angles in één ad set zitten, is een uitkomst niet aan een angle toe te wijzen — precies de blokkade uit `learning-loop-design.md` §2. |
 
 ### P-02 — Onder een bepaald dagbudget: één concept tegelijk
@@ -101,10 +101,10 @@ Alles staat in §2.
 | `claim` | Elke week nieuwe creatives lanceren en uitgeputte uitzetten. Resultaten zakken structureel weg bij merken die dit 2–3 weken laten liggen. |
 | `raakt` | Geen enkele bestaande routine — er is geen verversingscadans |
 | `nu in de routine` | De pipeline zet dagelijks nieuwe *producten* klaar, maar ververst nooit de creatives van een lópende campagne |
-| `bron` | BitBranding, t=11:00–11:40 |
-| `bewijsklasse` | derde-claim, anekdotisch (één klantvoorbeeld) |
+| `bron` | **Twee onafhankelijke bronnen.** (1) BitBranding, t=11:00–11:40. (2) Ecommerce Alley — noemt wekelijks lanceren letterlijk "non-negotiable" en het is hun eerste diagnosevraag bij klanten die niet kunnen schalen. |
+| `bewijsklasse` | derde-claim; bij BitBranding anekdotisch, bij Ecommerce Alley als patroon over 200+ merken |
 | `status` | onbeproefd |
-| `notitie` | Zwakste onderbouwing van de vijf. Bovendien: bij een pipeline die dagelijks nieuwe producten test, is creative-vermoeidheid op een enkele campagne veel minder relevant dan bij een merk dat één hero-product jaren draait. Mogelijk niet van toepassing op deze opzet. |
+| `notitie` | **Opgewaardeerd na de tweede bron** — stond eerst als zwakste genoteerd. Kanttekening blijft: bij een pipeline die dagelijks nieuwe producten test, is creative-vermoeidheid op een enkele campagne veel minder relevant dan bij een merk dat één hero-product jaren draait. Mogelijk niet van toepassing op deze opzet. |
 
 ### P-06 — Beoordelingsvenster dag 5–7 in plaats van 48 uur
 
@@ -118,9 +118,77 @@ Alles staat in §2.
 | `status` | onbeproefd — **niet naar actief promoveren zonder eigen meting** |
 | `notitie` | Dit is de gevaarlijkste kandidaat om over te nemen. Het venster oprekken betekent langer doorbetalen op verliesgevende campagnes, en de kill-regels zijn juist gebouwd om de cashflow te beschermen. Maar `learning-loop-design.md` §6 signaleerde zelfstandig hetzelfde risico: de €10-regel selecteert tegen lange advertorials die hun rendement pas over meerdere sessies opbouwen. Twee onafhankelijke aanwijzingen dat het venster kort is. **Dat maakt het een meetvraag, geen wijziging.** De meting kan pas als P-01 en de angle-code live zijn. |
 
+
+### P-07 — Advantage+ Shopping werkt juist goed voor fashion
+
+| Veld | Waarde |
+|---|---|
+| `claim` | Voor product-aware fashion-merken presteren Advantage+ Shopping-campagnes goed. Een Advantage+ campagne *is* technisch een CBO — budget op campagneniveau, Meta verdeelt over de ads. |
+| `raakt` | STAP 3 (g) — de hele campagne-opbouw |
+| `nu in de routine` | Expliciet verboden: *"Accepteer nooit Meta AI- of Advantage+-suggesties."* |
+| `bron` | Justin Lalonde (paidadvertising.com, claimt $20 mln/jaar beheerde spend), "Facebook Ads ABO vs CBO In 2026", 06:52, t=03:54–04:17 |
+| `bewijsklasse` | derde-claim, verkoopbelang (inner circle + agency) |
+| `status` | onbeproefd |
+| `notitie` | **Directe botsing met een harde regel in de routine.** De bron noemt fashion expliciet als de categorie waar hij Advantage+ ziet werken, en ontkracht het idee dat het een afwijking van CBO zou zijn. Waarom het verbod er staat weet ik niet — als daar een reden voor was (bijv. controleverlies over creatives of placements), hoort die opgeschreven te worden, want anders is dit niet te beoordelen. Tot die reden bekend is: niet aanraken. |
+
+### P-08 — Eén product per campagne, niet drie nieuwe per dag
+
+| Veld | Waarde |
+|---|---|
+| `claim` | Onder $300/dag: één campagne, gericht op **één** kernproduct. *"Don't go try to advertise 50 different products within this."* Consolidatie boven complexiteit. |
+| `raakt` | De hele opzet van de pipeline — STAP 2 (3 producten kiezen) en STAP 3 (g) |
+| `nu in de routine` | Elke dag 3 nieuwe producten, elk met een eigen CBO van €50,77. Bij dagelijks draaien zijn dat ~21 nieuwe campagnes per week. |
+| `bron` | Ecommerce Alley, t=~09:00–10:30 |
+| `bewijsklasse` | derde-claim, verkoopbelang (coaching + Breezeway); wel gebaseerd op 200+ merken en 5 mln/maand spend door hun tool |
+| `status` | onbeproefd |
+| `notitie` | **Dit is de zwaarste bevinding tot nu toe, en de meest ongemakkelijke.** Het raakt niet een instelling maar de grondgedachte van de pipeline: breed zoeken door veel producten te testen, tegenover diep gaan op één product. Jouw eigen cijfers wijzen dezelfde kant op als de bron: op 22-08 stonden 3 van de 4 campagnes op KILLED en was het resultaat −€80,48. En `angle-library-v1.md` §0 kwam onafhankelijk tot dezelfde conclusie — *"Ashcrofts Anne Orthopedic Sandals is niet een product in het assortiment maar het product waarmee we beginnen"*. Drie losstaande signalen. **Toch niet promoveren zonder meting**: het is een strategische ommezwaai, geen instelling, en die hoort een bewuste keuze van Stan te zijn — niet iets wat een playbook-regel stilletjes doorvoert. |
+
+### P-09 — De ad testing ladder: angles → hooks → styles → formats
+
+| Veld | Waarde |
+|---|---|
+| `claim` | Test in deze volgorde, één trede tegelijk. Eerst angles. Werkt een angle, test dan hooks bínnen die angle. Werkt een hook, test dan styles. Daarna formats. Elke ad set isoleert één trede; de rest blijft gelijk. |
+| `raakt` | `cbo-brief` (nog niet gebouwd) en de ad-set-indeling uit P-01 |
+| `nu in de routine` | Niets. De 5 copies variëren invalshoek, tekst én beeld tegelijk — dus als er één wint, is niet te zeggen wát won. |
+| `bron` | Ecommerce Alley, t=~11:00–12:30. Hun angle-raamwerk heet FOCUS: Frustration, Outcome, Constraint, Unspoken cost, Skepticism. |
+| `bewijsklasse` | derde-claim |
+| `status` | onbeproefd |
+| `notitie` | Dit is de kandidaat die het beste aansluit op wat je al hebt. `angle-library-v1.md` legt per angle apart `caption_patroon`, `body_structuur` en `bewijs` vast — dat zijn precies aparte treden van deze ladder. De FOCUS-indeling is bovendien te vergelijken met je eigen angle-families en zou kunnen laten zien welk type je nog niet dekt. Los van de vraag of de vólgorde klopt, is het isolatieprincipe waardevol: verander één ding per test. |
+
+### P-10 — 5 tot 10 creatives per week onder $300/dag
+
+| Veld | Waarde |
+|---|---|
+| `claim` | Bij $0–300/dag zijn 5 creatives het minimum en is 5–10 per week het optimum. Boven $1.000/dag wordt dat 10–15. |
+| `raakt` | STAP 3 (e) — het aantal creatives |
+| `nu in de routine` | 5 creatives per product × 3 producten = 15 per dag, dus ~105 per week |
+| `bron` | Ecommerce Alley, t=~08:00, op basis van een analyse van 70.000 Meta-ads in hun eigen tool |
+| `bewijsklasse` | derde-claim, maar met de breedste kwantitatieve basis van alle bronnen tot nu toe |
+| `status` | onbeproefd |
+| `notitie` | Je zit op ongeveer tienmaal het genoemde optimum voor jouw uitgavenniveau. Dat is alleen zinvol te beoordelen samen met P-08: de 105 zijn verdeeld over ~21 campagnes, dus per campagne zit je met 5 precies op het minimum. Het getal is dus niet los te lezen van de vraag hoeveel producten je tegelijk draait. |
+
 ---
 
-## 3. Weerlegd
+## 3. Bevestigd zonder wijziging
+
+*Vragen die een bron beantwoordde zonder dat er iets hoeft te veranderen. Genoteerd zodat ze
+niet opnieuw onderzocht worden.*
+
+### B-01 — CBO is de juiste campagnesoort voor deze opzet
+
+Justin Lalonde deelt in tweeën: **CBO** voor e-commerce en brede markten op landelijk niveau,
+**ABO** voor kleine markten (dienstverlening, B2B, lokaal) waar je frequentie moet afknijpen.
+
+Ashcroft is e-commerce en richt zich op heel Groot-Brittannië. Dat valt onmiskenbaar in het
+CBO-vak. De pipeline doet dit al goed en er is geen reden tot wijziging.
+
+Bron: "Facebook Ads ABO vs CBO In 2026", t=04:38–05:16. Nuance uit dezelfde bron: ABO wordt
+interessant zodra je in een kleine markt veel geld moet wegzetten — niet aan de orde bij €50/dag
+over een heel land.
+
+---
+
+## 4. Weerlegd
 
 *Regels die het eigen cijfermateriaal niet overleefden. Blijven staan zodat ze niet opnieuw
 worden voorgesteld.*
@@ -129,7 +197,7 @@ _Nog leeg._
 
 ---
 
-## 4. Extractievorm — hoe een volgende video hier landt
+## 5. Extractievorm — hoe een volgende video hier landt
 
 Elke bron levert **nul of meer** kandidaten. Nul is een geldige uitkomst en de meest voorkomende:
 de meeste marketingvideo's herhalen wat hier al staat.
@@ -168,8 +236,11 @@ systeem nodig".
 
 ---
 
-## 5. Bronnen tot nu toe
+## 6. Bronnen tot nu toe
 
 | Datum verwerkt | Bron | Kandidaten |
 |---|---|---|
-| 2026-08-23 | BitBranding — *The NEW Proven Facebook Ads Strategy for Clothing Brands 2026* (26:03, 10-06-2025) | P-01 t/m P-06 |
+| 2026-08-23 | BitBranding — *The NEW Proven Facebook Ads Strategy for Clothing Brands 2026* (26:03) | P-01 t/m P-06 |
+| 2026-08-23 | Justin Lalonde — *Facebook Ads ABO vs CBO In 2026* (06:52) | P-07, B-01 |
+| 2026-08-23 | Ecommerce Alley — *Best Meta Ads Campaign Structure For Ecommerce Brands In 2026* (28:02) | P-08, P-09, P-10; tweede bron onder P-01 en P-05 |
+| 2026-08-23 | BitBranding — *Facebook Ads for Clothing Brands... PROVEN Strategy* (13:14) | **geen** — ouder materiaal van hetzelfde kanaal als bron 1, gaat over lookalike-stacks en catalog-ads die de routine bewust uitzet. Achterhaald door hun eigen nieuwere video. |
