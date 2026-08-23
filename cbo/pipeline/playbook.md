@@ -89,8 +89,8 @@ Alles staat in §2.
 | `claim` | Het aanbod is het meest over het hoofd geziene onderdeel. Alternatieven zonder marge-verlies: 2+1 / 3+1, spend-X-krijg-cadeau, gratis verzending boven een bedrag. |
 | `raakt` | STAP 3 (d) productbeschrijving en (f) ad-copies — beide hebben nu **geen offer-concept** |
 | `nu in de routine` | Niets. Het woord "offer" komt in de hele prompt niet voor. |
-| `bron` | BitBranding, t=05:30–07:40 |
-| `bewijsklasse` | derde-claim, maar **sterk gesteund door eigen onderzoek** |
+| `bron` | **Twee bronnen.** (1) BitBranding, t=05:30–07:40. (2) Sam Hopkins, "How to Make $1,000 In 7 Days With Clothing Brand Ads" — laat twee eigen creatives naast elkaar zien: die met *"Get a free beanie with your order"* werkte, die zonder aanbod niet (*"the offer was kind of weak"*). |
+| `bewijsklasse` | derde-claim, maar **sterk gesteund door eigen onderzoek** en nu met een concreet fashion-voorbeeld van cadeau-boven-korting |
 | `status` | onbeproefd |
 | `notitie` | Dit is de kandidaat met de beste onderbouwing van buiten de video. `angle-library-v1.md` §1 documenteert dat kortingsmechanismen in de UK actief gehandhaafd worden (DMCCA, boetes tot 10% wereldwijde jaaromzet) en noemt gratis verzending als tijdelijke actie expliciet als het compliant alternatief. Video en compliance-onderzoek wijzen dezelfde kant op vanuit totaal verschillende overwegingen. |
 
@@ -167,6 +167,42 @@ Alles staat in §2.
 | `status` | onbeproefd |
 | `notitie` | Je zit op ongeveer tienmaal het genoemde optimum voor jouw uitgavenniveau. Dat is alleen zinvol te beoordelen samen met P-08: de 105 zijn verdeeld over ~21 campagnes, dus per campagne zit je met 5 precies op het minimum. Het getal is dus niet los te lezen van de vraag hoeveel producten je tegelijk draait. |
 
+### P-11 — Placements handmatig instellen, Messenger uit voor kleding
+
+| Veld | Waarde |
+|---|---|
+| `claim` | Zet placements op handmatig. Voor kledingmerken: alleen feeds, stories en in-stream video. Messenger en Audience Network uit, en ook Instagram-zoekresultaten (de Explore-tegels) uit, want daar wordt wel voor betaald maar nauwelijks gekocht. |
+| `raakt` | STAP 3 (g) — `targeting.publisher_platforms` |
+| `nu in de routine` | `["facebook","instagram","messenger"]` — **Messenger staat aan.** Audience Network en Threads zijn wel bewust uitgesloten. |
+| `bron` | Fred Sanders, "How To Run Facebook Ads For Clothing Brands in 2025", 21:54, t=~13:30–14:30 |
+| `bewijsklasse` | derde-claim |
+| `status` | onbeproefd |
+| `notitie` | Kleinste en goedkoopste kandidaat van allemaal: één waarde uit een lijstje halen. De redenering is bovendien dezelfde als die waarmee Audience Network al uitgesloten wérd — je betaalt voor vertoningen op plekken met koopintentie bijna nul. Dat de routine Audience Network wel uitsluit en Messenger niet, oogt eerder als een omissie dan als een keuze. Het placement-detailniveau (feeds/stories/in-stream, Explore uit) is via de Windsor-API mogelijk niet zo fijnmazig te zetten als in Ads Manager; dat moet uitgezocht worden. |
+
+### P-12 — Niet om middernacht live zetten
+
+| Veld | Waarde |
+|---|---|
+| `claim` | Start campagnes midden op de dag, niet om 00:00. *"A lot of people do 12:00 a.m. I don't really see that many good purchases coming in at 12:00 a.m."* Je verbrandt de eerste uren van je dagbudget op een moment dat er nauwelijks gekocht wordt. |
+| `raakt` | De routine **Nachtelijke CBO-livegang**, die om 00:01 accounttijd Londen live zet |
+| `nu in de routine` | Campagnes gaan om 00:01 Londense tijd aan — precies het tijdstip dat de bron afraadt |
+| `bron` | Fred Sanders, t=~11:00–11:30 |
+| `bewijsklasse` | derde-claim, zonder cijfers onderbouwd |
+| `status` | onbeproefd |
+| `notitie` | **Raakt de kill-regels direct, en dat maakt hem interessanter dan hij lijkt.** `cbo-kill` killt op testdag 1 al bij €10 spend zonder ATC. Gaat een campagne om 00:01 live en wordt het eerste tientje 's nachts opgemaakt zonder verkopen, dan kan een campagne gekilld zijn nog vóór het koopvenster begint. Dat zou de €10-regel strenger maken dan bedoeld. Te toetsen zonder iets te wijzigen: kijk in de bestaande data hoe laat gekilde campagnes hun drempel raakten. Dat is meetwerk op wat er al ligt, geen experiment. |
+
+### P-13 — De productpagina moet klaar zijn vóór de advertentie
+
+| Veld | Waarde |
+|---|---|
+| `claim` | Zichtbare verzend- en retourinformatie bovenaan, echte foto's in plaats van mockups, en bewijs dat er daadwerkelijk verzonden wordt. *"If people wouldn't buy without you running ads, they're not going to buy when you start running ads."* |
+| `raakt` | STAP 3 (d) — de Shopify-productbeschrijving |
+| `nu in de routine` | Er wordt een beschrijving met USP-regel 🚚🔄🔒 gegenereerd, maar niets controleert of verzend- en retourbeleid vindbaar zijn of de foto's echt ogen |
+| `bron` | Sam Hopkins, t=~03:00–06:30 |
+| `bewijsklasse` | derde-claim, maar **derde onafhankelijke lijn naar dezelfde conclusie** |
+| `status` | onbeproefd |
+| `notitie` | Dit is geen advertentiekennis maar een randvoorwaarde, en juist daarom relevant. `learning-backlog.md` §0 meet 32 checkouts tegen 4 afgeronde aankopen; `angle-library-v1.md` §0 stelt dat legitimiteit de grootste conversieblokker is, niet prijs. Nu zegt een derde, losstaande bron hetzelfde. **Het deel over one-click checkout (Apple Pay, Shop Pay, Google Pay, PayPal) hoort hier niet thuis** — dat raakt geen routine en staat al als kandidaat 2 in `learning-backlog.md` §1. Daar laten staan; dit playbook gaat over campagne-opbouw. |
+
 ---
 
 ## 3. Bevestigd zonder wijziging
@@ -181,6 +217,11 @@ Justin Lalonde deelt in tweeën: **CBO** voor e-commerce en brede markten op lan
 
 Ashcroft is e-commerce en richt zich op heel Groot-Brittannië. Dat valt onmiskenbaar in het
 CBO-vak. De pipeline doet dit al goed en er is geen reden tot wijziging.
+
+Bevestigd door drie latere bronnen: Fred Sanders en Sam Hopkins bouwen allebei een CBO voor een
+kledingmerk, en Ecommerce Alley schrijft campagneniveau-budget voor in tier 1. Sam Hopkins tekent
+wel aan dat ABO ook werkt en dat het van je strategie afhangt — geen van beiden noemt een reden om
+van CBO af te stappen.
 
 Bron: "Facebook Ads ABO vs CBO In 2026", t=04:38–05:16. Nuance uit dezelfde bron: ABO wordt
 interessant zodra je in een kleine markt veel geld moet wegzetten — niet aan de orde bij €50/dag
@@ -244,3 +285,5 @@ systeem nodig".
 | 2026-08-23 | Justin Lalonde — *Facebook Ads ABO vs CBO In 2026* (06:52) | P-07, B-01 |
 | 2026-08-23 | Ecommerce Alley — *Best Meta Ads Campaign Structure For Ecommerce Brands In 2026* (28:02) | P-08, P-09, P-10; tweede bron onder P-01 en P-05 |
 | 2026-08-23 | BitBranding — *Facebook Ads for Clothing Brands... PROVEN Strategy* (13:14) | **geen** — ouder materiaal van hetzelfde kanaal als bron 1, gaat over lookalike-stacks en catalog-ads die de routine bewust uitzet. Achterhaald door hun eigen nieuwere video. |
+| 2026-08-23 | Fred Sanders — *How To Run Facebook Ads For Clothing Brands in 2025* (21:54) | P-11, P-12 |
+| 2026-08-23 | Sam Hopkins — *How to Make $1,000 In 7 Days With Clothing Brand Ads* (22:20) | P-13; tweede bron onder P-04 |
