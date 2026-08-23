@@ -47,10 +47,51 @@ de tweede promotieroute uit §0 (besluit van Stan), en dat onderscheid blijft hi
 | **A-03** | P-13 | De productbeschrijving noemt verzend- en retourbeleid met zoveel woorden, en gebruikt echte productfoto's. |
 | **A-04** | P-01 + P-02 + P-09 + P-10 | Eén concept per campagne in plaats van vijf invalshoeken door elkaar. Alle creatives binnen een campagne hebben hetzelfde formaat en dezelfde stijl; alleen de inhoud verschilt. |
 | **A-05** | campaign-naming.md | De angle-code staat als vijfde segment in de campagnenaam, achter de datum. Hierdoor is een uitkomst voor het eerst aan een invalshoek toe te wijzen. |
+| **A-06** | eigen uurdata | De livegang staat op **04:00 accounttijd Londen** in plaats van 00:01. Zie §1c. |
 
 **A-05 is degene die de lus opent.** Zolang alle invalshoeken door elkaar in één ad set zaten was
 niet te zien wélke won. Met A-04 en A-05 samen wordt dat voor het eerst meetbaar, en kan
 `cbo-leren` gebouwd worden.
+
+---
+
+## 1c. A-06 — het starttijdstip, en waarom dit de enige gemeten regel is
+
+Dit is de eerste regel die niet uit een video komt maar uit **eigen cijfers**. Windsor-uurdata
+over 30 dagen, account 1142643668009994:
+
+| Blok | Spend | Aandeel | CPC-band |
+|---|---|---|---|
+| 00:00–03:59 | €282,92 | 17% | €0,96–2,30 |
+| 04:00–07:59 | €712,67 | **42%** | €1,56–2,40 |
+| 08:00–11:59 | €506,34 | 30% | €1,18–1,70 |
+| 12:00–23:59 | €186,66 | 11% | €0,54–1,25 |
+
+**59% van alle spend gaat op vóór 08:00**, in de uren met de duurste klikken. In de avond, als
+Britten daadwerkelijk winkelen, gaat 5% om — tegen een klikprijs die twee tot vier keer lager
+ligt.
+
+Dat maakt de kill-conditie *spend ≥ €10 én CPC > €1 én ATC = 0* in de nachturen structureel waar,
+ongeacht hoe goed de campagne is. Een campagne werd dus beoordeeld op zijn slechtste uren.
+
+**Kanttekening die erbij hoort:** de lage avond-CPC is deels overlevingsbias. Campagnes die 's
+ochtends al gepauzeerd waren, konden 's avonds niets meer uitgeven, dus wat er 's avonds nog
+draaide was per definitie het betere spul. De avond telt 106 klikken tegen ~1.150 totaal. De
+richting is sterk, de zekerheid niet.
+
+**Waarom 04:00 en niet 07:00.** Puur op de cijfers zou later meer verspilling wegnemen: 04:00
+haalt alleen het blok van 17% weg, terwijl het dure blok van 42% pas ná 04:00 begint. Maar later
+starten perst hetzelfde dagbudget in minder uren, wat de CPM kan opdrijven en het venster verkort
+waarin Meta uit de leerfase komt. Dat effect is hier niet gemeten. 04:00 is bewust de
+voorzichtige stap, met één geïsoleerde variabele.
+
+**Wat er gemeten moet worden voordat er verder geschoven wordt:** verschuift het spend-zwaartepunt
+mee naar later, of vult Meta het gat van 00:00–04:00 gewoon op door na 04:00 harder te spenderen?
+Als het tweede gebeurt is er niets gewonnen en moet de starttijd verder omhoog, of moet er naar
+dagdeel-targeting gekeken worden.
+
+**Zomertijd.** De cron staat op 03:00 UTC, wat 04:00 Londen is zolang BST geldt. Eind oktober
+gaat Londen naar GMT en vuurt de routine op 03:00 lokale tijd. Dan moet de cron mee.
 
 ---
 
@@ -62,10 +103,10 @@ staan. Elk met de reden, zodat het een keuze is en geen vergeten punt.*
 | Kandidaat | Waarom niet |
 |---|---|
 | **P-03** leeftijd versmallen | De video zegt "versmal", jouw eigen onderzoek zegt iets anders: 65+ is de groeiende groep en de winnaars mikken op 55+. Welk getal het wordt is een commerciële keuze over wie je klant is, geen instelling die ik namens jou verzin. |
-| **P-06** venster dag 5–7 | Het venster oprekken betekent langer doorbetalen op verliesgevende campagnes. De kill-regels bestaan juist om de cashflow te beschermen. Dit hoort een meting te zijn, geen aanname. |
+| **P-06** venster dag 5–7 | Het venster oprekken betekent langer doorbetalen op verliesgevende campagnes. Dit hoort een meting te zijn, geen aanname. **Extra reden per 23-8-2026:** er draait geen kill-routine meer (de trigger-ID uit het ontwerpdocument geeft 404 en er staat er geen in de actieve lijst). Stan doet het killen voorlopig met de hand, omdat de geautomatiseerde versie te slordig was. Zolang dat zo is, is een regel over kill-timing niet automatiseerbaar. |
 | **P-07** Advantage+ | Het verbod erop staat er met zoveel woorden in de prompt. Een expliciete beveiliging omdraaien op gezag van één video, zonder te weten waarom hij er staat, is precies het soort wijziging dat later niemand kan verklaren. |
 | **P-08** één product per campagne | Dit vervangt de grondgedachte van de pipeline: dagelijks breed zoeken tegenover diep gaan op één product. Een strategische ommezwaai hoort van jou te komen. |
-| **P-12** niet om middernacht | **De bestaande keuze is beter onderbouwd dan de kandidaat.** De livegang-routine legt uit waarom 00:01: dan krijgt een campagne de volle 24 uur en lekt er geen spend naar de vorige dag. De video geeft alleen "ik zie 's nachts weinig aankopen". De meetvraag over de kill-drempel blijft wel staan. |
+| ~~**P-12** niet om middernacht~~ | **Alsnog doorgevoerd op 23-8-2026, maar op eigen cijfers en niet op de video.** Zie A-06 in §1c. De oorspronkelijke afwijzing hield stand tot de uurdata liet zien dat de onderbouwing van 00:01 feitelijk onjuist was: een campagne kreeg wel de volle 24 uur, maar gaf 59% daarvan uit vóór 08:00 tegen de hoogste klikprijs van de dag. |
 | **P-05** wekelijkse verversing | De pipeline zet dagelijks nieuwe producten klaar; creative-vermoeidheid op één campagne speelt dan nauwelijks. Mogelijk niet van toepassing op deze opzet. |
 
 ---
