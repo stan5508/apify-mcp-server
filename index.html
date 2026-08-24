@@ -585,7 +585,7 @@
 <script>
 (() => {
   'use strict';
-  const APP_VERSION = 64; // bump when publishing; shown on the home screen
+  const APP_VERSION = 65; // bump when publishing; shown on the home screen
   const KEY = 'coachlog-v1';
   const $app = document.getElementById('app');
 
@@ -604,6 +604,31 @@
     Armen: 'Biceps brachii',
     Core: 'Rectus abdominis',
   };
+  // naam → spiergroep. De volgorde is betekenisvol: specifieke patronen staan boven brede
+  // (hamstring-curl vóór biceps-curl, triceps-kickback vóór glute-kickback). Elke nieuwe
+  // oefening krijgt hiermee meteen een spiergroep — en dus kleur, anatomie en vlakken;
+  // Bibliotheek → Nalopen blijft de plek om de gok te bevestigen of te corrigeren.
+  // Staat vóór loadDb(), want de migratie daarbinnen draait hem over oude oefeningen.
+  const GROUP_HINTS = [
+    [/kuit|calf|calve|heel raise|teenheffen/, 'Triceps surae'],
+    [/leg ?curl|beencurl|hamstring|romanian|rdl|stiff|nordic|good ?morning|hip hinge/, 'Hamstrings'],
+    [/triceps|pushdown|skull|french press|kop ?over|close ?grip bench/, 'Triceps brachii'],
+    [/hip thrust|glute|bil(len)?|bridge|kickback|abduct|donkey kick|frog pump|clamshell/, 'Gluteus maximus'],
+    [/squat|leg ?press|beenpers|lunge|uitval|leg ?extension|beenstrek|step ?up|hack|goblet|pistol|wall sit|sissy/, 'Quadriceps'],
+    [/deadlift|back ?extension|hyperextension|rugstrek|erector|rack pull|superman/, 'Erector spinae'],
+    [/shrug|face ?pull|upright row|trapez/, 'Trapezius'],
+    [/pulldown|pull ?up|pull-up|chin ?up|chin-up|optrekken|\brow\b|roei(en)?machine|barbell row|dumbbell row|seated row|\blat\b|t-?bar|pendlay|meadows|pullover/, 'Latissimus dorsi'],
+    [/curl|biceps/, 'Biceps brachii'],
+    [/shoulder press|overhead press|\bohp\b|lateral raise|zijwaarts|arnold|reverse fly|front raise|delt|schouderdrukken|military press|landmine press|y-?raise/, 'Deltoideus'],
+    [/bench|bank(druk|en)|chest|borst|\bfly\b|push ?up|push-up|opdruk|\bdip|pec ?deck|crossover|incline|decline|svend/, 'Pectoralis major'],
+    [/crunch|plank|sit ?up|sit-up|leg raise|buik|russian twist|hollow|\babs?\b|abdomin|dead ?bug|pallof|woodchop|ab ?wheel|rollout|mountain climber|hanging knee/, 'Rectus abdominis'],
+  ];
+  function suggestGroup(name, kind) {
+    if (kind === 'cardio') return 'Cardio';
+    const n = String(name || '').toLowerCase();
+    for (const [re, group] of GROUP_HINTS) if (re.test(n)) return group;
+    return null;
+  }
   let db = loadDb();
   function loadDb() {
     try {
@@ -833,6 +858,12 @@
       e.equipment = e.equipment || 'Onbekend';
       e.group = e.group || 'Overig';
       e.kind = e.kind || 'kracht';
+      // ongegroepeerd én nooit met de hand gezet? herken de spier uit de naam,
+      // met een vlag zodat Nalopen de gok nog ter bevestiging kan tonen
+      if (e.group === 'Overig' && e.kind !== 'cardio' && !d.muscleGroups[String(e.name || '').trim().toLowerCase()]) {
+        const g = suggestGroup(e.name, e.kind);
+        if (g && g !== 'Overig') { e.group = g; e.groupAuto = true; d._needsSave = true; }
+      }
       // older records kept one free-text field; it becomes the execution description
       if (e.notes !== undefined) {
         if (e.notes && !e.instructions) e.instructions = e.notes;
@@ -855,11 +886,14 @@
   function ensureExercise(name, kind) {
     const found = exerciseByName(name);
     if (found) return found;
+    // spiergroep meteen herkennen uit de naam, zodat kleur, anatomie en vlakken direct kloppen
+    const guessed = kind === 'cardio' ? null : suggestGroup(name, kind);
     const rec = {
       id: uid(), name: String(name).trim(), kind: kind || 'kracht',
-      group: kind === 'cardio' ? 'Cardio' : 'Overig', equipment: 'Onbekend',
+      group: kind === 'cardio' ? 'Cardio' : (guessed || 'Overig'), equipment: 'Onbekend',
       restSeconds: null, instructions: '', cues: '', videoUrl: '', imageUrl: '', aliases: [], archived: false,
     };
+    if (guessed) rec.groupAuto = true;
     db.exercises.push(rec);
     return rec;
   }
@@ -2268,7 +2302,7 @@
   };
   function setGroup(name, group) {
     const rec = exerciseByName(name);
-    if (rec) rec.group = group;
+    if (rec) { rec.group = group; delete rec.groupAuto; } // met de hand gezet wint van de gok
     if (group) db.muscleGroups[groupKey(name)] = group;
     else delete db.muscleGroups[groupKey(name)];
     save();
@@ -2329,26 +2363,7 @@
 
   // best guess at the muscle a lift trains, from its name. First match wins, so the
   // narrow patterns sit above the broad ones ("leg curl" before "curl", "face pull" before "pull").
-  const GROUP_HINTS = [
-    [/kuit|calf|calve|seated calf/, 'Triceps surae'],
-    [/leg ?curl|hamstring|romanian|rdl|nordic|good ?morning/, 'Hamstrings'],
-    [/hip thrust|glute|bil(len)?|bridge|kickback|abduct/, 'Gluteus maximus'],
-    [/squat|leg ?press|beenpers|lunge|uitval|leg ?extension|beenstrek|step ?up|hack/, 'Quadriceps'],
-    [/deadlift|back ?extension|hyperextension|rugstrek|erector/, 'Erector spinae'],
-    [/shrug|face ?pull|upright row|trapez/, 'Trapezius'],
-    [/triceps|pushdown|skull|french press|kop ?over/, 'Triceps brachii'],
-    [/pulldown|pull ?up|pull-up|chin ?up|chin-up|optrekken|\brow\b|roei(en)?machine|barbell row|dumbbell row|seated row|\blat\b/, 'Latissimus dorsi'],
-    [/curl|biceps/, 'Biceps brachii'],
-    [/shoulder press|overhead press|\bohp\b|lateral raise|zijwaarts|arnold|reverse fly|front raise|delt|schouderdrukken/, 'Deltoideus'],
-    [/bench|bank(druk|en)|chest|borst|\bfly\b|push ?up|push-up|opdruk|\bdip/, 'Pectoralis major'],
-    [/crunch|plank|sit ?up|sit-up|leg raise|buik|russian twist|hollow|\babs?\b|abdomin/, 'Rectus abdominis'],
-  ];
-  function suggestGroup(name, kind) {
-    if (kind === 'cardio') return 'Cardio';
-    const n = String(name || '').toLowerCase();
-    for (const [re, group] of GROUP_HINTS) if (re.test(n)) return group;
-    return null;
-  }
+  // GROUP_HINTS en suggestGroup() staan vóór loadDb(), want de migratie gebruikt ze.
 
   // sets per muscle group for a client in a period
   function groupTotals(clientId, period) {
@@ -5016,10 +5031,12 @@
   // exercises whose name says one muscle while the record says another; the list you work
   // through after the groups were renamed and everything legacy landed on one group
   function groupMismatches() {
+    // twee soorten regels: de naam wijst een ándere spier aan dan er staat, of de
+    // spiergroep is automatisch herkend en nog niet door de coach bevestigd
     return db.exercises
       .filter((e) => !e.archived && e.kind !== 'cardio')
-      .map((e) => ({ rec: e, suggested: suggestGroup(e.name, e.kind) }))
-      .filter((x) => x.suggested && x.suggested !== x.rec.group)
+      .map((e) => ({ rec: e, suggested: suggestGroup(e.name, e.kind), auto: !!e.groupAuto }))
+      .filter((x) => (x.suggested && x.suggested !== x.rec.group) || x.auto)
       .sort((a, b) => byName(a.rec.name, b.rec.name));
   }
 
@@ -5059,21 +5076,24 @@
     const rows = groupMismatches();
     $app.innerHTML = topbar('Spiergroepen nalopen', '/bibliotheek') +
       (rows.length
-        ? `<p class="sub">Bij deze oefeningen wijst de naam een andere spier aan dan er nu ingesteld staat.
-             Vink aan wat klopt en pas ze in één keer toe. Je kunt per regel een andere spier kiezen.</p>
+        ? `<p class="sub">Nieuwe oefeningen krijgen hun spiergroep automatisch, herkend uit de naam.
+             Hieronder staat wat nog niet door jou bevestigd is, plus namen die een ándere spier aanwijzen
+             dan er ingesteld staat. Vink aan wat klopt en pas ze in één keer toe; per regel kun je een andere spier kiezen.</p>
            <div class="actions" style="margin-bottom:12px">
              <button class="primary" id="gr-apply">Aangevinkte toepassen</button>
              <button id="gr-none">Niets aanvinken</button>
            </div>` +
-          rows.map((x, i) => `<div class="card mg-edge" style="--mg:${groupColor(x.suggested)}">
+          rows.map((x, i) => `<div class="card mg-edge" style="--mg:${groupColor(x.suggested || x.rec.group)}">
             <div class="row" style="gap:10px">
               <input type="checkbox" id="gr-${i}" data-gr="${i}" checked style="width:22px;height:22px;flex:none">
               <label class="grow" for="gr-${i}">
                 <div class="title">${esc(x.rec.name)}</div>
-                <div class="sub">nu: ${esc(x.rec.group)}</div>
+                <div class="sub">${x.auto && (!x.suggested || x.suggested === x.rec.group)
+                  ? `automatisch herkend als ${esc(x.rec.group)}`
+                  : `nu: ${esc(x.rec.group)}`}</div>
               </label>
               <select data-gr-pick="${i}" style="max-width:190px">
-                ${MUSCLE_GROUPS.map((g) => `<option value="${esc(g)}" ${g === x.suggested ? 'selected' : ''}>${esc(g)}</option>`).join('')}
+                ${MUSCLE_GROUPS.map((g) => `<option value="${esc(g)}" ${g === (x.suggested || x.rec.group) ? 'selected' : ''}>${esc(g)}</option>`).join('')}
               </select>
             </div>
           </div>`).join('')
@@ -5092,11 +5112,12 @@
         if (!box.checked) return;
         const x = rows[+box.dataset.gr];
         const pick = document.querySelector(`[data-gr-pick="${box.dataset.gr}"]`).value;
-        if (!x || pick === x.rec.group) return;
+        if (!x) return;
+        // ook bij een ongewijzigde keuze vastleggen: dat bevestigt de automatische gok
         setGroup(x.rec.name, pick);
         n++;
       });
-      alert(n ? `${n} oefening${n === 1 ? '' : 'en'} bijgewerkt.` : 'Niets aangevinkt.');
+      alert(n ? `${n} oefening${n === 1 ? '' : 'en'} bevestigd of bijgewerkt.` : 'Niets aangevinkt.');
       render();
     });
   }
@@ -5265,7 +5286,7 @@
       if (!name) return;
       if (exerciseByName(name)) { alert('Deze oefening bestaat al.'); return; }
       const rec = ensureExercise(name, String(f.get('kind')));
-      rec.group = String(f.get('group'));
+      setGroup(rec.name, String(f.get('group')));
       rec.equipment = String(f.get('equipment'));
       uiState.libEditing = null;
       save(); render();
@@ -5292,7 +5313,7 @@
         if (!res.ok) { alert(res.reason); return; }
       }
       rec.kind = String(f.get('kind'));
-      rec.group = String(f.get('group'));
+      setGroup(rec.name, String(f.get('group')));
       rec.equipment = String(f.get('equipment'));
       rec.restSeconds = num(f.get('rest')) > 0 ? num(f.get('rest')) : null;
       rec.progressStep = num(f.get('progressStep')) > 0 ? num(f.get('progressStep')) : null;
@@ -7964,7 +7985,7 @@
         if (row.instructions) rec.instructions = String(row.instructions);
         if (row.cues) rec.cues = String(row.cues);
         if (row.videoUrl) rec.videoUrl = safeUrl(row.videoUrl) || rec.videoUrl;
-        if (row.group && MUSCLE_GROUPS.includes(row.group)) rec.group = row.group;
+        if (row.group && MUSCLE_GROUPS.includes(row.group)) { rec.group = row.group; delete rec.groupAuto; }
         if (row.equipment && EQUIPMENT.includes(row.equipment)) rec.equipment = row.equipment;
         filled++;
       }
