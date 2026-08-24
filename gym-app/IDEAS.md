@@ -27,6 +27,8 @@ Niet afgewezen, alleen nu niet van toepassing:
 
 - ~~**Progressieregels**~~ — gebouwd in versie 53.
 - ~~**Weekprogramma's**~~ — gebouwd in versie 54: één programma per klant, dag A/B/C op volgorde.
+- ~~**Mesocycli/deload**~~ — gebouwd in versie 64: bloklengte op het programma, laatste week
+  is deload met lichtere gewichten klaargezet.
 
 ## Backlog
 
@@ -144,9 +146,9 @@ afvinken, rusttimer) en ziet hij zijn eigen voortgang onder het tabblad **Voortg
 Sinds versie 59 ziet de klant een melding in de app zodra de coach iets nieuws klaarzet, en
 staan de agenda-afspraken van de coach in zijn app.
 
-Nog open: **echte pushmeldingen** naar een gesloten telefoon. Dat vraagt VAPID-sleutels, een
-tabel met push-abonnementen, een `push`-handler in `sw.js`, registratie van de service worker
-in `sporter.html` (die doet dat nu niet) en een Edge Function die de push verstuurt.
+~~Echte pushmeldingen~~ — code gebouwd in versie 64 (push-handler in `sw.js`,
+SW-registratie en abonneren in `sporter.html`, Edge Function `send-push`). Alleen het
+opzetwerk staat nog open: SUPABASE.md stap 8.
 
 ## Nog te doen (opzetwerk, niet door de app)
 
@@ -303,9 +305,9 @@ afvinken, rusttimer) en ziet hij zijn eigen voortgang onder het tabblad **Voortg
 Sinds versie 59 ziet de klant een melding in de app zodra de coach iets nieuws klaarzet, en
 staan de agenda-afspraken van de coach in zijn app.
 
-Nog open: **echte pushmeldingen** naar een gesloten telefoon. Dat vraagt VAPID-sleutels, een
-tabel met push-abonnementen, een `push`-handler in `sw.js`, registratie van de service worker
-in `sporter.html` (die doet dat nu niet) en een Edge Function die de push verstuurt.
+~~Echte pushmeldingen~~ — code gebouwd in versie 64 (push-handler in `sw.js`,
+SW-registratie en abonneren in `sporter.html`, Edge Function `send-push`). Alleen het
+opzetwerk staat nog open: SUPABASE.md stap 8.
 
 ## Nog te doen (opzetwerk, niet door de app)
 
@@ -382,3 +384,16 @@ wger blijft de kandidaat voor Nederlandse uitleg.
 
 Voor dagelijks gebruik: 1 (rusttimer), 27 (sessietegoed), 20 (intake), 12 (periodefilter),
 32 (pincode). Voor indruk op klanten: 17 (PDF-rapport).
+
+## Versie 64 — tien punten in één ronde (24 aug 2026)
+
+Gebouwd: wekelijks terugkerende afspraken (serie met serie-verwijderen), weekweergave in de
+agenda, warming-upvoorstel per oefening, betaal-QR (EPC/SEPA, eigen QR-encoder, versies 1-9,
+geverifieerd met een externe decoder), doelen mee met Klaarzetten, wekelijkse check-in van de
+klant, berichten coach ↔ klant, techniekvideo's met coachfeedback, mesocycli met deloadweek,
+pushmeldingen (code; opzet is SUPABASE.md stap 8), en het naslagdeel **Anatomie & vlakken**
+(per spiergroep origo/insertie/gewricht, functies met bewegingsvlak + as, trainingsconsequenties
+en antagonisten — Latijnse namen, gekoppeld aan de oefening-info tijdens de training).
+
+De nieuwe cloud-onderdelen vragen eenmalige SQL: SUPABASE.md stap 7 (tabellen), 7b (storage
+voor video's) en 8 (push). Tot die gedraaid zijn melden beide apps "nog niet aangezet".

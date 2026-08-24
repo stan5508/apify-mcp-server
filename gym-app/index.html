@@ -362,6 +362,12 @@
   .mg-row { display: inline-flex; gap: 4px; align-items: center; }
   /* a card that carries its muscle-group colour on the leading edge */
   .mg-edge { border-left: 3px solid var(--mg, var(--border)); }
+  /* anatomie-naslag */
+  .anat summary { cursor: pointer; display: flex; align-items: baseline; gap: 8px; list-style: none; }
+  .anat summary::-webkit-details-marker { display: none; }
+  .anat-move { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; padding: 5px 0; border-bottom: 1px solid var(--grid); font-size: 14.5px; }
+  .anat-move:last-of-type { border-bottom: 0; }
+  .anat-move .sub { flex: 1; min-width: 40%; }
   .spark { display: block; flex: none; }
   .spark-empty { display: inline-block; width: 76px; height: 24px; }
   .trend {
@@ -443,6 +449,11 @@
   .tool-out { font-weight: 650; margin-top: 8px; }
   .ss-mark { border-left: 3px solid var(--accent); padding-left: 9px; }
   .note-box { background: var(--wash); border-radius: 8px; padding: 8px 10px; font-size: 14px; color: var(--ink-2); margin-bottom: 8px; }
+  /* chat met de klant in Van klanten */
+  .msg { max-width: 82%; border-radius: 12px; padding: 8px 11px; margin-bottom: 6px; font-size: 14.5px; }
+  .msg .mut { font-size: 11px; margin-top: 2px; }
+  .msg.me { margin-left: auto; background: var(--wash); border: 1px solid var(--accent); border-top-right-radius: 4px; }
+  .msg.them { margin-right: auto; background: var(--surface-2, var(--surface)); border: 1px solid var(--border); border-top-left-radius: 4px; }
   .note-box strong { color: var(--accent-strong); }
   .info-panel { border: 1px solid var(--grid); border-radius: 8px; padding: 10px; margin-bottom: 10px; }
   .chart-overlay { position: fixed; inset: 0; z-index: 45; background: var(--page); overflow-y: auto; padding: 0 16px 32px; }
@@ -574,7 +585,7 @@
 <script>
 (() => {
   'use strict';
-  const APP_VERSION = 63; // bump when publishing; shown on the home screen
+  const APP_VERSION = 64; // bump when publishing; shown on the home screen
   const KEY = 'coachlog-v1';
   const $app = document.getElementById('app');
 
@@ -613,7 +624,7 @@
       muscleGroups: d.muscleGroups || {},
       settings: { unit: 'kg', restSeconds: 90, autoRest: true, sound: true, barWeight: 20, noShowCounts: true, currency: '€', theme: 'dark', pin: null, lockMinutes: 15, coachName: '', lastBackupAt: null,
         countTrainingBurn: true, kcalPerMin: 6, waterTargetMl: 2000, mailCopy: true,
-        progression: true, progressStep: 2.5, ...(d.settings || {}) },
+        progression: true, progressStep: 2.5, iban: '', ibanName: '', deloadPercent: 60, ...(d.settings || {}) },
       updatedAt: d.updatedAt || 0,
     };
     for (const c of out.clients) {
@@ -747,6 +758,22 @@
     const rpc = (fn, args) => call(`/rest/v1/rpc/${fn}`, { method: 'POST', body: JSON.stringify(args || {}) });
     // edge functions live on another path than the REST API
     const invoke = (fn, payload) => call(`/functions/v1/${fn}`, { method: 'POST', body: JSON.stringify(payload || {}) });
+    const patchRow = (table, query, body) => call(`/rest/v1/${table}?${query}`, { method: 'PATCH', body: JSON.stringify(body) });
+    // storage: raw upload (videos are far too big for JSON) and a signed link for playback
+    async function upload(bucket, path, file, retried) {
+      const headers = { apikey: cfg.key, Authorization: 'Bearer ' + session.access_token, 'Content-Type': file.type || 'application/octet-stream', 'x-upsert': 'true' };
+      const res = await fetch(`${cfg.url}/storage/v1/object/${bucket}/${path}`, { method: 'POST', headers, body: file, signal: AbortSignal.timeout(180000) });
+      if (res.status === 401 && !retried && session && session.refresh_token) { await refresh(); return upload(bucket, path, file, true); }
+      if (!res.ok) {
+        let msg = 'fout ' + res.status;
+        try { const b = await res.json(); msg = b.message || b.error || msg; } catch { /* geen JSON-fout */ }
+        throw new Error(msg);
+      }
+    }
+    async function signUrl(bucket, path, seconds) {
+      const body = await call(`/storage/v1/object/sign/${bucket}/${path}`, { method: 'POST', body: JSON.stringify({ expiresIn: seconds || 3600 }) });
+      return cfg.url + '/storage/v1' + body.signedURL;
+    }
 
     // make sure this account has a profile row
     async function ensureProfile(role, name) {
@@ -767,7 +794,7 @@
     return {
       configured, signedIn, setConfig, clearConfig, config: () => cfg,
       sendLink, captureSessionFromUrl, signOut, userId, userEmail,
-      select, insert, upsert, remove, rpc, invoke, ensureProfile,
+      select, insert, upsert, remove, rpc, invoke, ensureProfile, patchRow, upload, signUrl,
     };
   })();
 
@@ -947,7 +974,8 @@
   function exerciseInfoHtml(name, clientId) {
     const rec = exerciseByName(name);
     const note = clientId ? clientNote(clientId, name) : '';
-    if (!hasInfo(rec) && !note) return '<p class="mut">Nog geen uitleg. Vul die in via de bibliotheek.</p>';
+    const anatomy = anatomyInlineHtml(groupOf(name));
+    if (!hasInfo(rec) && !note) return (anatomy || '') + '<p class="mut">Nog geen uitleg. Vul die in via de bibliotheek.</p>';
     const img = safeUrl(rec && rec.imageUrl);
     const vid = safeUrl(rec && rec.videoUrl);
     return (note ? `<div class="note-box"><strong>Voor deze klant:</strong> ${esc(note)}</div>` : '') +
@@ -955,7 +983,8 @@
       (rec && rec.cues ? `<div class="note-box"><strong>Aandachtspunten:</strong> ${esc(rec.cues)}</div>` : '') +
       (img ? `<img src="${esc(img)}" alt="" loading="lazy" style="max-width:100%;border-radius:8px;margin-top:8px">` : '') +
       (vid ? `<p style="margin:8px 0 0"><a href="${esc(vid)}" target="_blank" rel="noopener">Video bekijken ↗</a></p>` : '') +
-      (rec ? `<p style="margin:8px 0 0"><a href="${esc(youtubeSearch(rec))}" target="_blank" rel="noopener">Zoek uitvoering op YouTube ↗</a></p>` : '');
+      (rec ? `<p style="margin:8px 0 0"><a href="${esc(youtubeSearch(rec))}" target="_blank" rel="noopener">Zoek uitvoering op YouTube ↗</a></p>` : '') +
+      anatomy;
   }
 
 
@@ -1165,6 +1194,18 @@
     const index = last ? (ids.indexOf(last.schemaId) + 1) % ids.length : 0;
     return { program: p, ids, index, schema: schemaById(ids[index]), lastDate: last ? last.date : null };
   }
+
+  // mesocyclus: blokken van N weken op het programma; de laatste week is de deload
+  function mesoState(clientId) {
+    const p = programOf(clientId);
+    if (!p || !(p.mesoWeeks > 1) || !p.mesoStart) return null;
+    const days = Math.floor((new Date(todayIso() + 'T12:00:00') - new Date(p.mesoStart + 'T12:00:00')) / 86400000);
+    if (days < 0) return null;
+    const week = (Math.floor(days / 7) % p.mesoWeeks) + 1;
+    return { week, of: p.mesoWeeks, deload: week === p.mesoWeeks };
+  }
+  // deloadgewicht: percentage van het gewone gewicht, afgerond op 2,5 (de kleinste schijven)
+  const deloadWeight = (w) => Math.max(0, Math.round((w * ((db.settings.deloadPercent || 60) / 100)) / 2.5) * 2.5);
 
   // ---------- helpers ----------
   const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -2004,6 +2045,221 @@
   };
   const groupColor = (group) => GROUP_COLOURS[group] || 'var(--baseline)';
   const groupColour = (name, kind) => groupColor(groupOf(name, kind));
+
+  // ---------- anatomie & biomechanica ----------
+  // Bewegen doe je ín een vlak, óm een as; die twee horen altijd bij elkaar:
+  // sagittaal vlak ↔ transversale as, frontaal vlak ↔ sagittale as, transversaal vlak ↔ longitudinale as.
+  const PLANES = {
+    sagittaal: { vlak: 'sagittaal vlak', as: 'transversale as' },
+    frontaal: { vlak: 'frontaal vlak', as: 'sagittale as' },
+    transversaal: { vlak: 'transversaal vlak', as: 'longitudinale as' },
+  };
+  const MOVEMENTS = {
+    flexie: ['Flexie', 'sagittaal'],
+    extensie: ['Extensie', 'sagittaal'],
+    plantairflexie: ['Plantairflexie', 'sagittaal'],
+    dorsaalflexie: ['Dorsaalflexie', 'sagittaal'],
+    abductie: ['Abductie', 'frontaal'],
+    adductie: ['Adductie', 'frontaal'],
+    elevatie: ['Elevatie', 'frontaal'],
+    depressie: ['Depressie', 'frontaal'],
+    lateroflexie: ['Laterale flexie', 'frontaal'],
+    endorotatie: ['Interne (mediale) rotatie', 'transversaal'],
+    exorotatie: ['Externe (laterale) rotatie', 'transversaal'],
+    horadductie: ['Horizontale adductie', 'transversaal'],
+    horabductie: ['Horizontale abductie', 'transversaal'],
+    retractie: ['Retractie', 'transversaal'],
+    protractie: ['Protractie', 'transversaal'],
+    supinatie: ['Supinatie', 'transversaal'],
+    pronatie: ['Pronatie', 'transversaal'],
+    rotatie: ['Rotatie romp', 'transversaal'],
+    kanteling: ['Posterieure bekkenkanteling', 'sagittaal'],
+  };
+  // Per spiergroep: origo → insertie, de functies (bewegingsvorm + waar in de spier + voorbeeld),
+  // en wat dat betekent voor de oefeningkeuze. Functies: [bewegingssleutel, toelichting].
+  const MUSCLE_ANATOMY = {
+    'Pectoralis major': {
+      nl: 'grote borstspier',
+      origo: 'sleutelbeen (pars clavicularis), borstbeen en ribkraakbeen 1–6 (pars sternocostalis)',
+      insertie: 'crista tuberculi majoris van de humerus (bovenarm, voorzijde)',
+      gewricht: 'schoudergewricht (art. glenohumeralis)',
+      functies: [
+        ['horadductie', 'hele spier — fly, cable crossover, drukwerk'],
+        ['adductie', 'arm naar het lichaam toe'],
+        ['endorotatie', 'samen met latissimus en subscapularis'],
+        ['flexie', 'pars clavicularis — incline press, front raise-baan'],
+        ['extensie', 'vanuit voorwaartse flexie terug — pars sternocostalis, dips en pullover'],
+      ],
+      training: 'Vlak drukwerk pakt de hele spier; incline verlegt het accent naar de pars clavicularis, dips en decline naar de pars sternocostalis. De gerekte stand onderin een fly of diepe press is de sterkste groeiprikkel — kies dus minstens één oefening met volledige rek.',
+      antagonisten: 'latissimus dorsi, trapezius (pars transversa), deltoideus pars spinalis',
+    },
+    Deltoideus: {
+      nl: 'deltaspier',
+      origo: 'sleutelbeen (pars clavicularis), acromion (pars acromialis), spina scapulae (pars spinalis)',
+      insertie: 'tuberositas deltoidea van de humerus',
+      gewricht: 'schoudergewricht',
+      functies: [
+        ['abductie', 'pars acromialis — lateral raise, overhead press'],
+        ['flexie', 'pars clavicularis — front raise'],
+        ['endorotatie', 'pars clavicularis'],
+        ['horadductie', 'pars clavicularis'],
+        ['extensie', 'pars spinalis'],
+        ['exorotatie', 'pars spinalis'],
+        ['horabductie', 'pars spinalis — reverse fly, face pull'],
+      ],
+      training: 'Drie koppen, drie richtingen: druk- en front-werk voor voor, lateral raises voor midden, reverse fly of face pulls voor achter. De achterkant krijgt bij pers-dominante schema\'s structureel te weinig — programmeer hem apart.',
+      antagonisten: 'de koppen zijn elkaars antagonist (voor ↔ achter); abductie tegenover latissimus/pectoralis',
+    },
+    'Triceps brachii': {
+      nl: 'driehoofdige armstrekker',
+      origo: 'tuberculum infraglenoidale van de scapula (caput longum), achterzijde humerus (caput mediale en laterale)',
+      insertie: 'olecranon van de ulna (elleboogpunt)',
+      gewricht: 'elleboog; het caput longum passeert óók de schouder',
+      functies: [
+        ['extensie', 'elleboog — alle drie de koppen, elk drukwerk en elke pushdown'],
+        ['extensie', 'schouder — alleen caput longum (pullover, dips)'],
+        ['adductie', 'schouder — caput longum, assisterend'],
+      ],
+      training: 'Het caput longum werkt over twee gewrichten: overhead extensions rekken hem maximaal en laten hem het hardst groeien. Pushdowns pakken vooral het laterale caput. Combineer beide.',
+      antagonisten: 'biceps brachii, brachialis',
+    },
+    'Latissimus dorsi': {
+      nl: 'brede rugspier',
+      origo: 'processi spinosi T7–L5, fascia thoracolumbalis, crista iliaca, onderste drie à vier ribben',
+      insertie: 'crista tuberculi minoris van de humerus',
+      gewricht: 'schoudergewricht + schoudergordel',
+      functies: [
+        ['adductie', 'bovenarm naar de romp — pull-up met brede greep'],
+        ['extensie', 'arm van voor naar achter — rowing, pullover'],
+        ['endorotatie', 'samen met pectoralis'],
+        ['depressie', 'schoudergordel omlaag — de "schouders laag"-cue bij elke trek-oefening'],
+      ],
+      training: 'Verticaal trekken (pull-up, pulldown) traint de adductie, horizontaal roeien de extensie — twee verschillende banen, allebei nodig. Start elke herhaling met depressie van de schoudergordel, anders neemt de biceps het over.',
+      antagonisten: 'deltoideus pars clavicularis, pectoralis major (flexierichting), trapezius pars descendens',
+    },
+    Trapezius: {
+      nl: 'monnikskapspier',
+      origo: 'achterhoofdsbeen en processi spinosi C1–T12',
+      insertie: 'sleutelbeen (pars descendens), acromion (pars transversa), spina scapulae (pars ascendens)',
+      gewricht: 'schoudergordel (scapula) en nek',
+      functies: [
+        ['elevatie', 'pars descendens — shrugs, dragende oefeningen'],
+        ['retractie', 'pars transversa — rowing, face pull, "borst vooruit"'],
+        ['depressie', 'pars ascendens — dips, pulldown-eindstand'],
+        ['extensie', 'nek — pars descendens beiderzijds'],
+      ],
+      training: 'Shrugs pakken alleen het bovenste deel. Het middelste (retractie) en onderste deel (depressie + opwaartse rotatie van de scapula) bepalen schouderstabiliteit en houding — roeien met bewuste eindretractie en face pulls horen in elk trekschema.',
+      antagonisten: 'pectoralis major/minor (protractierichting), serratus anterior (retractie ↔ protractie)',
+    },
+    'Biceps brachii': {
+      nl: 'tweehoofdige armbuiger',
+      origo: 'tuberculum supraglenoidale (caput longum) en processus coracoideus (caput breve) van de scapula',
+      insertie: 'tuberositas radii + bicepsaponeurose',
+      gewricht: 'elleboog én schouder (beide koppen passeren de schouder), plus het radio-ulnaire gewricht',
+      functies: [
+        ['flexie', 'elleboog — elke curl'],
+        ['supinatie', 'onderarm draait naar buiten — sterkst met gebogen elleboog'],
+        ['flexie', 'schouder — assisterend, caput longum'],
+      ],
+      training: 'Supinatie hoort bij de functie: een curl die eindigt met de pink naar buiten pakt méér spier dan een hamer-curl. Incline curls rekken het caput longum (arm achter de romp), preacher curls leggen de spanning juist kort — allebei programmeren.',
+      antagonisten: 'triceps brachii; pronatoren (pronator teres) voor de supinatie',
+    },
+    'Erector spinae': {
+      nl: 'rugstrekkers (iliocostalis, longissimus, spinalis)',
+      origo: 'heiligbeen, crista iliaca en fascia thoracolumbalis',
+      insertie: 'ribben, processi van de wervels tot aan het achterhoofd',
+      gewricht: 'de hele wervelkolom',
+      functies: [
+        ['extensie', 'romp strekken — deadlift, back extension, good morning'],
+        ['lateroflexie', 'eenzijdig aanspannen — zijwaarts buigen'],
+        ['extensie', 'isometrisch: de rug neutraal hóuden onder last — squat en deadlift'],
+      ],
+      training: 'Bij squat en deadlift werkt de erector vooral isometrisch: hij verzet zich tegen flexie. Dynamische extensie (back extensions) traint hem door de baan heen. Beide prikkels tellen; de isometrische krijgt hij bij het grote werk al volop.',
+      antagonisten: 'rectus abdominis, obliqui',
+    },
+    Quadriceps: {
+      nl: 'vierhoofdige dijspier',
+      origo: 'spina iliaca anterior inferior (rectus femoris), voor- en zijkant femur (vastus lateralis, medialis, intermedius)',
+      insertie: 'tuberositas tibiae, via de patella en de patellapees',
+      gewricht: 'knie; de rectus femoris passeert óók de heup',
+      functies: [
+        ['extensie', 'knie — squat, leg press, leg extension, lunge'],
+        ['flexie', 'heup — alleen rectus femoris'],
+      ],
+      training: 'De vasti groeien van diep kniewerk (squat, hack squat, leg press). De rectus femoris wordt daar nauwelijks geprikkeld — die heeft leg extensions of sissy squats nodig, omdat hij bij diepe squats over de heup ingekort raakt.',
+      antagonisten: 'hamstrings (knieflexie), gluteus maximus (heupextensie tegenover rectus femoris)',
+    },
+    Hamstrings: {
+      nl: 'kniebuigers (biceps femoris, semitendinosus, semimembranosus)',
+      origo: 'tuber ischiadicum (zitbeenknobbel); het korte hoofd van de biceps femoris op het femur',
+      insertie: 'biceps femoris op de fibulakop (buitenzijde), semi-spieren op de tibia (binnenzijde)',
+      gewricht: 'knie én heup (behalve het korte hoofd van de biceps femoris)',
+      functies: [
+        ['flexie', 'knie — leg curl, nordic curl'],
+        ['extensie', 'heup — Romanian deadlift, hip thrust, good morning'],
+        ['endorotatie', 'gebogen knie — semitendinosus en semimembranosus'],
+        ['exorotatie', 'gebogen knie — biceps femoris'],
+      ],
+      training: 'Tweegewrichtsspier: heupwerk in gerekte stand (RDL) én kniewerk (leg curl) prikkelen verschillende delen. Alleen squatten is géén hamstringtraining — daar verandert hun lengte nauwelijks.',
+      antagonisten: 'quadriceps (knie), rectus femoris en iliopsoas (heup)',
+    },
+    'Gluteus maximus': {
+      nl: 'grote bilspier',
+      origo: 'os ilium, heiligbeen, staartbeen en fascia thoracolumbalis',
+      insertie: 'tractus iliotibialis en tuberositas glutea van het femur',
+      gewricht: 'heupgewricht',
+      functies: [
+        ['extensie', 'heup — hip thrust, squat, deadlift, lunge'],
+        ['exorotatie', 'heup — knie naar buiten sturen bij de squat'],
+        ['abductie', 'bovenste vezels — samen met gluteus medius'],
+        ['adductie', 'onderste vezels'],
+        ['kanteling', 'bekken achterover — de "lockout" van de hip thrust'],
+      ],
+      training: 'Piekspanning in volledige heupextensie (hip thrust) en spanning op rek (diepe squat, RDL) zijn complementair. Exorotatie meesturen ("knieën naar buiten") verhoogt de glute-bijdrage in elke kniedominante oefening.',
+      antagonisten: 'iliopsoas en rectus femoris (heupflexie)',
+    },
+    'Triceps surae': {
+      nl: 'kuitspieren (gastrocnemius + soleus)',
+      origo: 'femurcondylen (gastrocnemius), achterzijde tibia en fibula (soleus)',
+      insertie: 'calcaneus, via de achillespees',
+      gewricht: 'enkel (art. talocruralis); de gastrocnemius passeert óók de knie',
+      functies: [
+        ['plantairflexie', 'tenen strekken — calf raises, afzet bij sprint en sprong'],
+        ['flexie', 'knie — assisterend, alleen gastrocnemius'],
+      ],
+      training: 'Gestrekt been = gastrocnemius (standing calf raise); gebogen been schakelt hem uit en isoleert de soleus (seated calf raise). De soleus is overwegend slow-twitch: verdraagt en vraagt hogere herhalingen.',
+      antagonisten: 'tibialis anterior (dorsaalflexie)',
+    },
+    'Rectus abdominis': {
+      nl: 'rechte buikspier',
+      origo: 'schaambeen (os pubis, symfyse)',
+      insertie: 'ribkraakbeen 5–7 en processus xiphoideus',
+      gewricht: 'wervelkolom (romp) en bekken',
+      functies: [
+        ['flexie', 'romp — crunch, hanging leg raise met ingekruld bekken'],
+        ['kanteling', 'bekken achterover — reverse crunch'],
+        ['lateroflexie', 'assisterend, eenzijdig'],
+        ['flexie', 'isometrisch: intra-abdominale druk en rompstijfheid bij squat en deadlift'],
+      ],
+      training: 'Echte flexie betekent de wervelkolom inkrullen, niet de heup buigen — een leg raise zonder bekkenkanteling is heupflexor-werk. Voor zichtbare segmenten geldt hetzelfde als elders: progressief verzwaren, niet eindeloos herhalen.',
+      antagonisten: 'erector spinae',
+    },
+  };
+  const movementLine = (key, detail) => {
+    const m = MOVEMENTS[key];
+    if (!m) return '';
+    const p = PLANES[m[1]];
+    return `<div class="anat-move"><b>${m[0]}</b>${detail ? ` <span class="sub">— ${esc(detail)}</span>` : ''}
+      <span class="mut" style="white-space:nowrap">${p.vlak} · ${p.as}</span></div>`;
+  };
+  // compacte samenvatting bij de oefening-info tijdens de training
+  function anatomyInlineHtml(group) {
+    const a = MUSCLE_ANATOMY[group];
+    if (!a) return '';
+    return `<div class="note-box" style="margin-top:8px"><strong>${esc(group)}</strong> (${esc(a.nl)}) —
+      ${a.functies.slice(0, 3).map(([k]) => (MOVEMENTS[k] || [''])[0].toLowerCase()).join(', ')}.
+      <a href="#/anatomie/${encodeURIComponent(group)}">Alle functies en vlakken ›</a></div>`;
+  }
   const groupKey = (name) => name.trim().toLowerCase();
   const groupOf = (name, kind) => {
     const rec = exerciseByName(name);
@@ -2241,6 +2497,31 @@
     }
     return { ok: true, plates: out, rest: Math.round(perSide * 100) / 100 };
   }
+  // warm-up ramp towards the first working weight: ~50%×10, ~70%×5, ~85%×3,
+  // rounded to 2.5 (the smallest plate on both sides) and never under the bare bar
+  function warmupSetsFor(workWeight) {
+    const bar = db.settings.barWeight || 20;
+    const out = [];
+    for (const [pct, reps] of [[0.5, 10], [0.7, 5], [0.85, 3]]) {
+      const w = Math.max(bar, Math.round((workWeight * pct) / 2.5) * 2.5);
+      if (w >= workWeight || out.some((s) => s.weight === w)) continue;
+      out.push({ weight: w, reps, type: 'warmup' });
+    }
+    return out;
+  }
+  // the weight the warm-up builds towards: the first working set that has one
+  const warmupBase = (sets) => sets.filter((s) => setType(s) !== 'warmup').map((s) => num(s.weight)).find((v) => v > 0) || 0;
+  function addWarmupTo(ex) {
+    if (ex.kind === 'cardio') { alert('Warming-up voorstellen werkt alleen bij krachtoefeningen.'); return false; }
+    if (ex.sets.some((s) => setType(s) === 'warmup')) { alert('Er staan al warming-upsets bij deze oefening.'); return false; }
+    const base = warmupBase(ex.sets);
+    if (!base) { alert('Vul eerst een werkgewicht in; daar bouwt de warming-up naartoe.'); return false; }
+    const ramp = warmupSetsFor(base);
+    if (!ramp.length) { alert(`${fmtKg(base)} is te licht voor opbouwsets — pak gewoon de stang.`); return false; }
+    ex.sets.unshift(...ramp);
+    return true;
+  }
+
   const PLATE_COLORS = {
     25: ['#c8102e', '#ffffff'], 20: ['#0057b8', '#ffffff'], 15: ['#f2c200', '#17130a'],
     10: ['#009639', '#17130a'], 5: ['#f2f2f0', '#17130a'], 2.5: ['#c8102e', '#ffffff'], 1.25: ['#a8adb4', '#17130a'],
@@ -2259,6 +2540,160 @@
     return `Per kant: ${r.plates.map(pill).join(' ')}` +
       (r.rest > 0 ? ` <span class="mut">(${fmtP(r.rest)} ${esc(unitLbl())} rest)</span>` : '');
   }
+
+  // ---------- QR-code encoder (byte mode, foutcorrectie M, masker 0) ----------
+  // Genoeg voor een EPC-betaal-QR; geen bibliotheek, werkt offline. Versies 1-9 (max ~179 bytes).
+  const QR_ECC_PER_BLOCK = [10, 16, 26, 18, 24, 16, 18, 22, 22];
+  const QR_NUM_BLOCKS = [1, 1, 1, 2, 2, 4, 4, 4, 5];
+  const QR_ALIGN = [[], [6, 18], [6, 22], [6, 26], [6, 30], [6, 34], [6, 22, 38], [6, 24, 42], [6, 26, 46]];
+  const QR_MAX_VER = 9;
+  function qrRawModules(ver) {
+    let r = (16 * ver + 128) * ver + 64;
+    if (ver >= 2) { const n = Math.floor(ver / 7) + 2; r -= (25 * n - 10) * n - 55; if (ver >= 7) r -= 36; }
+    return r;
+  }
+  const qrDataBytes = (ver) => Math.floor(qrRawModules(ver) / 8) - QR_ECC_PER_BLOCK[ver - 1] * QR_NUM_BLOCKS[ver - 1];
+  function qrReedSolomon(data, degree) {
+    // deling door de generatorpolynoom in GF(256) met reductie 0x11D
+    const mul = (x, y) => { let z = 0; for (let i = 7; i >= 0; i--) { z = (z << 1) ^ ((z >> 7) * 0x11d); z ^= ((y >> i) & 1) * x; } return z & 0xff; };
+    const gen = new Array(degree).fill(0); // coëfficiënten zonder de leidende 1
+    gen[degree - 1] = 1;
+    let root = 1;
+    for (let i = 0; i < degree; i++) {
+      for (let j = 0; j < degree; j++) {
+        gen[j] = mul(gen[j], root);
+        if (j + 1 < degree) gen[j] ^= gen[j + 1];
+      }
+      root = mul(root, 2);
+    }
+    const res = new Array(degree).fill(0);
+    for (const b of data) {
+      const factor = b ^ res.shift();
+      res.push(0);
+      gen.forEach((coef, i) => { res[i] ^= mul(coef, factor); });
+    }
+    return res;
+  }
+  // tekst (UTF-8) → booleaanse matrix, of null als hij niet in versie 13 past
+  function qrMatrix(text) {
+    const bytes = Array.from(new TextEncoder().encode(text));
+    let ver = 0;
+    for (let v = 1; v <= QR_MAX_VER; v++) {
+      const cap = qrDataBytes(v) - 2; // mode + lengte + terminator-marge
+      if (bytes.length <= cap) { ver = v; break; }
+    }
+    if (!ver) return null;
+    // bitstroom: mode 0100, lengte (8 of 16 bits), data, terminator, opvulling
+    const bits = [];
+    const push = (val, n) => { for (let i = n - 1; i >= 0; i--) bits.push((val >> i) & 1); };
+    push(4, 4);
+    push(bytes.length, 8); // 8-bits lengteveld volstaat t/m versie 9
+    for (const b of bytes) push(b, 8);
+    const capBits = qrDataBytes(ver) * 8;
+    push(0, Math.min(4, capBits - bits.length));
+    while (bits.length % 8) bits.push(0);
+    for (let pad = 0xec; bits.length < capBits; pad ^= 0xec ^ 0x11) push(pad, 8);
+    const data = [];
+    for (let i = 0; i < bits.length; i += 8) data.push(bits.slice(i, i + 8).reduce((a, b) => (a << 1) | b, 0));
+    // blokken verdelen en ECC berekenen
+    const numBlocks = QR_NUM_BLOCKS[ver - 1];
+    const eccLen = QR_ECC_PER_BLOCK[ver - 1];
+    const totalCw = Math.floor(qrRawModules(ver) / 8);
+    const shortLen = Math.floor(totalCw / numBlocks) - eccLen;
+    const numLong = totalCw % numBlocks;
+    const blocks = [];
+    let off = 0;
+    for (let i = 0; i < numBlocks; i++) {
+      const len = shortLen + (i >= numBlocks - numLong ? 1 : 0);
+      const d = data.slice(off, off + len);
+      off += len;
+      blocks.push({ d, e: qrReedSolomon(d, eccLen) });
+    }
+    const out = [];
+    for (let i = 0; i <= shortLen; i++) for (const b of blocks) if (i < b.d.length) out.push(b.d[i]);
+    for (let i = 0; i < eccLen; i++) for (const b of blocks) out.push(b.e[i]);
+    // matrix opbouwen
+    const size = ver * 4 + 17;
+    const mod = Array.from({ length: size }, () => new Array(size).fill(0));
+    const fun = Array.from({ length: size }, () => new Array(size).fill(false));
+    const set = (x, y, v) => { mod[y][x] = v ? 1 : 0; fun[y][x] = true; };
+    const finder = (cx, cy) => {
+      for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) {
+        const x = cx + dx, y = cy + dy;
+        if (x < 0 || y < 0 || x >= size || y >= size) continue;
+        const dist = Math.max(Math.abs(dx), Math.abs(dy));
+        set(x, y, dist !== 2 && dist !== 4);
+      }
+    };
+    finder(3, 3); finder(size - 4, 3); finder(3, size - 4);
+    for (const cy of QR_ALIGN[ver - 1]) for (const cx of QR_ALIGN[ver - 1]) {
+      if (fun[cy][cx]) continue;
+      for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++)
+        set(cx + dx, cy + dy, Math.max(Math.abs(dx), Math.abs(dy)) !== 1);
+    }
+    for (let i = 8; i < size - 8; i++) { if (!fun[6][i]) set(i, 6, i % 2 === 0); if (!fun[i][6]) set(6, i, i % 2 === 0); }
+    // formaatbits voor niveau M (00) + masker 0, BCH-gecodeerd
+    const fmtData = 0b00000;
+    let rem = fmtData;
+    for (let i = 0; i < 10; i++) rem = (rem << 1) ^ ((rem >> 9) * 0x537);
+    const fmt = ((fmtData << 10) | rem) ^ 0x5412;
+    for (let i = 0; i <= 5; i++) set(8, i, (fmt >> i) & 1);
+    set(8, 7, (fmt >> 6) & 1); set(8, 8, (fmt >> 7) & 1); set(7, 8, (fmt >> 8) & 1);
+    for (let i = 9; i < 15; i++) set(14 - i, 8, (fmt >> i) & 1);
+    for (let i = 0; i < 8; i++) set(size - 1 - i, 8, (fmt >> i) & 1);
+    for (let i = 8; i < 15; i++) set(8, size - 15 + i, (fmt >> i) & 1);
+    set(8, size - 8, 1);
+    if (ver >= 7) {
+      let vrem = ver;
+      for (let i = 0; i < 12; i++) vrem = (vrem << 1) ^ ((vrem >> 11) * 0x1f25);
+      const vbits = (ver << 12) | vrem;
+      for (let i = 0; i < 18; i++) {
+        const b = (vbits >> i) & 1, a = size - 11 + (i % 3), c = Math.floor(i / 3);
+        set(a, c, b); set(c, a, b);
+      }
+    }
+    // data in zigzag plaatsen, masker 0: (x+y) even → omklappen
+    let bi = 0;
+    for (let right = size - 1; right >= 1; right -= 2) {
+      if (right === 6) right = 5;
+      for (let vert = 0; vert < size; vert++) {
+        for (let j = 0; j < 2; j++) {
+          const x = right - j;
+          const upward = ((right + 1) & 2) === 0;
+          const y = upward ? size - 1 - vert : vert;
+          if (fun[y][x]) continue;
+          let bit = bi < out.length * 8 ? (out[bi >> 3] >> (7 - (bi & 7))) & 1 : 0;
+          bi++;
+          if ((x + y) % 2 === 0) bit ^= 1;
+          mod[y][x] = bit;
+        }
+      }
+    }
+    return mod;
+  }
+  // matrix → SVG met stille zone; altijd donker-op-wit, ook in het donkere thema
+  function qrSvg(text, sizePx) {
+    const m = qrMatrix(text);
+    if (!m) return '<p class="mut">Te veel tekst voor een QR-code.</p>';
+    const n = m.length, q = 4;
+    let path = '';
+    for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (m[y][x]) path += `M${x + q},${y + q}h1v1h-1z`;
+    return `<svg viewBox="0 0 ${n + 2 * q} ${n + 2 * q}" width="${sizePx}" height="${sizePx}" role="img" aria-label="Betaal-QR"
+      style="background:#fff;border-radius:8px"><path d="${path}" fill="#000"/></svg>`;
+  }
+  // EPC069-12 (SEPA-overboeking): de meeste NL bank-apps vullen hiermee alles vooraf in
+  function epcQrText(name, iban, amount, remittance) {
+    return ['BCD', '002', '1', 'SCT', '', name.slice(0, 70), iban.replace(/\s+/g, '').toUpperCase(),
+      'EUR' + amount.toFixed(2), '', '', remittance.slice(0, 140), ''].join('\n');
+  }
+  const validIban = (raw) => {
+    const s = raw.replace(/\s+/g, '').toUpperCase();
+    if (!/^[A-Z]{2}\d{2}[A-Z0-9]{10,30}$/.test(s)) return false;
+    const digits = (s.slice(4) + s.slice(0, 4)).replace(/[A-Z]/g, (c) => c.charCodeAt(0) - 55);
+    let rem = 0;
+    for (const ch of digits) rem = (rem * 10 + +ch) % 97;
+    return rem === 1;
+  };
 
   // ---------- session tools panel (plates + interval timer) ----------
   let plateWeight = 100;
@@ -2734,6 +3169,7 @@
         <a class="navlink${hash.startsWith('/bibliotheek') && !activeGroup ? ' active' : ''}" href="#/bibliotheek">Alle oefeningen</a>
         ${MUSCLE_GROUPS.filter((g) => activeExercises().some((e) => e.group === g)).map((g) =>
           `<a class="navlink${activeGroup === g ? ' active' : ''}" href="#/bibliotheek/${encodeURIComponent(g)}">${esc(g)}</a>`).join('')}
+        <a class="navlink${hash.startsWith('/anatomie') ? ' active' : ''}" href="#/anatomie">Anatomie &amp; vlakken</a>
       </details>
       <details class="navgrp" data-key="Templates" ${uiState.navTemplates ? 'open' : ''}>
         <summary>Sjablonen <span class="chev">▾</span></summary>
@@ -2829,6 +3265,7 @@
     if (parts[0] === 'klant' && parts[2] === 'sjabloon') return viewTemplatePick('klant', parts[1]);
     if (parts[0] === 'klant') return viewClient(parts[1]);
     if (parts[0] === 'sjabloon') return viewTemplate(parts[1]);
+    if (parts[0] === 'agenda' && parts[1] === 'week') return viewAgendaWeek(parts[2] || todayIso());
     if (parts[0] === 'agenda') return viewAgenda(parts[1] || todayIso());
     if (parts[0] === 'zakelijk') return viewBusiness();
     if (parts[0] === 'abonnementen') return parts[1] === 'vormen' ? viewSubTypes() : viewSubscriptions();
@@ -2838,6 +3275,7 @@
     if (parts[0] === 'instellingen') return viewSettings();
     if (parts[0] === 'cloud') return viewSettings('cloud-card');
     if (parts[0] === 'spiergroepen') return viewGroupReview();
+    if (parts[0] === 'anatomie') return viewAnatomy(parts[1] ? decodeURIComponent(parts[1]) : null);
     if (parts[0] === 'bibliotheek') return viewLibrary(parts[1] ? decodeURIComponent(parts[1]) : null);
     if (parts[0] === 'duo' && parts[2] === 'vrij') return viewDuoPick(parts[1]);
     if (parts[0] === 'duo' && parts[2] === 'sjabloon') return viewTemplatePick('duo', parts[1]);
@@ -2884,6 +3322,7 @@
                <div class="next-name">${esc(nextName)}</div>
                <div class="sub">${[
                  nextDay ? `dag ${dayLetter(nextDay.index)} — ${esc(nextDay.schema.name)}` : '',
+                 (() => { const m = nextAppt && nextAppt.clientId ? mesoState(nextAppt.clientId) : null; return m ? (m.deload ? 'deloadweek' : `week ${m.week}/${m.of}`) : ''; })(),
                  nextCredit ? `nog ${nextCredit.remaining} sessie${nextCredit.remaining === 1 ? '' : 's'} tegoed` : '',
                ].filter(Boolean).join(' · ') || 'volgende sessie'}</div>`
             : `<div class="next-name">Dag rond</div><div class="sub">Alle ${today.length} sessies afgewerkt.</div>`}
@@ -3297,7 +3736,7 @@
     metric: 'top', navClients: true, navDuos: true, navTemplates: true, measMetric: 'weight',
     period: 'all', comparePicks: [], compareMetric: 'top',
     navQuery: '', navArchived: false, foodQuery: '', subTypeEditing: null,
-    nutri: { moment: null, query: '', results: [], message: '' }, navBusiness: true, navLibrary: true, libQuery: '', libEquipment: '', libKind: '', libShowArchived: false, libEditing: null, libSort: 'used',
+    nutri: { moment: null, query: '', results: [], message: '' }, navBusiness: true, payQr: null, navLibrary: true, libQuery: '', libEquipment: '', libKind: '', libShowArchived: false, libEditing: null, libSort: 'used',
   };
   // unsaved in-progress training, auto-saved per keystroke; device-local (outside db, not synced)
   const TRAINING_DRAFT_KEY = 'coachlog-training-draft';
@@ -3344,7 +3783,11 @@
     const draft = {
       name: existing ? existing.name : 'Weekprogramma',
       schemaIds: existing ? existing.schemaIds.filter((id) => schemaById(id)) : [],
+      mesoWeeks: existing ? existing.mesoWeeks || 0 : 0,
+      mesoStart: existing ? existing.mesoStart || '' : '',
     };
+    // maandag van deze week, de logische start van een blok
+    const thisMonday = addDays(todayIso(), -((new Date(todayIso() + 'T12:00:00').getDay() + 6) % 7));
 
     const paint = () => {
       const spare = schemas.filter((sc) => !draft.schemaIds.includes(sc.id));
@@ -3369,7 +3812,22 @@
               ? `<div class="eyebrow">Toevoegen</div>
                  <div class="actions">${spare.map((sc) => `<button type="button" data-pr-add="${sc.id}">+ ${esc(sc.name)}</button>`).join('')}</div>`
               : '') +
-            `<hr class="divider">
+            `<div class="eyebrow">Mesocyclus</div>
+             <div class="card">
+               <p class="sub" style="margin:0 0 8px">Blokken van een vast aantal weken; in de laatste week zet de app lichtere gewichten klaar (deload).</p>
+               <div class="row">
+                 <label class="field grow" style="margin:0"><span>Bloklengte</span>
+                   <select id="pr-meso">
+                     <option value="0" ${!draft.mesoWeeks ? 'selected' : ''}>Uit</option>
+                     ${[3, 4, 5, 6].map((w) => `<option value="${w}" ${draft.mesoWeeks === w ? 'selected' : ''}>${w} weken (week ${w} = deload)</option>`).join('')}
+                   </select></label>
+                 <label class="field grow" style="margin:0"><span>Blok gestart op</span>
+                   <input type="date" id="pr-meso-start" value="${esc(draft.mesoStart || thisMonday)}"></label>
+               </div>
+               ${(() => { const m = existing ? mesoState(clientId) : null; return m
+                 ? `<p class="mut" style="margin:8px 0 0">Nu week ${m.week} van ${m.of}${m.deload ? ' — deloadweek' : ''}.</p>` : ''; })()}
+             </div>
+             <hr class="divider">
              <div class="actions">
                <button class="primary" id="pr-save">Programma opslaan</button>
                ${existing ? `<button class="danger ghost" id="pr-del">Programma verwijderen</button>` : ''}
@@ -3404,8 +3862,10 @@
         keepName();
         if (!draft.schemaIds.length) { alert('Kies minstens één schema.'); return; }
         const name = draft.name.trim() || 'Weekprogramma';
-        if (existing) { existing.name = name; existing.schemaIds = [...draft.schemaIds]; }
-        else db.programs.push({ id: uid(), clientId, name, schemaIds: [...draft.schemaIds] });
+        const mesoWeeks = Number(document.getElementById('pr-meso').value) || 0;
+        const mesoStart = mesoWeeks ? document.getElementById('pr-meso-start').value || thisMonday : '';
+        if (existing) { existing.name = name; existing.schemaIds = [...draft.schemaIds]; existing.mesoWeeks = mesoWeeks; existing.mesoStart = mesoStart; }
+        else db.programs.push({ id: uid(), clientId, name, schemaIds: [...draft.schemaIds], mesoWeeks, mesoStart });
         save();
         location.hash = `/klant/${clientId}`;
       });
@@ -3475,7 +3935,7 @@
       statHtml +
       `<div style="margin-top:16px" class="actions">` +
       (next
-        ? `<button class="primary" data-nav="/klant/${id}/training/${next.schema.id}">Start: dag ${dayLetter(next.index)} — ${esc(next.schema.name)}</button>`
+        ? (() => { const m = mesoState(id); return `<button class="primary" data-nav="/klant/${id}/training/${next.schema.id}">Start: dag ${dayLetter(next.index)} — ${esc(next.schema.name)}${m ? `${m.deload ? ' · deload' : ` · week ${m.week}/${m.of}`}` : ''}</button>`; })()
         : '') +
       schemas.map((s, i) => `<button class="${!next && i === 0 ? 'primary' : ''}" data-nav="/klant/${id}/training/${s.id}">Start: ${esc(s.name)}</button>`).join('') +
       `<button class="${schemas.length || next ? '' : 'primary'}" data-nav="/klant/${id}/vrij">+ Vrije training</button>` +
@@ -3610,6 +4070,7 @@
     const statusClass = { gepland: '', geweest: 'pr', noshow: '', geannuleerd: '' };
 
     $app.innerHTML = topbar('Agenda', '/') +
+      agendaViewToggle('dag', date) +
       `<div class="chips" style="margin-bottom:12px">
         ${week.map((d) => `<button class="chip" data-day="${d}" aria-pressed="${d === date}">${esc(dayLabel(d))}</button>`).join('')}
         <button class="chip" data-day="${todayIso()}">Vandaag</button>
@@ -3623,7 +4084,7 @@
         return `<div class="card">
           <div class="row"><div class="grow">
             <div class="title">${a.time ? esc(a.time) + ' · ' : ''}${esc(apptTitle(a))}
-              <span class="badge${a.status === 'geweest' ? ' pr' : ''}">${APPT_STATUS[a.status]}</span></div>
+              <span class="badge${a.status === 'geweest' ? ' pr' : ''}">${APPT_STATUS[a.status]}</span>${a.seriesId ? ' <span class="badge" title="Wekelijkse reeks">↻ wekelijks</span>' : ''}</div>
             <div class="sub">${a.durationMin ? a.durationMin + ' min' : ''}${a.note ? (a.durationMin ? ' · ' : '') + esc(a.note) : ''}</div>
             ${ledgers.map((x) => `<div class="mut">${esc(x.name)}: nog ${x.l.remaining} sessie${x.l.remaining === 1 ? '' : 's'}${x.l.low ? ' ⚠️' : ''}</div>`).join('')}
           </div>
@@ -3648,6 +4109,14 @@
           <label class="field grow"><span>Duur (min)</span><input type="number" name="duration" min="15" step="15" value="60"></label>
         </div>
         <label class="field"><span>Notitie</span><input name="note" placeholder="bijv. focus op techniek"></label>
+        <label class="field"><span>Herhalen</span>
+          <select name="repeat">
+            <option value="0">Eenmalig</option>
+            <option value="4">Wekelijks, 4 weken</option>
+            <option value="8">Wekelijks, 8 weken</option>
+            <option value="13">Wekelijks, 13 weken</option>
+            <option value="26">Wekelijks, 26 weken</option>
+          </select></label>
         <button class="primary" type="submit">Afspraak toevoegen</button>
       </form>` +
 
@@ -3665,14 +4134,20 @@
       const f = new FormData(ev.target);
       const who = String(f.get('who'));
       if (!who) return;
-      const appt = {
+      const weeks = num(f.get('repeat')) || 0;
+      const seriesId = weeks > 1 ? uid() : null;
+      const first = {
         id: uid(), date: String(f.get('date')), time: String(f.get('time')),
         durationMin: num(f.get('duration')) || null, status: 'gepland', note: String(f.get('note')).trim(),
       };
-      if (who.startsWith('c:')) appt.clientId = who.slice(2); else appt.duoId = who.slice(2);
-      db.appointments.push(appt);
+      if (who.startsWith('c:')) first.clientId = who.slice(2); else first.duoId = who.slice(2);
+      for (let w = 0; w < Math.max(1, weeks); w++) {
+        const appt = { ...first, id: w === 0 ? first.id : uid(), date: addDays(first.date, w * 7) };
+        if (seriesId) appt.seriesId = seriesId;
+        db.appointments.push(appt);
+      }
       save();
-      location.hash = `/agenda/${appt.date}`;
+      location.hash = `/agenda/${first.date}`;
       render();
     });
     document.querySelectorAll('[data-appt-status]').forEach((b) => b.addEventListener('click', () => {
@@ -3683,8 +4158,14 @@
       save(); render();
     }));
     document.querySelectorAll('[data-appt-del]').forEach((b) => b.addEventListener('click', () => {
-      if (!confirm('Deze afspraak verwijderen?')) return;
-      db.appointments = db.appointments.filter((a) => a.id !== b.dataset.apptDel);
+      const appt = db.appointments.find((a) => a.id === b.dataset.apptDel);
+      if (!appt || !confirm('Deze afspraak verwijderen?')) return;
+      // series: offer to drop this one plus everything after it in the same series
+      const rest = appt.seriesId
+        ? db.appointments.filter((a) => a.seriesId === appt.seriesId && a.date > appt.date).length : 0;
+      const wholeTail = rest > 0 && confirm(`Dit is een wekelijkse reeks. Ook de ${rest} volgende afspra${rest === 1 ? 'ak' : 'ken'} uit de reeks verwijderen?`);
+      db.appointments = db.appointments.filter((a) =>
+        a.id !== appt.id && !(wholeTail && a.seriesId === appt.seriesId && a.date > appt.date));
       save(); render();
     }));
     document.querySelectorAll('[data-appt-train]').forEach((b) => b.addEventListener('click', () => {
@@ -3699,6 +4180,43 @@
       if (res === 'granted') scheduleReminders();
       render();
     });
+  }
+
+  // --- agenda: week view ---
+  function agendaViewToggle(active, date) {
+    return `<div class="seg no-print" role="group" aria-label="Weergave" style="max-width:220px;margin-bottom:12px">
+      <button data-nav="/agenda/${date}" aria-pressed="${active === 'dag'}">Dag</button>
+      <button data-nav="/agenda/week/${date}" aria-pressed="${active === 'week'}">Week</button>
+    </div>`;
+  }
+
+  function viewAgendaWeek(date) {
+    const monday = addDays(date, -((new Date(date + 'T12:00:00').getDay() + 6) % 7));
+    const days = Array.from({ length: 7 }, (_, i) => addDays(monday, i));
+    const busy = days.reduce((n, d) => n + appointmentsOn(d).length, 0);
+    const dayName = (iso) => new Date(iso + 'T12:00:00').toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'short' });
+    const line = (a) => `<div class="row" style="margin-bottom:2px">
+      <div class="grow sub">${a.time ? esc(a.time) + ' · ' : ''}${esc(apptTitle(a))}</div>
+      <span class="badge${a.status === 'geweest' ? ' pr' : ''}">${APPT_STATUS[a.status]}</span></div>`;
+
+    $app.innerHTML = topbar('Agenda', '/') +
+      agendaViewToggle('week', date) +
+      `<div class="row" style="margin-bottom:12px">
+        <button class="small" data-nav="/agenda/week/${addDays(monday, -7)}" aria-label="Vorige week">‹</button>
+        <div class="grow sub" style="text-align:center">Week van ${esc(fmtDateFull(monday))} · ${busy} afspra${busy === 1 ? 'ak' : 'ken'}</div>
+        <button class="small" data-nav="/agenda/week/${addDays(monday, 7)}" aria-label="Volgende week">›</button>
+      </div>` +
+      days.map((d) => {
+        const list = appointmentsOn(d);
+        const isToday = d === todayIso();
+        return `<div class="card tappable" data-nav="/agenda/${d}" role="link" tabindex="0"${isToday ? ' style="border-color:var(--accent)"' : ''}>
+          <div class="row"><div class="grow title">${esc(dayName(d))}${isToday ? ' <span class="badge">vandaag</span>' : ''}</div>
+            <span class="mut">${list.length || ''}</span></div>
+          ${list.map(line).join('') || '<div class="mut">—</div>'}
+        </div>`;
+      }).join('') +
+      `<div class="actions" style="margin-top:8px"><button data-nav="/agenda/week/${todayIso()}">Deze week</button></div>`;
+    bindNav();
   }
 
   // --- credits and payments ---
@@ -4376,6 +4894,21 @@
     };
   }
 
+  // uitklapbare betaal-QR onder een openstaande post (EPC: bankapp vult alles in)
+  function payQrPanel(key, clientId, amount, desc) {
+    if (uiState.payQr !== key) return '';
+    const iban = (db.settings.iban || '').trim();
+    const name = (db.settings.ibanName || db.settings.coachName || '').trim();
+    if (!iban || !name) return '<p class="mut" style="margin:8px 0 0">Vul eerst je IBAN en de naam van de rekeninghouder in, onderaan bij Instellingen.</p>';
+    if (!validIban(iban)) return '<p class="mut" style="margin:8px 0 0">Dit IBAN klopt niet (controleer de cijfers bij Instellingen).</p>';
+    if (!(amount > 0)) return '<p class="mut" style="margin:8px 0 0">Geen bedrag om te betalen.</p>';
+    const remit = `${(clientById(clientId) || {}).name || ''} — ${desc}`.slice(0, 100);
+    return `<div style="margin-top:10px;text-align:center">
+      ${qrSvg(epcQrText(name, iban, amount, remit), 220)}
+      <p class="mut" style="margin:8px 0 0">Scannen met de bankapp · ${esc(money(amount))} naar ${esc(iban.replace(/\s+/g, '').toUpperCase())}<br>${esc(remit)}</p>
+    </div>`;
+  }
+
   function viewBusiness() {
     const rows = sortedClients().map((c) => ({ c, l: creditLedger(c.id) })).filter((x) => x.l || !x.c.archived);
     const open = openInvoices();
@@ -4410,11 +4943,15 @@
         ? open.map((p) => `<div class="card"><div class="row"><div class="grow">
             <div class="title">${esc((clientById(p.clientId) || {}).name || '?')} — ${esc(money(p.price || 0))}</div>
             <div class="sub">${p.sessions} sessies · ${esc(fmtDate(p.date))}${p.note ? ' · ' + esc(p.note) : ''}</div>
-          </div><button class="small primary" data-pay="${p.id}">Betaald</button></div></div>`).join('')
+          </div><button class="small" data-payqr="p.${p.id}" aria-pressed="${uiState.payQr === 'p.' + p.id}">QR</button>
+          <button class="small primary" data-pay="${p.id}">Betaald</button></div>
+          ${payQrPanel('p.' + p.id, p.clientId, p.price || 0, `strippenkaart ${p.sessions} sessies`)}</div>`).join('')
           + openSubs.map((t) => `<div class="card"><div class="row"><div class="grow">
             <div class="title">${esc((clientById(t.clientId) || {}).name || '?')} — ${esc(money(t.amount))}</div>
             <div class="sub">${esc(t.name)} · ${esc(monthLabel(t.month))}</div>
-          </div><button class="small primary" data-sub-pay="${t.subId}.${t.month}">Betaald</button></div></div>`).join('')
+          </div><button class="small" data-payqr="s.${t.subId}.${t.month}" aria-pressed="${uiState.payQr === `s.${t.subId}.${t.month}`}">QR</button>
+          <button class="small primary" data-sub-pay="${t.subId}.${t.month}">Betaald</button></div>
+          ${payQrPanel(`s.${t.subId}.${t.month}`, t.clientId, t.amount, `${t.name} ${monthLabel(t.month)}`)}</div>`).join('')
         : '<p class="mut">Niets openstaand.</p>') +
 
       `<div class="eyebrow">Omzet per maand</div>` +
@@ -4429,6 +4966,13 @@
           <label class="field grow" style="margin:0"><span>Valuta</span><input id="cur" value="${esc(db.settings.currency || '€')}" style="max-width:100px"></label>
           <button class="small" id="noshow-toggle" aria-pressed="${!!db.settings.noShowCounts}">No-show kost een sessie</button>
         </div>
+        <div class="row" style="margin-top:10px">
+          <label class="field grow" style="margin:0"><span>IBAN voor betaal-QR</span>
+            <input id="iban" value="${esc(db.settings.iban || '')}" placeholder="NL00 BANK 0123 4567 89" autocomplete="off"></label>
+          <label class="field grow" style="margin:0"><span>Naam rekeninghouder</span>
+            <input id="iban-name" value="${esc(db.settings.ibanName || '')}" placeholder="${esc(db.settings.coachName || 'zoals bij de bank')}"></label>
+        </div>
+        <p class="mut" style="margin:6px 0 0">Met een IBAN krijgt elke openstaande betaling een QR-knop: de klant scant hem met de bankapp en alles staat vooraf ingevuld.</p>
       </div>`;
 
     bindNav();
@@ -4445,6 +4989,19 @@
       if (!s.paidMonths.includes(month)) s.paidMonths.push(month);
       save(); render();
     }));
+    document.querySelectorAll('[data-payqr]').forEach((b) => b.addEventListener('click', () => {
+      uiState.payQr = uiState.payQr === b.dataset.payqr ? null : b.dataset.payqr;
+      render();
+    }));
+    document.getElementById('iban').addEventListener('change', (ev) => {
+      db.settings.iban = ev.target.value.trim();
+      save();
+      if (db.settings.iban && !validIban(db.settings.iban)) alert('Let op: dit IBAN lijkt niet te kloppen.');
+    });
+    document.getElementById('iban-name').addEventListener('change', (ev) => {
+      db.settings.ibanName = ev.target.value.trim();
+      save();
+    });
     document.getElementById('noshow-toggle').addEventListener('click', () => {
       db.settings.noShowCounts = !db.settings.noShowCounts;
       save(); render();
@@ -4464,6 +5021,38 @@
       .map((e) => ({ rec: e, suggested: suggestGroup(e.name, e.kind) }))
       .filter((x) => x.suggested && x.suggested !== x.rec.group)
       .sort((a, b) => byName(a.rec.name, b.rec.name));
+  }
+
+  // naslagwerk: per spiergroep de anatomie, functies en bewegingsvlakken
+  function viewAnatomy(openGroup) {
+    const groups = MUSCLE_GROUPS.filter((g) => MUSCLE_ANATOMY[g]);
+    $app.innerHTML = topbar('Anatomie & vlakken', '/') +
+      `<p class="sub" style="margin:0 0 12px">Elke beweging gebeurt ín een vlak, óm een as. Wie de functie van een spier kent, kiest de oefening — niet andersom.</p>
+      <div class="card table-wrap"><table class="data">
+        <thead><tr><th>Vlak</th><th>As</th><th>Bewegingen</th></tr></thead>
+        <tbody>
+          <tr><td>Sagittaal</td><td>Transversale as</td><td>flexie, extensie, plantair-/dorsaalflexie</td></tr>
+          <tr><td>Frontaal</td><td>Sagittale as</td><td>abductie, adductie, elevatie, depressie, laterale flexie</td></tr>
+          <tr><td>Transversaal</td><td>Longitudinale as</td><td>interne/externe rotatie, horizontale ab-/adductie, protractie, retractie, pro-/supinatie</td></tr>
+        </tbody>
+      </table></div>` +
+      groups.map((g) => {
+        const a = MUSCLE_ANATOMY[g];
+        return `<details class="card mg-edge anat" style="--mg:${groupColor(g)}"${openGroup === g ? ' open' : ''} ${openGroup === g ? 'id="anat-open"' : ''}>
+          <summary><span class="title">${esc(g)}</span> <span class="sub">${esc(a.nl)}</span></summary>
+          <div class="sub" style="margin:8px 0 2px"><b>Origo:</b> ${esc(a.origo)}</div>
+          <div class="sub" style="margin:0 0 2px"><b>Insertie:</b> ${esc(a.insertie)}</div>
+          <div class="sub" style="margin:0 0 8px"><b>Gewricht:</b> ${esc(a.gewricht)}</div>
+          <div class="eyebrow" style="margin:10px 0 6px">Functies</div>
+          ${a.functies.map(([k, detail]) => movementLine(k, detail)).join('')}
+          <div class="eyebrow" style="margin:12px 0 6px">Voor je oefeningkeuze</div>
+          <p class="sub" style="margin:0">${esc(a.training)}</p>
+          <p class="mut" style="margin:8px 0 0"><b>Antagonisten:</b> ${esc(a.antagonisten)}</p>
+        </details>`;
+      }).join('');
+    bindNav();
+    const open = document.getElementById('anat-open');
+    if (open) requestAnimationFrame(() => open.scrollIntoView({ block: 'start', behavior: motionOk() ? 'smooth' : 'auto' }));
   }
 
   function viewGroupReview() {
@@ -5292,10 +5881,87 @@
     }
   }
 
+  // the goals you set, with progress computed here — the client's app only shows them
+  async function publishGoals(localClient, cloudClientId) {
+    const rows = (localClient.goals || []).map((g) => {
+      const p = goalProgress(localClient, g);
+      return {
+        client_id: cloudClientId,
+        coach_id: cloud.userId(),
+        text: g.text || '',
+        exercise: g.exercise || '',
+        target: g.target || null,
+        date: g.date || null,
+        done: !!g.done,
+        current: p ? p.current : null,
+        pct: p ? p.pct : null,
+      };
+    });
+    try {
+      await cloud.remove('client_goals', `client_id=eq.${cloudClientId}`);
+      if (rows.length) await cloud.insert('client_goals', rows);
+      return rows.length;
+    } catch (e) {
+      if (/client_goals|not exist|schema cache/i.test(e.message)) return null;
+      throw e;
+    }
+  }
+
   const dayMacros = (meals) => meals.reduce((t, m) => ({
     kcal: t.kcal + Number(m.kcal || 0), protein: t.protein + Number(m.protein || 0),
     carbs: t.carbs + Number(m.carbs || 0), fat: t.fat + Number(m.fat || 0),
   }), emptyTotals());
+
+  // best-effort pushmelding naar de telefoon van de klant; stil overslaan als de
+  // Edge Function of de tabellen nog niet bestaan (zie SUPABASE.md stap 7)
+  async function sendPushTo(cloudClientId, title, body) {
+    try { await cloud.invoke('send-push', { client_id: cloudClientId, title, body: (body || '').slice(0, 140) }); } catch { /* niet opgezet */ }
+  }
+
+  // chat, check-ins en techniekvideo's van deze klant; null = tabel bestaat nog niet
+  function feedCoachSectionsHtml(messages, checkins, videos, localClient, activeName) {
+    const scoreLine = (c) => ['energy', 'sleep', 'motivation']
+      .map((k, i) => c[k] ? `${['energie', 'slaap', 'motivatie'][i]} ${c[k]}/5` : '')
+      .filter(Boolean).join(' · ');
+    const msgHtml = messages === null ? '' :
+      `<div class="eyebrow">Berichten</div>
+      <div class="card">
+        <div id="feed-msgs" style="max-height:300px;overflow-y:auto;display:flex;flex-direction:column">
+          ${messages.length ? messages.map((m) => `<div class="msg ${m.sender === 'coach' ? 'me' : 'them'}">${esc(m.body)}
+            <div class="mut">${esc(fmtDate(String(m.created_at || '').slice(0, 10)))}</div></div>`).join('')
+          : `<div class="mut">Nog geen berichten met ${esc(activeName)}.</div>`}
+        </div>
+        <div class="row" style="margin-top:8px">
+          <input id="feed-msg-input" class="grow" placeholder="Bericht aan ${esc(activeName)}…" maxlength="2000">
+          <button class="small primary" id="feed-msg-send">Stuur</button>
+        </div>
+      </div>`;
+    const ciHtml = checkins === null ? '' :
+      `<div class="eyebrow">Check-ins</div>` +
+      (checkins.length ? checkins.map((c) => `<div class="card">
+        <div class="row"><div class="grow">
+          <div class="title">${esc(fmtDate(c.date))}${c.weight ? ` · ${fmtNum(c.weight)} kg` : ''}</div>
+          ${scoreLine(c) ? `<div class="sub">${scoreLine(c)}</div>` : ''}
+          ${c.note ? `<div class="sub">"${esc(c.note)}"</div>` : ''}
+        </div>
+        ${localClient && c.weight ? `<button class="small" data-ci-take="${c.id}" data-ci-date="${esc(c.date)}" data-ci-weight="${c.weight}">Gewicht overnemen</button>` : ''}</div>
+        ${(c.photos || []).length ? `<div class="row" style="margin-top:8px;gap:8px">${(c.photos || []).slice(0, 2)
+          .map((p) => `<img src="${esc(p)}" alt="check-in foto" style="width:110px;border-radius:8px">`).join('')}</div>` : ''}
+      </div>`).join('') : '<p class="mut">Nog geen check-ins van deze klant.</p>');
+    const vidHtml = videos === null ? '' :
+      `<div class="eyebrow">Techniekvideo's</div>` +
+      (videos.length ? videos.map((v) => `<div class="card">
+        <div class="row"><div class="grow">
+          <div class="title">${esc(v.exercise || 'Video')} <span class="mut">${esc(fmtDate(String(v.created_at || '').slice(0, 10)))}</span></div>
+          ${v.note ? `<div class="sub">Vraag: ${esc(v.note)}</div>` : ''}
+        </div><button class="small" data-vid-open="${esc(v.path)}">▶ Bekijk</button></div>
+        <div class="row" style="margin-top:8px">
+          <input class="grow" data-vid-note="${v.id}" value="${esc(v.coach_note || '')}" placeholder="Jouw feedback op de uitvoering…">
+          <button class="small primary" data-vid-save="${v.id}">Bewaar</button>
+        </div>
+      </div>`).join('') : '<p class="mut">Nog geen video\'s van deze klant.</p>');
+    return msgHtml + ciHtml + vidHtml;
+  }
 
   // what this client has been eating on average, next to the plan you set for them
   function feedNutritionHtml(days, localClient) {
@@ -5362,10 +6028,14 @@
         }
         const active = profiles.find((p) => p.id === clientKey) || profiles[0];
         const since = addDays(todayIso(), -30);
-        const [workouts, meals, water] = await Promise.all([
+        const [workouts, meals, water, feedMsgs, feedCheckins, feedVideos] = await Promise.all([
           cloud.select('client_workouts', `client_id=eq.${active.id}&date=gte.${since}&select=*&order=date.desc`),
           cloud.select('client_meals', `client_id=eq.${active.id}&date=gte.${since}&select=*&order=date.desc`),
           cloud.select('client_water', `client_id=eq.${active.id}&date=gte.${since}&select=*&order=date.desc`),
+          // deze drie tabellen bestaan pas na de extra SQL; null betekent "nog niet aangezet"
+          cloud.select('client_messages', `client_id=eq.${active.id}&select=*&order=created_at.asc&limit=200`).catch(() => null),
+          cloud.select('client_checkins', `client_id=eq.${active.id}&select=*&order=date.desc&limit=6`).catch(() => null),
+          cloud.select('client_videos', `client_id=eq.${active.id}&select=*&order=created_at.desc&limit=10`).catch(() => null),
         ]);
         const byDate = new Map();
         for (const w of workouts) {
@@ -5413,6 +6083,7 @@
               <button class="small primary" id="link-save">Koppelen</button>
             </div>
           </div>`) +
+          feedCoachSectionsHtml(feedMsgs, feedCheckins, feedVideos, localClient, active.name || 'deze klant') +
           feedNutritionHtml(days, localClient) +
           `<div class="eyebrow">Dagboek</div>` +
           (days.length ? days.map((d) => {
@@ -5438,6 +6109,62 @@
         bindNav();
         document.querySelectorAll('[data-feed-client]').forEach((b) => b.addEventListener('click', () => {
           location.hash = `/vanklanten/${b.dataset.feedClient}`;
+        }));
+        // berichten: onderaan beginnen, klant-berichten op gelezen zetten
+        const msgList = document.getElementById('feed-msgs');
+        if (msgList) {
+          msgList.scrollTop = msgList.scrollHeight;
+          if ((feedMsgs || []).some((m) => m.sender === 'client' && !m.read_by_coach)) {
+            cloud.patchRow('client_messages', `client_id=eq.${active.id}&sender=eq.client&read_by_coach=eq.false`, { read_by_coach: true }).catch(() => {});
+          }
+        }
+        const feedMsgSend = document.getElementById('feed-msg-send');
+        if (feedMsgSend) feedMsgSend.addEventListener('click', async () => {
+          const input = document.getElementById('feed-msg-input');
+          const body = input.value.trim();
+          if (!body) return;
+          feedMsgSend.disabled = true;
+          try {
+            await cloud.insert('client_messages', [{ client_id: active.id, coach_id: coachId, sender: 'coach', body }]);
+            sendPushTo(active.id, 'Bericht van je coach', body);
+            render();
+          } catch (e) {
+            alert('Versturen mislukt: ' + e.message);
+            feedMsgSend.disabled = false;
+          }
+        });
+        const feedMsgInput = document.getElementById('feed-msg-input');
+        if (feedMsgInput) feedMsgInput.addEventListener('keydown', (ev) => {
+          if (ev.key === 'Enter') { ev.preventDefault(); feedMsgSend.click(); }
+        });
+        document.querySelectorAll('[data-ci-take]').forEach((b) => b.addEventListener('click', () => {
+          const date = b.dataset.ciDate;
+          const weight = num(b.dataset.ciWeight);
+          if (!localClient || !(weight > 0) || !date) return;
+          const existing = db.measurements.find((m) => m.clientId === localClient.id && m.date === date);
+          if (existing) existing.weight = weight;
+          else db.measurements.push({ id: uid(), clientId: localClient.id, date, weight });
+          save();
+          b.textContent = 'Overgenomen ✓';
+          b.disabled = true;
+        }));
+        document.querySelectorAll('[data-vid-open]').forEach((b) => b.addEventListener('click', async () => {
+          try {
+            const url = await cloud.signUrl('technique-videos', b.dataset.vidOpen, 3600);
+            window.open(url, '_blank');
+          } catch (e) { alert('Openen mislukt: ' + e.message); }
+        }));
+        document.querySelectorAll('[data-vid-save]').forEach((b) => b.addEventListener('click', async () => {
+          const note = document.querySelector(`[data-vid-note="${b.dataset.vidSave}"]`).value.trim();
+          b.disabled = true;
+          try {
+            await cloud.patchRow('client_videos', `id=eq.${b.dataset.vidSave}`, { coach_note: note });
+            sendPushTo(active.id, 'Feedback op je video', note || 'Je coach heeft naar je video gekeken.');
+            b.textContent = 'Bewaard ✓';
+          } catch (e) {
+            alert('Bewaren mislukt: ' + e.message);
+          }
+          b.disabled = false;
         }));
         const linkSave = document.getElementById('link-save');
         if (linkSave) linkSave.addEventListener('click', () => {
@@ -5465,16 +6192,19 @@
             const appts = await publishAppointments(localClient, active.id);
             const meas = await publishMeasurements(localClient, active.id);
             const plan = await publishNutritionPlan(localClient, active.id);
+            const goals = await publishGoals(localClient, active.id);
             const missing = [
               appts === null ? 'client_appointments' : '',
               meas === null ? 'client_measurements' : '',
               plan === null ? 'client_nutrition_plans' : '',
+              goals === null ? 'client_goals' : '',
             ].filter(Boolean);
             // only name what actually went along, so the message stays readable
             const extra = [
               appts ? `${appts} ${appts === 1 ? 'afspraak' : 'afspraken'}` : '',
               meas ? `${meas} meting${meas === 1 ? '' : 'en'}` : '',
               plan ? 'het voedingsplan' : '',
+              goals ? `${goals} doel${goals === 1 ? '' : 'en'}` : '',
             ].filter(Boolean);
             const extraLine = extra.length > 1
               ? extra.slice(0, -1).join(', ') + ' en ' + extra[extra.length - 1]
@@ -5482,6 +6212,7 @@
             alert(`${n} schema${n === 1 ? '' : "'s"} klaargezet voor ${active.name || 'deze klant'}.`
               + (extraLine ? `\n\nOok ${extraLine} meegestuurd.` : '')
               + (missing.length ? `\n\nNiet meegestuurd — deze tabellen bestaan nog niet: ${missing.join(', ')} (zie SUPABASE.md).` : ''));
+            sendPushTo(active.id, 'Nieuw van je coach', 'Er staat iets nieuws klaar in je app.');
           } catch (e) {
             alert('Klaarzetten mislukt: ' + e.message);
           }
@@ -6547,6 +7278,7 @@
                 <button type="button" class="small" data-ddown="${key}" ${xi === mem.exercises.length - 1 ? 'disabled' : ''}>↓ Omlaag</button>
                 <button type="button" class="small" data-dlink="${key}" ${xi === 0 ? 'disabled' : ''}>⛓ Superset</button>
                 <button type="button" class="small" data-rest-dset="${key}">⏱ Rust</button>
+                ${ex.kind !== 'cardio' ? `<button type="button" class="small" data-dwarmup="${key}">🔥 Warming-up</button>` : ''}
                 <button type="button" class="small" data-dswap="${key}">⇄ Vervangen</button>
               </div>` : ''}
               ${infoOpen === key ? `<div class="info-panel">${exerciseInfoHtml(ex.name, mem.client.id)}</div>` : ''}
@@ -6674,6 +7406,12 @@
         repaintKeeping();
         const inp = document.getElementById('swap-input');
         if (inp) inp.focus();
+      }));
+      document.querySelectorAll('[data-dwarmup]').forEach((b) => b.addEventListener('click', () => {
+        syncDraft();
+        const [mi, xi] = b.dataset.dwarmup.split('.').map(Number);
+        if (addWarmupTo(draft[mi].exercises[xi])) { menuOpen = null; tick(); }
+        repaintKeeping();
       }));
       const swapOk = document.getElementById('swap-ok');
       if (swapOk) swapOk.addEventListener('click', () => {
@@ -6908,11 +7646,16 @@
         ? [{ distance: 0, minutes: 0 }]
         : Array.from({ length: 3 }, () => ({ reps: 10, weight: 0 }));
     };
+    // deloadweek: dezelfde sets, maar met een lichter gewicht klaargezet
+    const meso = editing ? null : mesoState(clientId);
+    const deloadSets = (sets) => (meso && meso.deload)
+      ? sets.map((s) => setType(s) !== 'warmup' && s.weight > 0 ? { ...s, weight: deloadWeight(s.weight) } : s)
+      : sets;
     const mkExercise = (ex) => ({
       name: ex.name,
       kind: ex.kind || kindFor(clientId, ex.name),
       superset: ex.superset || null,
-      sets: prefill(ex),
+      sets: deloadSets(prefill(ex)),
     });
     const draft = stored
       ? stored.entries.map((e) => ({ name: e.name, kind: e.kind || kindFor(clientId, e.name), superset: e.superset || null, sets: e.sets.map((s) => ({ ...s })) }))
@@ -6936,6 +7679,7 @@
       $app.innerHTML = topbar(editing ? `Bewerken — ${c.name}` : `Training — ${c.name}`, `/klant/${clientId}`) +
         `<p style="margin:0 0 12px"><span class="badge">${esc(schema ? schema.name : editing && editing.duoId ? (duoSchemaById(editing.schemaId) || {}).name || 'Duo-training' : 'Vrije training')}</span></p>` +
         ((c.injuries || c.medical) ? `<div class="note-box"><strong>Let op:</strong> ${esc([c.injuries, c.medical].filter(Boolean).join(' · '))}</div>` : '') +
+        (meso && meso.deload ? `<div class="note-box"><strong>Deloadweek</strong> (week ${meso.week} van ${meso.of}): gewichten op ${db.settings.deloadPercent || 60}% klaargezet, herstellen mag.</div>` : '') +
         (() => { const l = creditLedger(clientId); return l && l.low ? `<div class="note-box"><strong>Tegoed:</strong> nog ${l.remaining} sessie${l.remaining === 1 ? '' : 's'} na deze training.</div>` : ''; })() +
         (restoredAt ? `<div class="note-box">Automatisch bewaarde invoer hersteld (${esc(fmtDraftTime(restoredAt))}). <button type="button" class="small" id="discard-draft">Opnieuw beginnen</button></div>` : '') +
         `<form id="wo-form">
@@ -6963,11 +7707,12 @@
               <button type="button" class="small" data-down="${xi}" ${xi === draft.length - 1 ? 'disabled' : ''}>↓ Omlaag</button>
               <button type="button" class="small" data-link="${xi}" ${xi === 0 ? 'disabled' : ''}>⛓ Superset</button>
               <button type="button" class="small" data-rest-set="${xi}">⏱ Rust</button>
+              ${ex.kind !== 'cardio' ? `<button type="button" class="small" data-warmup="${xi}">🔥 Warming-up</button>` : ''}
               <button type="button" class="small" data-swap="${xi}">⇄ Vervangen</button>
             </div>` : ''}
             ${infoOpen === xi ? `<div class="info-panel">${exerciseInfoHtml(ex.name, clientId)}</div>` : ''}
             <div class="mut" style="margin-bottom:8px">${esc(prevSummary(prev, ex.kind))}</div>
-            ${progressHintHtml(clientId, ex, editing && editing.id)}
+            ${meso && meso.deload ? '' : progressHintHtml(clientId, ex, editing && editing.id)}
             ${swapping === xi ? `<div class="row" style="margin-bottom:10px">
               <input id="swap-input" class="grow" list="swap-list" placeholder="Vervangende oefening">
               <button type="button" class="small primary" id="swap-ok">OK</button>
@@ -7084,6 +7829,11 @@
         repaintKeeping();
         const inp = document.getElementById('swap-input');
         if (inp) inp.focus();
+      }));
+      document.querySelectorAll('[data-warmup]').forEach((b) => b.addEventListener('click', () => {
+        syncDraft();
+        if (addWarmupTo(draft[+b.dataset.warmup])) { menuOpen = null; tick(); }
+        repaintKeeping();
       }));
       const swapOk = document.getElementById('swap-ok');
       if (swapOk) swapOk.addEventListener('click', () => {

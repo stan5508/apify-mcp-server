@@ -14,7 +14,7 @@ Dit is geen onderdeel van de MCP-server in deze repo; het is een losstaande app 
 
 ## Werkwijze — houd je hieraan
 
-1. **Elke wijziging**: `APP_VERSION` in `index.html` én `CACHE` in `sw.js` ophogen (nu **63**).
+1. **Elke wijziging**: `APP_VERSION` in `index.html` én `CACHE` in `sw.js` ophogen (nu **64**).
    Zonder die twee ziet hij de wijziging niet op zijn tablet.
 2. **Testen** met Playwright (`playwright-core`, `executablePath: '/opt/pw-browsers/chromium'`)
    tegen `python3 -m http.server` in `gym-app/`. Schrijf per functie een klein `.mjs`-scriptje
@@ -107,7 +107,19 @@ rekent de app uit zodra de lengte op het profiel staat), profiel met contact en 
 progressiefoto's, archiveren, avatars
 in de zijbalk (nieuwste progressiefoto, anders initialen), technieknotities per klant.
 
-**Zakelijk** — agenda met statussen, strippenkaarten, openstaande betalingen, omzet per maand.
+**Zakelijk** — agenda met statussen (dag- én weekweergave, wekelijks terugkerende afspraken
+met serie-verwijderen), strippenkaarten, openstaande betalingen met **betaal-QR** (EPC/SEPA,
+eigen QR-encoder in de app, IBAN in de instellingen op de betalingenpagina), omzet per maand.
+
+**Sinds versie 64** — warming-upvoorstel per oefening (⋯-menu, ~50/70/85% afgerond op
+schijven), mesocycli op het weekprogramma (bloklengte + deloadweek, gewichten op
+`deloadPercent`), **Anatomie & vlakken** (`#/anatomie`: per spiergroep origo/insertie,
+functies met bewegingsvlak en as; compact blokje bij de oefening-info), doelen mee met
+Klaarzetten (`client_goals`), berichten coach ↔ klant (`client_messages`, chat in Van
+klanten en in het Coach-tabblad van de sporter-app), wekelijkse check-in van de klant
+(`client_checkins`: gewicht, energie/slaap/motivatie, foto's; gewicht met één tik over te
+nemen als meting), techniekvideo's (`client_videos` + storage-bucket `technique-videos`,
+coach zet feedback terug), en pushmeldingen (code klaar; opzet in SUPABASE.md stap 8).
 
 **Abonnementen** — eigen vormen (naam, prijs per maand, looptijd, sessies per week,
 opzegtermijn, voorwaardentekst, eigen velden) en contracten per klant. Ondertekenen met de
@@ -147,8 +159,12 @@ sporter-app stil terug op een losse training — zie SUPABASE.md.
 - **Contracten automatisch mailen aanzetten** — code is klaar en getest, alleen het opzetwerk
   bij Resend en Supabase moet nog. Bewust uitgesteld tot er klanten voor online coaching
   tekenen. Stappen staan in SUPABASE.md stap 6.
-- Geparkeerd: progressieregels, weekprogramma's/mesocycli, recepten en maaltijdsjablonen,
-  offline productendatabase, klanten hun schema tonen in `sporter.html`, echte
+- **Pushmeldingen aanzetten** — code staat er (versie 64): SW-handler, abonneren in de
+  sporter-app, Edge Function `send-push`. Alleen het opzetwerk ontbreekt nog
+  (VAPID-sleutels + tabellen + functie deployen, SUPABASE.md stap 8).
+- **Nieuwe tabellen draaien** — berichten, check-ins, video's, doelen en push vragen de SQL
+  uit SUPABASE.md stap 7/7b/8; tot die tijd melden beide apps netjes "nog niet aangezet".
+- Geparkeerd: recepten en maaltijdsjablonen, offline productendatabase, echte
   meerdere-coaches-rechten.
 
 ## Wat je niet moet doen

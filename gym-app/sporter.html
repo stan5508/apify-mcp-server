@@ -102,6 +102,13 @@
   .val { text-align: right; color: var(--ink-2); }
   .status { position: fixed; left: 0; right: 0; bottom: 0; padding: 8px 14px calc(8px + env(safe-area-inset-bottom)); background: var(--ink); color: var(--page); font-size: 13px; }
   .status[hidden] { display: none; }
+  .msg { max-width: 82%; border-radius: 12px; padding: 8px 11px; margin-bottom: 6px; font-size: 14.5px; }
+  .msg .mut { font-size: 11px; margin-top: 2px; }
+  .msg.me { margin-left: auto; background: var(--wash); border: 1px solid var(--accent); border-top-right-radius: 4px; }
+  .msg.them { margin-right: auto; background: var(--raised); border: 1px solid var(--border); border-top-left-radius: 4px; }
+  .pillbar { display: flex; gap: 6px; flex-wrap: wrap; }
+  .pillbar button { padding: 7px 12px; border-radius: 999px; font-size: 14px; }
+  .pillbar button[aria-pressed="true"] { background: var(--wash); border-color: var(--accent); color: var(--accent-strong); font-weight: 650; }
 </style>
 </head>
 <body>
@@ -247,6 +254,22 @@
     });
     const remove = (table, query) => call(`/rest/v1/${table}?${query}`, { method: 'DELETE' });
     const rpc = (fn, args) => call(`/rest/v1/rpc/${fn}`, { method: 'POST', body: JSON.stringify(args || {}) });
+    const patchRow = (table, query, body) => call(`/rest/v1/${table}?${query}`, { method: 'PATCH', body: JSON.stringify(body) });
+    // storage: raw upload (videos zijn te groot voor JSON) en een getekende link om af te spelen
+    async function upload(bucket, path, file, retried) {
+      const headers = { apikey: cfg.key, Authorization: 'Bearer ' + session.access_token, 'Content-Type': file.type || 'application/octet-stream', 'x-upsert': 'true' };
+      const res = await fetch(`${cfg.url}/storage/v1/object/${bucket}/${path}`, { method: 'POST', headers, body: file, signal: AbortSignal.timeout(180000) });
+      if (res.status === 401 && !retried && session && session.refresh_token) { await refresh(); return upload(bucket, path, file, true); }
+      if (!res.ok) {
+        let msg = 'fout ' + res.status;
+        try { const b = await res.json(); msg = b.message || b.error || msg; } catch { /* geen JSON-fout */ }
+        throw new Error(msg);
+      }
+    }
+    async function signUrl(bucket, path, seconds) {
+      const body = await call(`/storage/v1/object/sign/${bucket}/${path}`, { method: 'POST', body: JSON.stringify({ expiresIn: seconds || 3600 }) });
+      return cfg.url + '/storage/v1' + body.signedURL;
+    }
 
     // make sure this account has a profile row
     async function ensureProfile(role, name) {
@@ -267,7 +290,7 @@
     return {
       configured, signedIn, setConfig, clearConfig, config: () => cfg,
       sendLink, captureSessionFromUrl, signOut, userId, userEmail,
-      select, insert, upsert, remove, rpc, ensureProfile,
+      select, insert, upsert, remove, rpc, ensureProfile, patchRow, upload, signUrl,
     };
   })();
 
@@ -277,7 +300,9 @@
   let local = load();
   const saveLocal = () => localStorage.setItem(LOCAL_KEY, JSON.stringify(local));
 
-  let ui = { tab: 'training', date: todayIso(), draft: null, meals: [], workouts: [], water: 0, schemas: [], schemaError: '', history: new Map(), sessions: [], progressEx: null, appointments: [], measurements: [], measMetric: null, plan: null, profile: null, busy: false };
+  let ui = { tab: 'training', date: todayIso(), draft: null, meals: [], workouts: [], water: 0, schemas: [], schemaError: '', history: new Map(), sessions: [], progressEx: null, appointments: [], measurements: [], measMetric: null, plan: null, profile: null, busy: false,
+    // coach-tab: null betekent "tabel bestaat nog niet bij de coach", [] betekent leeg
+    goals: [], messages: null, checkins: null, videos: null, pushKey: null, msgDraft: '', ci: { energy: 0, sleep: 0, motivation: 0 }, videoBusy: false };
 
   // ---------- views ----------
   function setupView(message) {
@@ -425,6 +450,25 @@
         <button class="primary wide" id="start-workout">${(ui.schemas || []).length ? 'Losse training starten' : 'Training starten'}</button>`}`;
   }
 
+  // de doelen die je coach zette, met de voortgang die hij meestuurde
+  function goalsBlock() {
+    const list = ui.goals || [];
+    if (!list.length) return '';
+    return `<div class="eyebrow">Doelen van je coach</div>
+      <div class="card">${list.map((g) => {
+        const label = g.text || (g.exercise ? `${esc(g.exercise)} naar ${fmtNum(g.target)} kg` : 'Doel');
+        const pct = g.done ? 100 : g.pct == null ? null : Math.max(0, Math.min(100, Number(g.pct)));
+        return `<div style="margin-bottom:10px">
+          <div class="row"><div class="grow sub">${esc(g.text || '') || label}</div>
+            ${g.done ? '<span class="trend up">behaald 🎉</span>' : g.date ? `<span class="mut">vóór ${esc(fmtDate(g.date))}</span>` : ''}</div>
+          ${pct != null ? `<div class="bar-row" style="grid-template-columns:1fr 92px;margin-top:4px">
+            <span class="track"><span class="fill" style="width:${pct}%"></span></span>
+            <span class="val">${g.exercise && g.current != null ? `${fmtNum(g.current)} / ${fmtNum(g.target)}` : pct + '%'}</span>
+          </div>` : ''}
+        </div>`;
+      }).join('')}</div>`;
+  }
+
   // measurements your coach took: where you stand now, and what changed since last time
   function measBlock() {
     const list = ui.measurements || [];
@@ -516,7 +560,7 @@
 
     // measurements stand on their own: a client can have those before their first logged session
     if (!ui.sessions.length) {
-      return measBlock()
+      return goalsBlock() + measBlock()
         + `<div class="eyebrow">Trainingen</div>
            <div class="card"><div class="sub">Zodra je je eerste training opslaat verschijnt hier je voortgang.</div></div>`;
     }
@@ -532,6 +576,7 @@
         <div class="card"><div class="mut">Deze week</div><div class="title">${thisWeek}</div></div>
         <div class="card"><div class="mut">Reeks</div><div class="title">${streak} ${streak === 1 ? 'week' : 'weken'}</div></div>
       </div>
+      ${goalsBlock()}
       ${measBlock()}
       <div class="eyebrow">Per oefening</div>
       ${exercises.map((name) => {
@@ -651,6 +696,119 @@
       </div>`;
   }
 
+  // ---------- Coach-tab: berichten, check-in, techniekvideo, meldingen ----------
+  const unreadFromCoach = () => (ui.messages || []).some((m) => m.sender === 'coach' && !m.read_by_client);
+
+  function coachTab() {
+    const msgs = ui.messages;
+    const checkins = ui.checkins;
+    const videos = ui.videos;
+    const offline = '<div class="card"><div class="sub">De coach heeft dit onderdeel nog niet aangezet.</div></div>';
+    const lastCheck = checkins && checkins.length ? checkins[0] : null;
+    const daysAgo = lastCheck ? Math.round((new Date(todayIso() + 'T12:00:00') - new Date(lastCheck.date + 'T12:00:00')) / 86400000) : null;
+    const scoreRow = (key, label) => `<label class="field"><span>${label}</span>
+      <div class="pillbar">${[1, 2, 3, 4, 5].map((v) =>
+        `<button type="button" data-ci="${key}.${v}" aria-pressed="${ui.ci[key] === v}">${v}</button>`).join('')}</div></label>`;
+    return `
+      <div class="eyebrow">Berichten</div>
+      ${msgs === null ? offline : `<div class="card">
+        <div id="msg-list" style="max-height:300px;overflow-y:auto;display:flex;flex-direction:column">
+          ${msgs.length ? msgs.map((m) => `<div class="msg ${m.sender === 'client' ? 'me' : 'them'}">${esc(m.body)}
+            <div class="mut">${esc(fmtDate(String(m.created_at || '').slice(0, 10)))}</div></div>`).join('')
+          : '<div class="mut">Nog geen berichten. Stel je vraag hieronder — je coach leest mee.</div>'}
+        </div>
+        <div class="row" style="margin-top:8px">
+          <input id="msg-input" class="grow" placeholder="Bericht aan je coach…" value="${esc(ui.msgDraft || '')}" maxlength="2000">
+          <button class="small primary" id="msg-send">Stuur</button>
+        </div>
+      </div>`}
+
+      <div class="eyebrow">Wekelijkse check-in</div>
+      ${checkins === null ? offline : `<div class="card">
+        <div class="mut" style="margin-bottom:8px">${lastCheck
+          ? `Laatste check-in ${daysAgo === 0 ? 'vandaag' : daysAgo === 1 ? 'gisteren' : daysAgo + ' dagen geleden'}.${daysAgo >= 7 ? ' Tijd voor een nieuwe.' : ''}`
+          : 'Nog geen check-in gestuurd. Doe dit één keer per week.'}</div>
+        <label class="field"><span>Gewicht (kg, optioneel)</span><input id="ci-weight" type="text" inputmode="decimal" placeholder="bijv. 78,4"></label>
+        ${scoreRow('energy', 'Energie deze week')}
+        ${scoreRow('sleep', 'Slaap')}
+        ${scoreRow('motivation', 'Motivatie')}
+        <label class="field"><span>Hoe ging het? (optioneel)</span><textarea id="ci-note" rows="2" placeholder="bijv. schema ging goed, schouder voelde beter"></textarea></label>
+        <label class="field"><span>Foto's (optioneel, max 2)</span><input id="ci-photos" type="file" accept="image/*" multiple></label>
+        <button class="primary wide" id="ci-send">Check-in versturen</button>
+        ${checkins.length ? `<div class="eyebrow">Eerdere check-ins</div>
+          ${checkins.map((c) => `<div class="row" style="margin-bottom:4px">
+            <div class="grow sub">${esc(fmtDate(c.date))}${c.weight ? ` · ${fmtNum(c.weight)} kg` : ''}${c.energy ? ` · energie ${c.energy}/5` : ''}</div>
+            ${(c.photos || []).length ? `<span class="mut">${(c.photos || []).length} foto${(c.photos || []).length === 1 ? '' : "'s"}</span>` : ''}
+          </div>`).join('')}` : ''}
+      </div>`}
+
+      <div class="eyebrow">Techniekvideo</div>
+      ${videos === null ? offline : `<div class="card">
+        <p class="mut" style="margin:0 0 8px">Twijfel je over je uitvoering? Stuur een filmpje; je coach kijkt ernaar en zet zijn feedback hieronder.</p>
+        <label class="field"><span>Oefening</span>
+          <input id="vid-ex" list="known-ex-vid" placeholder="bijv. Squat">
+          <datalist id="known-ex-vid">${[...new Set([...loggedExercises(), ...(ui.schemas || []).flatMap((sc) => (sc.exercises || []).map((e) => e.name))])].map((n) => `<option value="${esc(n)}">`).join('')}</datalist></label>
+        <label class="field"><span>Video (max 60 MB)</span><input id="vid-file" type="file" accept="video/*"></label>
+        <label class="field"><span>Vraag of opmerking</span><input id="vid-note" placeholder="bijv. zak ik diep genoeg?"></label>
+        <button class="primary wide" id="vid-send"${ui.videoBusy ? ' disabled' : ''}>${ui.videoBusy ? 'Uploaden…' : 'Video versturen'}</button>
+        ${videos.length ? `<div class="eyebrow">Eerder gestuurd</div>
+          ${videos.map((v) => `<div style="margin-bottom:10px">
+            <div class="row"><div class="grow sub">${esc(v.exercise || 'Video')} · ${esc(fmtDate(String(v.created_at || '').slice(0, 10)))}</div>
+              <button class="small" data-vid-play="${esc(v.path)}">▶ Bekijk</button></div>
+            ${v.note ? `<div class="mut">Jij: ${esc(v.note)}</div>` : ''}
+            ${v.coach_note ? `<div class="sub" style="border-left:2px solid var(--accent);padding-left:8px;margin-top:4px">Coach: ${esc(v.coach_note)}</div>` : '<div class="mut">Nog geen reactie van je coach.</div>'}
+          </div>`).join('')}` : ''}
+      </div>`}
+
+      ${pushBlock()}`;
+  }
+
+  function pushBlock() {
+    if (!ui.pushKey || !('serviceWorker' in navigator) || !('PushManager' in window)) return '';
+    return `<div class="eyebrow">Meldingen</div>
+      <div class="card">
+        <p class="mut" style="margin:0 0 8px">Krijg een melding op je telefoon als je coach een schema klaarzet of een bericht stuurt — ook als de app dicht is.</p>
+        <button id="push-btn">${local.pushOn ? 'Meldingen staan aan' : 'Meldingen aanzetten'}</button>
+      </div>`;
+  }
+
+  const urlB64ToUint8 = (b64) => {
+    const pad = '='.repeat((4 - (b64.length % 4)) % 4);
+    const raw = atob((b64 + pad).replace(/-/g, '+').replace(/_/g, '/'));
+    return Uint8Array.from(raw, (c) => c.charCodeAt(0));
+  };
+  async function subscribePush() {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToUint8(ui.pushKey) });
+    await cloud.upsert('push_subscriptions', [{
+      client_id: cloud.userId(), endpoint: sub.endpoint, subscription: sub.toJSON(),
+    }], 'endpoint');
+    local.pushOn = true;
+    saveLocal();
+  }
+
+  // foto's flink verkleinen voordat ze de database in gaan
+  function shrinkPhoto(file, maxSize = 640, quality = 0.55) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error('kan bestand niet lezen'));
+      reader.onload = () => {
+        const img = new Image();
+        img.onerror = () => reject(new Error('geen geldige afbeelding'));
+        img.onload = () => {
+          const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.round(img.width * scale);
+          canvas.height = Math.round(img.height * scale);
+          canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+          resolve(canvas.toDataURL('image/jpeg', quality));
+        };
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
   function appView() {
     $app.innerHTML = `
       <div class="row" style="margin-bottom:10px">
@@ -661,10 +819,16 @@
         <button data-tab="training" aria-pressed="${ui.tab === 'training'}">Training${hasNewSchema() ? '<span class="dot" aria-label="nieuw"></span>' : ''}</button>
         <button data-tab="voortgang" aria-pressed="${ui.tab === 'voortgang'}">Voortgang</button>
         <button data-tab="voeding" aria-pressed="${ui.tab === 'voeding'}">Voeding</button>
+        <button data-tab="coach" aria-pressed="${ui.tab === 'coach'}">Coach${unreadFromCoach() ? '<span class="dot" aria-label="nieuw bericht"></span>' : ''}</button>
       </div>
       <p class="sub" style="margin:0 0 12px">${esc(fmtDateFull(ui.date))}</p>
-      ${ui.tab === 'training' ? trainingTab() : ui.tab === 'voortgang' ? progressTab() : foodTab()}`;
+      ${ui.tab === 'training' ? trainingTab() : ui.tab === 'voortgang' ? progressTab() : ui.tab === 'voeding' ? foodTab() : coachTab()}`;
     bindApp();
+    if (ui.tab === 'coach') {
+      const list = document.getElementById('msg-list');
+      if (list) list.scrollTop = list.scrollHeight;
+      markMessagesRead();
+    }
   }
 
   // ---------- interactions ----------
@@ -807,6 +971,116 @@
         ui.water = ml; appView();
       } catch (e) { toast('Opslaan mislukt: ' + e.message, 4000); }
     }));
+
+    // coach: berichten
+    const msgSend = document.getElementById('msg-send');
+    if (msgSend) msgSend.addEventListener('click', async () => {
+      const input = document.getElementById('msg-input');
+      const body = input.value.trim();
+      if (!body) return;
+      try {
+        await cloud.insert('client_messages', [{ client_id: cloud.userId(), sender: 'client', body }]);
+        ui.msgDraft = '';
+        await loadCoachTab();
+        appView();
+      } catch (e) { toast('Versturen mislukt: ' + e.message, 4000); }
+    });
+    const msgInput = document.getElementById('msg-input');
+    if (msgInput) {
+      msgInput.addEventListener('input', () => { ui.msgDraft = msgInput.value; });
+      msgInput.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); msgSend.click(); } });
+    }
+
+    // coach: check-in
+    document.querySelectorAll('[data-ci]').forEach((b) => b.addEventListener('click', () => {
+      const [key, v] = b.dataset.ci.split('.');
+      // invoer eerst vastleggen; opnieuw renderen wist anders wat er al getypt is
+      ui.ciWeight = document.getElementById('ci-weight').value;
+      ui.ciNote = document.getElementById('ci-note').value;
+      ui.ci[key] = ui.ci[key] === Number(v) ? 0 : Number(v);
+      appView();
+      const w = document.getElementById('ci-weight'); if (w) w.value = ui.ciWeight || '';
+      const n = document.getElementById('ci-note'); if (n) n.value = ui.ciNote || '';
+    }));
+    const ciSend = document.getElementById('ci-send');
+    if (ciSend) ciSend.addEventListener('click', async () => {
+      const weight = num(document.getElementById('ci-weight').value) || null;
+      const note = document.getElementById('ci-note').value.trim();
+      const files = [...(document.getElementById('ci-photos').files || [])].slice(0, 2);
+      if (!weight && !note && !ui.ci.energy && !ui.ci.sleep && !ui.ci.motivation && !files.length) {
+        toast('Vul minstens één ding in.'); return;
+      }
+      ciSend.disabled = true; ciSend.textContent = 'Versturen…';
+      try {
+        const photos = [];
+        for (const f of files) photos.push(await shrinkPhoto(f));
+        await cloud.insert('client_checkins', [{
+          client_id: cloud.userId(), date: todayIso(), weight,
+          energy: ui.ci.energy || null, sleep: ui.ci.sleep || null, motivation: ui.ci.motivation || null,
+          note, photos,
+        }]);
+        ui.ci = { energy: 0, sleep: 0, motivation: 0 };
+        ui.ciWeight = ''; ui.ciNote = '';
+        await loadCoachTab();
+        appView();
+        toast('Check-in verstuurd. Je coach ziet dit.');
+      } catch (e) {
+        toast('Versturen mislukt: ' + e.message, 5000);
+        ciSend.disabled = false; ciSend.textContent = 'Check-in versturen';
+      }
+    });
+
+    // coach: techniekvideo
+    const vidSend = document.getElementById('vid-send');
+    if (vidSend) vidSend.addEventListener('click', async () => {
+      const exercise = document.getElementById('vid-ex').value.trim();
+      const file = (document.getElementById('vid-file').files || [])[0];
+      const note = document.getElementById('vid-note').value.trim();
+      if (!file) { toast('Kies eerst een video.'); return; }
+      if (file.size > 60 * 1024 * 1024) { toast('Video is groter dan 60 MB. Film korter of in een lagere kwaliteit.', 5000); return; }
+      ui.videoBusy = true; appView();
+      try {
+        const ext = (file.name.split('.').pop() || 'mp4').toLowerCase().replace(/[^a-z0-9]/g, '') || 'mp4';
+        const path = `${cloud.userId()}/${Date.now()}.${ext}`;
+        await cloud.upload('technique-videos', path, file);
+        await cloud.insert('client_videos', [{ client_id: cloud.userId(), exercise, note, path }]);
+        await loadCoachTab();
+        toast('Video verstuurd. Je coach kijkt ernaar.');
+      } catch (e) {
+        toast('Uploaden mislukt: ' + e.message, 5000);
+      }
+      ui.videoBusy = false;
+      appView();
+    });
+    document.querySelectorAll('[data-vid-play]').forEach((b) => b.addEventListener('click', async () => {
+      try {
+        const url = await cloud.signUrl('technique-videos', b.dataset.vidPlay, 3600);
+        window.open(url, '_blank');
+      } catch (e) { toast('Openen mislukt: ' + e.message, 4000); }
+    }));
+
+    // coach: pushmeldingen
+    const pushBtn = document.getElementById('push-btn');
+    if (pushBtn) pushBtn.addEventListener('click', async () => {
+      try {
+        if (!('Notification' in window)) { toast('Deze browser ondersteunt geen meldingen.'); return; }
+        const perm = await Notification.requestPermission();
+        if (perm !== 'granted') { toast('Meldingen zijn geweigerd in de browser.'); return; }
+        await subscribePush();
+        toast('Meldingen staan aan.');
+        appView();
+      } catch (e) { toast('Aanzetten mislukt: ' + e.message, 5000); }
+    });
+  }
+
+  // gelezen-vinkje richting de coach; stil falen is prima (tabel kan ontbreken)
+  async function markMessagesRead() {
+    const unread = (ui.messages || []).filter((m) => m.sender === 'coach' && !m.read_by_client);
+    if (!unread.length) return;
+    try {
+      await cloud.patchRow('client_messages', `client_id=eq.${cloud.userId()}&sender=eq.coach&read_by_client=eq.false`, { read_by_client: true });
+      unread.forEach((m) => { m.read_by_client = true; });
+    } catch { /* tabel ontbreekt of geen netwerk */ }
   }
 
   function syncDraft() {
@@ -1111,6 +1385,27 @@
     }
   }
 
+  // de doelen die de coach meestuurde met Klaarzetten
+  async function loadGoals() {
+    try {
+      ui.goals = await cloud.select('client_goals', `client_id=eq.${cloud.userId()}&select=*&order=done.asc,date.asc.nullslast`);
+    } catch {
+      ui.goals = [];
+    }
+  }
+
+  // berichten, check-ins, video's en de push-sleutel; null = de coach heeft de tabel nog niet
+  async function loadCoachTab() {
+    const id = cloud.userId();
+    try { ui.messages = await cloud.select('client_messages', `client_id=eq.${id}&select=*&order=created_at.asc&limit=200`); } catch { ui.messages = null; }
+    try { ui.checkins = await cloud.select('client_checkins', `client_id=eq.${id}&select=*&order=date.desc&limit=8`); } catch { ui.checkins = null; }
+    try { ui.videos = await cloud.select('client_videos', `client_id=eq.${id}&select=*&order=created_at.desc&limit=10`); } catch { ui.videos = null; }
+    try {
+      const r = await cloud.select('push_config', 'id=eq.1&select=public_key');
+      ui.pushKey = r.length ? r[0].public_key : null;
+    } catch { ui.pushKey = null; }
+  }
+
   // schemas the coach put ready; missing table or no rows simply means nothing to show
   async function loadSchemas() {
     ui.schemaError = '';
@@ -1151,9 +1446,11 @@
       const profile = await cloud.ensureProfile('client', '');
       ui.profile = profile;
       if (!profile.coach_id) { inviteView(); return; }
-      await Promise.all([loadDay(), loadSchemas(), loadHistory(), loadAppointments(), loadMeasurements(), loadPlan()]);
+      await Promise.all([loadDay(), loadSchemas(), loadHistory(), loadAppointments(), loadMeasurements(), loadPlan(), loadGoals(), loadCoachTab()]);
       appView();
       bindRestBar();
+      // service worker: nodig voor pushmeldingen; deelt de cache met de coach-app
+      if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
     } catch (e) {
       $app.innerHTML = `<div class="card"><p class="sub">Verbinden mislukt: ${esc(e.message)}</p>
         <button class="small" id="retry">Opnieuw</button> <button class="small ghost" id="out">Uitloggen</button></div>`;

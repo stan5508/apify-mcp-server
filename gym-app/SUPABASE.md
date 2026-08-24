@@ -23,6 +23,8 @@ Open in Supabase de **SQL Editor** en plak onderstaande code in zijn geheel. Kli
 > - `client_appointments` — jouw agenda-afspraken bij de klant (sinds versie 59)
 > - `client_measurements` — de metingen die jij doet, bij de klant (sinds versie 61)
 > - `client_nutrition_plans` — het voedingsplan dat jij vaststelt, bij de klant (sinds versie 63)
+> - doelen, berichten, check-ins, techniekvideo's en pushmeldingen (sinds versie 64) staan in
+>   een eigen blok: stap 7 en stap 8 onderaan dit document.
 >
 > Zonder die tabellen werkt de rest gewoon door; de klant ziet dat onderdeel dan alleen niet.
 
@@ -310,6 +312,219 @@ van de klant komen bij jou terecht.
 Alleen jouw coach-account kan de functie gebruiken: Supabase controleert de inlog en de
 functie kijkt daarna of het profiel de rol *coach* heeft. Klantaccounts kunnen er dus geen
 mail mee versturen.
+
+## 7. Doelen, berichten, check-ins en techniekvideo's (sinds versie 64)
+
+Vijf nieuwe onderdelen delen dezelfde opzet als de rest: een tabel per onderdeel, met regels
+die afdwingen dat een klant alleen zijn eigen gegevens ziet. Plak dit blok in de SQL Editor
+en klik **Run**. Zolang je dit niet draait werkt de rest gewoon door; de app meldt dan netjes
+dat het onderdeel nog niet aanstaat.
+
+```sql
+-- doelen die de coach zet, met de voortgang die hij meestuurt
+create table public.client_goals (
+  id uuid primary key default gen_random_uuid(),
+  client_id uuid not null references public.profiles(id) on delete cascade,
+  coach_id uuid not null references public.profiles(id) on delete cascade,
+  text text not null default '',
+  exercise text not null default '',
+  target numeric,
+  date date,
+  done boolean not null default false,
+  current numeric,
+  pct numeric,
+  updated_at timestamptz not null default now()
+);
+
+-- berichten tussen coach en klant
+create table public.client_messages (
+  id uuid primary key default gen_random_uuid(),
+  client_id uuid not null references public.profiles(id) on delete cascade,
+  coach_id uuid references public.profiles(id) on delete set null,
+  sender text not null check (sender in ('coach', 'client')),
+  body text not null,
+  read_by_coach boolean not null default false,
+  read_by_client boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+-- wekelijkse check-in van de klant (foto's verkleind, als data-URL)
+create table public.client_checkins (
+  id uuid primary key default gen_random_uuid(),
+  client_id uuid not null references public.profiles(id) on delete cascade,
+  date date not null,
+  weight numeric,
+  energy int check (energy between 1 and 5),
+  sleep int check (sleep between 1 and 5),
+  motivation int check (motivation between 1 and 5),
+  note text not null default '',
+  photos jsonb not null default '[]',
+  created_at timestamptz not null default now()
+);
+
+-- techniekvideo's: de rij wijst naar het bestand in de storage-bucket
+create table public.client_videos (
+  id uuid primary key default gen_random_uuid(),
+  client_id uuid not null references public.profiles(id) on delete cascade,
+  exercise text not null default '',
+  note text not null default '',
+  path text not null,
+  coach_note text not null default '',
+  created_at timestamptz not null default now()
+);
+
+alter table public.client_goals enable row level security;
+alter table public.client_messages enable row level security;
+alter table public.client_checkins enable row level security;
+alter table public.client_videos enable row level security;
+
+-- doelen: de coach beheert ze, de klant leest alleen de zijne
+create policy "klant leest eigen doelen" on public.client_goals
+  for select using (client_id = auth.uid());
+create policy "coach beheert doelen van klanten" on public.client_goals
+  for all using (exists (
+    select 1 from public.profiles p where p.id = client_goals.client_id and p.coach_id = auth.uid()
+  )) with check (exists (
+    select 1 from public.profiles p where p.id = client_goals.client_id and p.coach_id = auth.uid()
+  ));
+
+-- berichten: klant schrijft als klant in zijn eigen gesprek, coach als coach bij zijn klanten;
+-- update is nodig voor de gelezen-vinkjes
+create policy "klant leest eigen berichten" on public.client_messages
+  for select using (client_id = auth.uid());
+create policy "klant stuurt eigen berichten" on public.client_messages
+  for insert with check (client_id = auth.uid() and sender = 'client');
+create policy "klant zet gelezen-vinkje" on public.client_messages
+  for update using (client_id = auth.uid()) with check (client_id = auth.uid());
+create policy "coach leest berichten van klanten" on public.client_messages
+  for select using (exists (
+    select 1 from public.profiles p where p.id = client_messages.client_id and p.coach_id = auth.uid()
+  ));
+create policy "coach stuurt berichten aan klanten" on public.client_messages
+  for insert with check (sender = 'coach' and exists (
+    select 1 from public.profiles p where p.id = client_messages.client_id and p.coach_id = auth.uid()
+  ));
+create policy "coach zet gelezen-vinkje" on public.client_messages
+  for update using (exists (
+    select 1 from public.profiles p where p.id = client_messages.client_id and p.coach_id = auth.uid()
+  )) with check (exists (
+    select 1 from public.profiles p where p.id = client_messages.client_id and p.coach_id = auth.uid()
+  ));
+
+-- check-ins: de klant schrijft, de coach leest mee
+create policy "klant beheert eigen check-ins" on public.client_checkins
+  for all using (client_id = auth.uid()) with check (client_id = auth.uid());
+create policy "coach leest check-ins van klanten" on public.client_checkins
+  for select using (exists (
+    select 1 from public.profiles p where p.id = client_checkins.client_id and p.coach_id = auth.uid()
+  ));
+
+-- video's: de klant stuurt ze in, de coach zet er zijn feedback op
+create policy "klant beheert eigen video's" on public.client_videos
+  for all using (client_id = auth.uid()) with check (client_id = auth.uid());
+create policy "coach leest video's van klanten" on public.client_videos
+  for select using (exists (
+    select 1 from public.profiles p where p.id = client_videos.client_id and p.coach_id = auth.uid()
+  ));
+create policy "coach zet feedback op video's" on public.client_videos
+  for update using (exists (
+    select 1 from public.profiles p where p.id = client_videos.client_id and p.coach_id = auth.uid()
+  )) with check (exists (
+    select 1 from public.profiles p where p.id = client_videos.client_id and p.coach_id = auth.uid()
+  ));
+```
+
+### 7b. Opslag voor de video's
+
+De videobestanden zelf staan in een **storage-bucket**, niet in de database.
+
+1. Ga naar **Storage → New bucket**. Naam exact `technique-videos`, **Public bucket uit**.
+2. Plak daarna dit blok in de SQL Editor (regels voor wie welke bestanden mag zien):
+
+```sql
+-- klant uploadt en leest in zijn eigen map (de map heet naar zijn account-id)
+create policy "klant beheert eigen videobestanden" on storage.objects
+  for all using (
+    bucket_id = 'technique-videos' and (storage.foldername(name))[1] = auth.uid()::text
+  ) with check (
+    bucket_id = 'technique-videos' and (storage.foldername(name))[1] = auth.uid()::text
+  );
+-- de coach mag de bestanden van zijn eigen klanten bekijken
+create policy "coach leest videobestanden van klanten" on storage.objects
+  for select using (
+    bucket_id = 'technique-videos' and exists (
+      select 1 from public.profiles p
+      where p.id::text = (storage.foldername(name))[1] and p.coach_id = auth.uid()
+    )
+  );
+```
+
+Video's mogen tot 60 MB; film kort (15–30 seconden is genoeg voor een techniekcheck).
+
+## 8. Pushmeldingen (optioneel, ~15 minuten)
+
+Hiermee krijgt de klant een melding op een gesloten telefoon zodra jij iets klaarzet, een
+bericht stuurt of feedback op een video geeft. Zonder deze stap ziet hij het pas bij het
+openen van de app — er gaat niets stuk door dit over te slaan.
+
+### 8a. Sleutels maken
+
+Pushmeldingen werken met een sleutelpaar (VAPID). Maak het één keer aan, op elke computer
+met Node:
+
+```
+npx web-push generate-vapid-keys
+```
+
+Bewaar de **public key** en de **private key**.
+
+### 8b. Tabellen
+
+```sql
+-- de publieke sleutel, leesbaar voor ingelogde gebruikers (de sporter-app heeft hem nodig)
+create table public.push_config (
+  id int primary key default 1 check (id = 1),
+  public_key text not null
+);
+-- de push-abonnementen per apparaat van de klant
+create table public.push_subscriptions (
+  endpoint text primary key,
+  client_id uuid not null references public.profiles(id) on delete cascade,
+  subscription jsonb not null,
+  created_at timestamptz not null default now()
+);
+
+alter table public.push_config enable row level security;
+alter table public.push_subscriptions enable row level security;
+
+create policy "ingelogd leest push-sleutel" on public.push_config
+  for select using (auth.uid() is not null);
+create policy "klant beheert eigen push-abonnementen" on public.push_subscriptions
+  for all using (client_id = auth.uid()) with check (client_id = auth.uid());
+
+insert into public.push_config (id, public_key) values (1, 'PLAK-HIER-DE-PUBLIC-KEY');
+```
+
+Vervang `PLAK-HIER-DE-PUBLIC-KEY` door de public key uit stap 8a vóór je op Run klikt.
+
+### 8c. Functie die de meldingen verstuurt
+
+1. **Edge Functions → Deploy a new function → Via editor**, naam exact `send-push`.
+2. Plak de inhoud van [`supabase/functions/send-push/index.ts`](./supabase/functions/send-push/index.ts)
+   en klik **Deploy**.
+3. **Edge Functions → Secrets**, drie waarden:
+
+   | Naam                | Waarde                          |
+   | ------------------- | ------------------------------- |
+   | `VAPID_PUBLIC_KEY`  | de public key uit stap 8a       |
+   | `VAPID_PRIVATE_KEY` | de private key uit stap 8a      |
+   | `VAPID_SUBJECT`     | `mailto:jij@jouwdomein.nl`      |
+
+### 8d. Klant zet meldingen aan
+
+De klant opent de sporter-app, tabblad **Coach**, en tikt **Meldingen aanzetten**. Op een
+iPhone werkt dit alleen als de app op het beginscherm is gezet (Deel → Zet op beginscherm).
+Vanaf dan stuurt jouw app automatisch een melding bij Klaarzetten, een bericht en videofeedback.
 
 ## Wat klanten wel en niet zien
 
