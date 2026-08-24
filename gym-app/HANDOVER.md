@@ -14,7 +14,7 @@ Dit is geen onderdeel van de MCP-server in deze repo; het is een losstaande app 
 
 ## Werkwijze — houd je hieraan
 
-1. **Elke wijziging**: `APP_VERSION` in `index.html` én `CACHE` in `sw.js` ophogen (nu **64**).
+1. **Elke wijziging**: `APP_VERSION` in `index.html` én `CACHE` in `sw.js` ophogen (nu **65**).
    Zonder die twee ziet hij de wijziging niet op zijn tablet.
 2. **Testen** met Playwright (`playwright-core`, `executablePath: '/opt/pw-browsers/chromium'`)
    tegen `python3 -m http.server` in `gym-app/`. Schrijf per functie een klein `.mjs`-scriptje
@@ -72,8 +72,13 @@ foods, water, muscleGroups, settings`.
 - Een schemakaart toont geen lijst oefeningnamen meer maar `schemaSummaryHtml()`: één stip per
   **kleur** (dus niet per spiergroep — trekwerk is één blauwe stip) plus het aantal oefeningen.
   Geldt in beide apps; de sporter-app krijgt de spiergroep mee in het gepubliceerde schema.
-- Spiergroep bijstellen kan per oefening, of in één keer via **Bibliotheek → Nalopen**
-  (`#/spiergroepen`): `suggestGroup()` gokt de spier op de naam en je vinkt af wat klopt.
+- **Spiergroepen worden automatisch herkend** (sinds versie 65): `ensureExercise()` en de
+  migratie in `normalizeDb()` zetten de spier via `suggestGroup()` op elke (ook toekomstige)
+  oefening, met `groupAuto: true` zolang de coach de gok niet bevestigde. Met de hand kiezen
+  (bibliotheek, Nalopen, oefeninfo-import) loopt via `setGroup()` en wint blijvend van de gok.
+  **Bibliotheek → Nalopen** (`#/spiergroepen`) toont onbevestigde gokken plus namen die een
+  andere spier aanwijzen; afvinken bevestigt. `GROUP_HINTS`/`suggestGroup()` staan bewust vóór
+  `loadDb()`, net als `LEGACY_GROUPS` — de migratie draait daarbinnen.
 - **Kleur volgt de keten** (`GROUP_COLOURS`): duwen rood, trekken blauw, benen groen, core geel.
   Cardio en Overig blijven neutraal — geen vijfde kleur verzinnen.
 - Boven 900 px staan gelijkvormige kaartenlijsten in twee kolommen (`.cards-2`).
