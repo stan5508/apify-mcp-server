@@ -273,6 +273,18 @@ staan. Elk met de reden, zodat het een keuze is en geen vergeten punt.*
 | `status` | onbeproefd |
 | `notitie` | Dit is geen advertentiekennis maar een randvoorwaarde, en juist daarom relevant. `learning-backlog.md` §0 meet 32 checkouts tegen 4 afgeronde aankopen; `angle-library-v1.md` §0 stelt dat legitimiteit de grootste conversieblokker is, niet prijs. Nu zegt een derde, losstaande bron hetzelfde. **Het deel over one-click checkout (Apple Pay, Shop Pay, Google Pay, PayPal) hoort hier niet thuis** — dat raakt geen routine en staat al als kandidaat 2 in `learning-backlog.md` §1. Daar laten staan; dit playbook gaat over campagne-opbouw. |
 
+### P-14 — Een hard uitgavenplafond per testcampagne (`spend_cap`)
+
+| Veld | Waarde |
+|---|---|
+| `claim` | Zet op elke testcampagne een lifetime `spend_cap` ter hoogte van twee testdagen (bijv. €110 bij €50,77/dag). Meta dwingt het plafond zelf af, dus een campagne kan niet doorlopen als er niemand kijkt. |
+| `raakt` | STAP 3 (g) — na `create_campaign` een `update_campaign` met `spend_cap` |
+| `nu in de routine` | Niets. Er is geen bovengrens: de kill-routine draait niet (zie §1b, P-06) en Stan killt met de hand. |
+| `bron` | Eigen onderzoek, [`07-cost-caps.md §5`](../research/07-cost-caps.md#5-wat-er-wél-kan-spend_cap) — Windsor-actieschema `update_campaign`, eerstehands gelezen |
+| `bewijsklasse` | geverifieerd schema voor het *bestaan* van het veld; het *gedrag* is onbeproefd |
+| `status` | onbeproefd — twee onbekenden moeten eerst weg |
+| `notitie` | Kwam boven bij het onderzoek naar cost caps en is er het bruikbare deel van: cost cap begrenst de veiling, `spend_cap` begrenst de uitgave, en het tweede is wat hier ontbreekt. **Niet promoveren voor twee dingen nagerekend zijn:** (1) ligt €110 boven Meta's minimum voor `spend_cap`, (2) wat gebeurt er bij het raken van het plafond — pauzeert de campagne en is die daarna herbruikbaar door het plafond op te hogen, of is hij verbruikt. Zonder antwoord op (2) kan een schaalbesluit stuklopen op een campagne die niet meer aan kan. |
+
 ---
 
 ## 3. Bevestigd zonder wijziging
@@ -357,3 +369,4 @@ systeem nodig".
 | 2026-08-23 | BitBranding — *Facebook Ads for Clothing Brands... PROVEN Strategy* (13:14) | **geen** — ouder materiaal van hetzelfde kanaal als bron 1, gaat over lookalike-stacks en catalog-ads die de routine bewust uitzet. Achterhaald door hun eigen nieuwere video. |
 | 2026-08-23 | Fred Sanders — *How To Run Facebook Ads For Clothing Brands in 2025* (21:54) | P-11, P-12 |
 | 2026-08-23 | Sam Hopkins — *How to Make $1,000 In 7 Days With Clothing Brand Ads* (22:20) | P-13; tweede bron onder P-04 |
+| 2026-08-26 | Eigen onderzoek — [*Cost caps op Meta*](../research/07-cost-caps.md) | P-14; cost cap zelf afgewezen op eigen cijfers, zie §3 van dat stuk |
