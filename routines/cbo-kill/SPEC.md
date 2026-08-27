@@ -95,7 +95,35 @@ geattribueerd; Shopify registreert de werkelijke gebeurtenis, met ongeveer een m
 Ongeveer 40% van de sessies komt binnen zonder `utm_campaign`. Een order zonder tag wordt aan een campagne
 toegekend als het `product_title` overeenkomt met het product in de campagnenaam.
 
-## Stap 2 — testdag bepalen
+## Stap 2 — break-even CPA en testdag
+
+### Break-even CPA (BEC) — de eenheid waarin alles wordt gemeten
+
+Vaste bedragen van €10 / €20 / €30 zijn vervangen. Reden: die bedragen betekenen iets heel anders
+per product. Bij de Vintage Floral Blouse (€20,82, COG €9, marge €11,82) is €20 al **1,7×** het
+maximum dat je aan een klant mag betalen. Bij de Mirta jas (€69,54, COG €21, marge €48,54) is
+€20 pas **0,4×** — die wordt weggegooid voordat hij een kans heeft gehad.
+
+```
+BEC = MARGE − 0,05 × PRIJS (EUR)
+```
+
+Beide kolommen staan in de PRODUCT DATA SHEET. De 5% is de transactiekosten zoals ze in de
+DAILY PROFIT SHEET worden verrekend. BEC is het bedrag dat één klant maximaal mag kosten voordat
+hij geld kost.
+
+**Geen eenduidige productmatch, dus geen BEC?** Dan gelden de kill-regels hieronder niet en wordt er
+**niets automatisch gepauzeerd**. De campagne wordt alleen getoond met de melding dat de match
+ontbreekt. Eén uitzondering, als noodrem tegen doorlopende verbranding: spend ≥ €75 zonder enige
+sale → pauzeren en de ontbrekende match expliciet melden.
+
+### Minimum data voordat er überhaupt gekild mag worden
+
+Nooit pauzeren op minder dan **25 kliks**. Onder dat aantal is elke uitkomst ruis: de site haalt
+3,5% ATC, dus bij 20 kliks heeft ook een volstrekt gemiddeld product **49% kans** op nul ATC. Zonder
+deze ondergrens gooit de routine ongeveer de helft van de goede producten weg.
+
+### Testdag
 
 | Situatie | Testdag |
 |---|---|
@@ -106,26 +134,69 @@ toegekend als het `product_title` overeenkomt met het product in de campagnenaam
 ## Stap 3 — kill-regels
 
 Spend is **cumulatief vandaag**. Een treffer pauzeert de **hele CBO**, nooit een losse ad set of ad.
+ATC en sales komen altijd uit Shopify.
 
-**Testdag 1** — drie kill-momenten:
+### Wanneer er beoordeeld wordt — dit is veranderd
 
-| Drempel | Voorwaarde | Actie |
-|---|---|---|
-| spend ≥ €10 | CPC > €1 **EN** ATC = 0 **EN** sales = 0 | pauzeer |
-| spend ≥ €20 | ATC = 0 **EN** sales = 0 | pauzeer |
-| spend ≥ €30 | sales = 0 | pauzeer |
+Gemeten over 24 t/m 27 augustus 2026: tussen 19:00 en 04:00 UTC is er vrijwel **geen verkeer**, en
+op drie van de vier dagen kwam **70 tot 75% van alle sessies ná 09:00 UTC** binnen. Het oude
+killvenster sloot om 09:00 Londen en besliste dus op de stilste uren, vlak vóór de drukste.
 
-Alle voorwaarden binnen een regel moeten gelijktijdig waar zijn. Eén ATC is genoeg om het €10-moment te laten vervallen.
-
-**Testdag 2** — hangt af van gisteren:
-
-| Gisteren | Regels vandaag |
+| Venster | Wat er mag gebeuren |
 |---|---|
-| 2 of meer sales | niet aanraken, hele dag laten lopen |
-| precies 1 sale | alleen het €20- en €30-moment |
-| 0 sales | zelfde als testdag 1 |
+| 23:00–18:00 Londen | **Alleen de noodrem.** Spend ≥ 6× BEC met nul ATC → pauzeren. Verder alleen meten en tonen. |
+| vanaf 18:00 Londen | De volledige toets hieronder, als het verkeer van de dag binnen is. |
 
-**Testdag 3 en verder** — geen regels gedefinieerd. Wel tonen, nooit automatisch pauzeren.
+### Testdag 1 — drie toetsen, alle vanaf 18:00 Londen
+
+| Toets | Voorwaarde | Waarom |
+|---|---|---|
+| **Geen interesse** | spend ≥ 3× BEC **EN** ATC = 0 **EN** ≥ 25 kliks | Bij 3× BEC en genoeg kliks is nul winkelwagen geen toeval meer |
+| **Te dure interesse** | spend ≥ 3× BEC **EN** ATC ≥ 1 **EN** spend ÷ ATC > BEC | Kost één winkelwagen al meer dan je hele marge, dan kost een sale een veelvoud |
+| **Interesse zonder aankoop** | spend ≥ 5× BEC **EN** ATC ≥ 4 **EN** sales = 0 | Zie hieronder waarom vier |
+
+**CPC is geen kill-signaal meer.** CPC zegt wat een klik kost, niet of iemand het product wil.
+€1,50 CPC met 5% ATC op een marge van €48 is prima; €0,40 CPC met 0% ATC is waardeloos. De
+vervanging is *kosten per winkelwagen*, één stap dichter bij geld.
+
+**Waarom pas vanaf vier ATC's.** Gemeten over de week van 21–27 augustus: 24 winkelwagens → 18 naar
+afrekenen → 4 aankopen. Van winkelwagen naar aankoop is dus **17%**. Eén ATC zonder sale is in 83%
+van de gevallen gewoon normaal. Killen daarop is killen op ruis — en erger: de afrekenstap zelf
+lekt (22% waar 33% de norm is), dus je zou één voor één elk product wegkillen terwijl het gat in de
+kassa zit.
+
+### Zodra er een sale is — andere eenheid
+
+Vanaf de **eerste** sale vervallen alle spend-drempels. Een sale is het sterkste signaal dat er
+bestaat; een product dat heeft bewezen te kunnen converteren mag niet opnieuw als onbewezen worden
+beoordeeld.
+
+| Toets | Voorwaarde |
+|---|---|
+| **CPA-toets** | cumulatieve spend ÷ cumulatieve sales > BEC op **twee opeenvolgende dagen** → pauzeren |
+
+Eén dag boven BEC is niet genoeg: bij deze aantallen verspringt de CPA enorm door één order.
+
+### Testdag 2 en verder
+
+| Gisteren | Vandaag |
+|---|---|
+| 2 of meer sales | Laten lopen — met een dak: spend vandaag > 3× BEC **zonder** nieuwe sale → pauzeren |
+| precies 1 sale | De CPA-toets hierboven. Niet terug naar de spend-drempels |
+| 0 sales | Zelfde toetsen als testdag 1 |
+
+Het dak op "laten lopen" is nieuw. Zonder plafond kan een slechte dag 2 de winst van dag 1 opeten
+zonder dat er iets ingrijpt.
+
+**Testdag 3 en verder** — de CPA-toets blijft gelden zolang er sales zijn. Zijn er nul sales en is
+testdag 3 bereikt, dan tonen en melden, niet automatisch pauzeren.
+
+### Wat "gekilld" wél en niet betekent
+
+Een kill op de geen-interesse-toets betekent **niet** dat het product slecht is. Het betekent dat
+het binnen dit budget geen signaal gaf. Met 25 tot 60 kliks koop je een goedkope screening met een
+bewust hoge kans op een vals negatief. Producten die op deze toets vallen mogen later opnieuw
+getest worden — noteer ze als `GEEN SIGNAAL`, niet als `KILLED`.
 
 ## Stap 4 — pauzeren
 
@@ -134,8 +205,12 @@ Omkeerbaar met `enable_campaign`.
 
 ### RESULTAAT bijwerken in de PRODUCT DATA SHEET
 
-Na elke pauzering: schrijf `KILLED OP <drempel>` (10, 20 of 30) in de kolom RESULTAAT van de
-PRODUCT DATA SHEET, zoals dat voorheen met de hand gebeurde.
+Na elke pauzering schrijf je in de kolom RESULTAAT van de PRODUCT DATA SHEET:
+
+- **`GEEN SIGNAAL`** wanneer de geen-interesse-toets raakte. Dat product mag later opnieuw getest
+  worden — het gaf binnen dit budget geen signaal, dat is iets anders dan slecht zijn.
+- **`KILLED <toets>`** bij elke andere toets, bijvoorbeeld `KILLED te dure interesse` of
+  `KILLED CPA 2 dagen`. Zo is later terug te zien waaróm iets uitging.
 
 | | |
 |---|---|
@@ -258,15 +333,44 @@ utm_campaign is exact het Meta campaign_id. ATC en sales komen ALTIJD uit Shopif
 STAP 3 - TESTDAG: geen spend gisteren = 1. Spend gisteren maar niet eergisteren = 2. Beide = 3+.
 
 STAP 4 - KILL-REGELS (spend cumulatief vandaag, altijd de hele CBO)
-Testdag 1:
-  spend >= 10 EN cpc > 1 EN atc == 0 EN sales == 0 -> KILL
-  spend >= 20 EN atc == 0 EN sales == 0 -> KILL
-  spend >= 30 EN sales == 0 -> KILL
-Testdag 2: 2+ sales gisteren -> niet aanraken. 1 sale -> alleen de 20- en 30-euroregel.
-0 sales -> zelfde als testdag 1.
-Testdag 3+: nooit killen, wel tonen.
-Alle voorwaarden binnen een regel moeten gelijktijdig waar zijn.
 
+Alles wordt gemeten in BEC = break-even CPA per product:
+  BEC = MARGE - 0,05 * PRIJS (EUR)   -- beide uit de PRODUCT DATA SHEET
+Geen eenduidige productmatch dus geen BEC? Dan NIET automatisch pauzeren, alleen tonen en melden.
+Enige uitzondering als noodrem: spend >= 75 euro zonder enige sale -> KILL, en meld de ontbrekende match.
+
+NOOIT pauzeren onder de 25 kliks. Bij 20 kliks heeft ook een gemiddeld product 49% kans op nul ATC.
+
+WANNEER JE BEOORDEELT
+  23:00-18:00 Londen: alleen de noodrem -> spend >= 6x BEC EN atc == 0 -> KILL. Verder alleen meten.
+  Vanaf 18:00 Londen: de volledige toets hieronder. 70-75% van het verkeer komt na 09:00 UTC binnen,
+  dus voor die tijd oordelen is oordelen voordat de klanten wakker zijn.
+
+TESTDAG 1 - drie toetsen, alle vanaf 18:00 Londen
+  spend >= 3x BEC EN atc == 0 EN kliks >= 25            -> KILL (geen interesse)
+  spend >= 3x BEC EN atc >= 1 EN (spend / atc) > BEC     -> KILL (te dure interesse)
+  spend >= 5x BEC EN atc >= 4 EN sales == 0              -> KILL (interesse zonder aankoop)
+
+CPC is GEEN kill-signaal meer. Vervangen door kosten per winkelwagen.
+Pas vanaf vier ATC's killen op "geen sale": van winkelwagen naar aankoop is 17%, dus 1 ATC zonder
+sale is in 83% van de gevallen normaal.
+
+ZODRA ER EEN SALE IS
+  Alle spend-drempels vervallen. Nieuwe toets:
+  cumulatieve spend / cumulatieve sales > BEC op TWEE OPEENVOLGENDE DAGEN -> KILL
+  Eén dag boven BEC is niet genoeg; bij deze aantallen verspringt de CPA door één order.
+
+TESTDAG 2 EN VERDER
+  2+ sales gisteren -> laten lopen, MET DAK: spend vandaag > 3x BEC zonder nieuwe sale -> KILL
+  1 sale gisteren   -> de CPA-toets, niet terug naar spend-drempels
+  0 sales gisteren  -> zelfde toetsen als testdag 1
+  Testdag 3+ zonder sales: tonen en melden, niet automatisch pauzeren.
+
+RESULTAAT SCHRIJVEN
+  Kill op "geen interesse" -> schrijf GEEN SIGNAAL (niet KILLED). Dat product mag later opnieuw.
+  Alle andere kills -> schrijf KILLED plus de toets die raakte.
+
+Alle voorwaarden binnen een regel moeten gelijktijdig waar zijn.
 STAP 5 - PAUZEREN: mcp__Windsor_ai__execute_action, connector "facebook",
 action "pause_campaign", params {"campaign_id":"<id>"}.
 
