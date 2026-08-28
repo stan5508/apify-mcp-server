@@ -49,6 +49,48 @@ aan **Windsor.ai, Shopify en Google Drive**.
 Zonder die koppeling faalt de check niet stilletjes: stap 0 meldt dat de connectors ontbreken en stopt.
 Er wordt nooit iets gepauzeerd zonder data.
 
+## Het draaimodel — 3 tot 5 nieuwe tests per dag
+
+Vastgelegd op 28 augustus 2026, op verzoek van Stan: elke dag 3 tot 5 nieuwe producten testen,
+consistent, want dat is vol te houden.
+
+### Waarom dit géén budgetverhoging is
+
+€50 per dag is een **plafond, geen verwachte uitgave**. De kill-regels vuren bij €10, €20 en €30.
+Een product dat geen winkelwagen oplevert kost je dus €20, niet €50. Alleen wat blijft draaien
+gebruikt het hele dagbudget.
+
+Verwachte dagspend bij vijf nieuwe tests:
+
+| | |
+|---|---|
+| 3 producten sneuvelen op €10–€20 | ± €45 |
+| 1 product sneuvelt op €30 | € 30 |
+| 1 product overleeft de dag | € 50 |
+| **totaal** | **± €125 per dag** |
+
+Ter vergelijking: op 27 augustus 2026 ging er €94 per dag om in 31 campagnes, en leverde dat
+**nul** beslissingen op. Hetzelfde geld, anders verdeeld, geeft drie tot vijf uitspraken per dag.
+
+### Hoeveel campagnes staan er dan tegelijk aan
+
+3 tot 5 nieuwe per dag, plus wat er van gisteren overleefde. Bij ongeveer één overlever per dag
+komt dat neer op **5 tot 7 actieve campagnes** op een willekeurig moment. Dat is het aantal waar de
+kill-regels op ontworpen zijn.
+
+Loopt dat aantal op boven de tien, dan is er iets mis: of de kill-regels vuren niet (controleer het
+dagbudget per campagne), of er wordt te weinig gekilld.
+
+### De echte bovengrens zit niet in het geld
+
+Drie tot vijf nieuwe CBO's per dag betekent drie tot vijf sets creatives en copy per dag. Dat is nu
+handwerk uit de startprompt van 322 regels. Het budget kan het aan; de productie is de bottleneck.
+Dat is precies wat A5 `concept-brief` en A6 `beeld-productie` moeten wegnemen — zolang die er niet
+zijn, bepaalt de hoeveelheid creatives hoeveel tests er werkelijk starten.
+
+Het onderzoeksteam A16 levert vijf kandidaten per dag. Dat sluit nu aan op de testcapaciteit in
+plaats van erop achter te lopen.
+
 ## Stap 0 — poortwachter
 
 Eén lichte query: `campaign` + `campaign_status` + `spend` via Windsor, `date_preset: "last_1dT"`.
