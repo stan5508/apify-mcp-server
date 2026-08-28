@@ -95,33 +95,17 @@ geattribueerd; Shopify registreert de werkelijke gebeurtenis, met ongeveer een m
 Ongeveer 40% van de sessies komt binnen zonder `utm_campaign`. Een order zonder tag wordt aan een campagne
 toegekend als het `product_title` overeenkomt met het product in de campagnenaam.
 
-## Stap 2 — break-even CPA en testdag
+## Stap 2 — het uitgangspunt: €50 per dag
 
-### Break-even CPA (BEC) — de eenheid waarin alles wordt gemeten
+Elke CBO start op **€50 per dag**. Dat is geen losse voorkeur maar de voorwaarde waaronder de
+kill-drempels kloppen: €10, €20 en €30 zijn 20%, 40% en 60% van dat dagbudget. De drempels en het
+startbudget horen bij elkaar en mogen niet los van elkaar veranderd worden.
 
-Vaste bedragen van €10 / €20 / €30 zijn vervangen. Reden: die bedragen betekenen iets heel anders
-per product. Bij de Vintage Floral Blouse (€20,82, COG €9, marge €11,82) is €20 al **1,7×** het
-maximum dat je aan een klant mag betalen. Bij de Mirta jas (€69,54, COG €21, marge €48,54) is
-€20 pas **0,4×** — die wordt weggegooid voordat hij een kans heeft gehad.
-
-```
-BEC = MARGE − 0,05 × PRIJS (EUR)
-```
-
-Beide kolommen staan in de PRODUCT DATA SHEET. De 5% is de transactiekosten zoals ze in de
-DAILY PROFIT SHEET worden verrekend. BEC is het bedrag dat één klant maximaal mag kosten voordat
-hij geld kost.
-
-**Geen eenduidige productmatch, dus geen BEC?** Dan gelden de kill-regels hieronder niet en wordt er
-**niets automatisch gepauzeerd**. De campagne wordt alleen getoond met de melding dat de match
-ontbreekt. Eén uitzondering, als noodrem tegen doorlopende verbranding: spend ≥ €75 zonder enige
-sale → pauzeren en de ontbrekende match expliciet melden.
-
-### Minimum data voordat er überhaupt gekild mag worden
-
-Nooit pauzeren op minder dan **25 kliks**. Onder dat aantal is elke uitkomst ruis: de site haalt
-3,5% ATC, dus bij 20 kliks heeft ook een volstrekt gemiddeld product **49% kans** op nul ATC. Zonder
-deze ondergrens gooit de routine ongeveer de helft van de goede producten weg.
+**Waarom dit expliciet in de spec staat.** Op 27 augustus 2026 draaiden er 31 campagnes samen op
+€94 per dag — €3,04 per campagne. Bij ongeveer €1 per klik is €30 dan tien dagen budget, dus de
+€30-regel vuurde nooit binnen testdag 1 en de €20-regel zelden. Niet omdat de regels fout waren,
+maar omdat het budget per campagne niet bij de drempels paste. Draai je meer campagnes dan
+`totaalbudget ÷ 50` tegelijk, dan meet je niets.
 
 ### Testdag
 
@@ -134,69 +118,61 @@ deze ondergrens gooit de routine ongeveer de helft van de goede producten weg.
 ## Stap 3 — kill-regels
 
 Spend is **cumulatief vandaag**. Een treffer pauzeert de **hele CBO**, nooit een losse ad set of ad.
-ATC en sales komen altijd uit Shopify.
+ATC en sales komen altijd uit Shopify, nooit uit Meta.
 
-### Wanneer er beoordeeld wordt — dit is veranderd
+### Testdag 1 — drie momenten
 
-Gemeten over 24 t/m 27 augustus 2026: tussen 19:00 en 04:00 UTC is er vrijwel **geen verkeer**, en
-op drie van de vier dagen kwam **70 tot 75% van alle sessies ná 09:00 UTC** binnen. Het oude
-killvenster sloot om 09:00 Londen en besliste dus op de stilste uren, vlak vóór de drukste.
-
-| Venster | Wat er mag gebeuren |
-|---|---|
-| 23:00–18:00 Londen | **Alleen de noodrem.** Spend ≥ 6× BEC met nul ATC → pauzeren. Verder alleen meten en tonen. |
-| vanaf 18:00 Londen | De volledige toets hieronder, als het verkeer van de dag binnen is. |
-
-### Testdag 1 — drie toetsen, alle vanaf 18:00 Londen
-
-| Toets | Voorwaarde | Waarom |
+| Drempel | Voorwaarde | Actie |
 |---|---|---|
-| **Geen interesse** | spend ≥ 3× BEC **EN** ATC = 0 **EN** ≥ 25 kliks | Bij 3× BEC en genoeg kliks is nul winkelwagen geen toeval meer |
-| **Te dure interesse** | spend ≥ 3× BEC **EN** ATC ≥ 1 **EN** spend ÷ ATC > BEC | Kost één winkelwagen al meer dan je hele marge, dan kost een sale een veelvoud |
-| **Interesse zonder aankoop** | spend ≥ 5× BEC **EN** ATC ≥ 4 **EN** sales = 0 | Zie hieronder waarom vier |
+| spend ≥ €10 | slechte data **EN** ATC = 0 **EN** sales = 0 | pauzeer |
+| spend ≥ €20 | ATC = 0 **EN** sales = 0 | pauzeer |
+| spend ≥ €30 | sales = 0 | pauzeer |
 
-**CPC is geen kill-signaal meer.** CPC zegt wat een klik kost, niet of iemand het product wil.
-€1,50 CPC met 5% ATC op een marge van €48 is prima; €0,40 CPC met 0% ATC is waardeloos. De
-vervanging is *kosten per winkelwagen*, één stap dichter bij geld.
+Alle voorwaarden binnen een regel moeten gelijktijdig waar zijn. Eén ATC laat het €10- en
+€20-moment vervallen.
 
-**Waarom pas vanaf vier ATC's.** Gemeten over de week van 21–27 augustus: 24 winkelwagens → 18 naar
-afrekenen → 4 aankopen. Van winkelwagen naar aankoop is dus **17%**. Eén ATC zonder sale is in 83%
-van de gevallen gewoon normaal. Killen daarop is killen op ruis — en erger: de afrekenstap zelf
-lekt (22% waar 33% de norm is), dus je zou één voor één elk product wegkillen terwijl het gat in de
-kassa zit.
+**"Slechte data" bij €10 is de kwaliteitspoort.** Concreet: CPC boven €1, of een klikratio onder
+het accountgemiddelde. Dat gemiddelde staat niet vast — bereken het over de laatste 30 dagen en
+noem het in het rapport. Op 27 augustus 2026 lag het op 3,5%.
 
-### Zodra er een sale is — andere eenheid
+### Testdag 2 — hangt af van gisteren
 
-Vanaf de **eerste** sale vervallen alle spend-drempels. Een sale is het sterkste signaal dat er
-bestaat; een product dat heeft bewezen te kunnen converteren mag niet opnieuw als onbewezen worden
-beoordeeld.
-
-| Toets | Voorwaarde |
+| Gisteren | Regels vandaag |
 |---|---|
-| **CPA-toets** | cumulatieve spend ÷ cumulatieve sales > BEC op **twee opeenvolgende dagen** → pauzeren |
+| 2 of meer sales | niet aanraken, hele dag laten lopen |
+| precies 1 sale | alleen het €20- en €30-moment |
+| 0 sales | zelfde als testdag 1 |
 
-Eén dag boven BEC is niet genoeg: bij deze aantallen verspringt de CPA enorm door één order.
+**Testdag 3 en verder** — tonen, nooit automatisch pauzeren.
 
-### Testdag 2 en verder
+## Stap 3b — wanneer de checks draaien
 
-| Gisteren | Vandaag |
-|---|---|
-| 2 of meer sales | Laten lopen — met een dak: spend vandaag > 3× BEC **zonder** nieuwe sale → pauzeren |
-| precies 1 sale | De CPA-toets hierboven. Niet terug naar de spend-drempels |
-| 0 sales | Zelfde toetsen als testdag 1 |
+Dit is gecorrigeerd op 28 augustus 2026 en het is de enige wijziging aan de methode.
 
-Het dak op "laten lopen" is nieuw. Zonder plafond kan een slechte dag 2 de winst van dag 1 opeten
-zonder dat er iets ingrijpt.
+Bij €50 per dag wordt €30 spend pas rond 60% van de advertentiedag bereikt, dus in de late middag.
+Het oude venster liep van 23:00 tot 09:00 Londen en sloot daar dus vóór. De €30-regel kon er nooit
+vuren en de €20-regel zelden.
 
-**Testdag 3 en verder** — de CPA-toets blijft gelden zolang er sales zijn. Zijn er nul sales en is
-testdag 3 bereikt, dan tonen en melden, niet automatisch pauzeren.
+Daar komt bij: gemeten over 24 tot en met 27 augustus 2026 kwam **70 tot 75% van alle sessies ná
+09:00 UTC** binnen, en tussen 19:00 en 04:00 UTC is er vrijwel geen verkeer. Beslissen in het oude
+venster is beslissen voordat de klanten wakker zijn.
 
-### Wat "gekilld" wél en niet betekent
+De checks lopen daarom door tot in de avond. De nachtelijke runs blijven bestaan: die vangen een
+campagne die 's nachts doorspendt zonder enig signaal.
 
-Een kill op de geen-interesse-toets betekent **niet** dat het product slecht is. Het betekent dat
-het binnen dit budget geen signaal gaf. Met 25 tot 60 kliks koop je een goedkope screening met een
-bewust hoge kans op een vals negatief. Producten die op deze toets vallen mogen later opnieuw
-getest worden — noteer ze als `GEEN SIGNAAL`, niet als `KILLED`.
+## Stap 3c — break-even als informatie, niet als drempel
+
+```
+BEC = MARGE − 0,05 × PRIJS (EUR)
+```
+
+Beide kolommen staan in de PRODUCT DATA SHEET. **BEC is geen kill-drempel** — de drempels zijn
+€10, €20 en €30. Maar zet BEC wel in het rapport naast de spend, zodat zichtbaar is of een kill op
+€30 bij dit product ruim of krap was. Bij een blouse met €11,82 marge is €30 al ruim twee keer het
+maximum; bij een jas met €48,54 marge is het nog geen tweederde.
+
+Is er geen eenduidige productmatch, dan blijft BEC leeg. Dat blokkeert de kill-regels niet — die
+werken op vaste bedragen en hebben de sheet niet nodig.
 
 ## Stap 4 — pauzeren
 
@@ -334,43 +310,37 @@ STAP 3 - TESTDAG: geen spend gisteren = 1. Spend gisteren maar niet eergisteren 
 
 STAP 4 - KILL-REGELS (spend cumulatief vandaag, altijd de hele CBO)
 
-Alles wordt gemeten in BEC = break-even CPA per product:
-  BEC = MARGE - 0,05 * PRIJS (EUR)   -- beide uit de PRODUCT DATA SHEET
-Geen eenduidige productmatch dus geen BEC? Dan NIET automatisch pauzeren, alleen tonen en melden.
-Enige uitzondering als noodrem: spend >= 75 euro zonder enige sale -> KILL, en meld de ontbrekende match.
+UITGANGSPUNT: elke CBO draait op 50 euro per dag. De drempels 10/20/30 zijn 20%, 40% en 60% van
+dat dagbudget. Draait een campagne op veel minder, dan vuren deze regels niet binnen testdag 1 --
+meld dat, want dan is het budget het probleem en niet het product.
 
-NOOIT pauzeren onder de 25 kliks. Bij 20 kliks heeft ook een gemiddeld product 49% kans op nul ATC.
+TESTDAG 1
+  spend >= 10 EN slechte data EN atc == 0 EN sales == 0 -> KILL
+  spend >= 20 EN atc == 0 EN sales == 0                 -> KILL
+  spend >= 30 EN sales == 0                             -> KILL
 
-WANNEER JE BEOORDEELT
-  23:00-18:00 Londen: alleen de noodrem -> spend >= 6x BEC EN atc == 0 -> KILL. Verder alleen meten.
-  Vanaf 18:00 Londen: de volledige toets hieronder. 70-75% van het verkeer komt na 09:00 UTC binnen,
-  dus voor die tijd oordelen is oordelen voordat de klanten wakker zijn.
+"Slechte data" = CPC boven 1 euro OF klikratio onder het accountgemiddelde. Bereken dat gemiddelde
+over de laatste 30 dagen en noem het in je melding. Op 27-8-2026 was het 3,5%.
 
-TESTDAG 1 - drie toetsen, alle vanaf 18:00 Londen
-  spend >= 3x BEC EN atc == 0 EN kliks >= 25            -> KILL (geen interesse)
-  spend >= 3x BEC EN atc >= 1 EN (spend / atc) > BEC     -> KILL (te dure interesse)
-  spend >= 5x BEC EN atc >= 4 EN sales == 0              -> KILL (interesse zonder aankoop)
+TESTDAG 2
+  2+ sales gisteren -> niet aanraken, hele dag laten lopen
+  1 sale gisteren   -> alleen het 20- en 30-euromoment
+  0 sales gisteren  -> zelfde als testdag 1
+TESTDAG 3+: tonen, nooit automatisch pauzeren.
 
-CPC is GEEN kill-signaal meer. Vervangen door kosten per winkelwagen.
-Pas vanaf vier ATC's killen op "geen sale": van winkelwagen naar aankoop is 17%, dus 1 ATC zonder
-sale is in 83% van de gevallen normaal.
+Alle voorwaarden binnen een regel moeten gelijktijdig waar zijn. Een ATC laat het 10- en
+20-euromoment vervallen.
 
-ZODRA ER EEN SALE IS
-  Alle spend-drempels vervallen. Nieuwe toets:
-  cumulatieve spend / cumulatieve sales > BEC op TWEE OPEENVOLGENDE DAGEN -> KILL
-  Eén dag boven BEC is niet genoeg; bij deze aantallen verspringt de CPA door één order.
-
-TESTDAG 2 EN VERDER
-  2+ sales gisteren -> laten lopen, MET DAK: spend vandaag > 3x BEC zonder nieuwe sale -> KILL
-  1 sale gisteren   -> de CPA-toets, niet terug naar spend-drempels
-  0 sales gisteren  -> zelfde toetsen als testdag 1
-  Testdag 3+ zonder sales: tonen en melden, niet automatisch pauzeren.
+BREAK-EVEN IS INFORMATIE, GEEN DREMPEL
+  BEC = MARGE - 0,05 * PRIJS (EUR), beide uit de PRODUCT DATA SHEET.
+  Zet BEC naast de spend in je melding zodat zichtbaar is of een kill op 30 euro bij dit product
+  ruim of krap was. Geen productmatch? BEC leeg laten -- dat blokkeert niets, de drempels staan vast.
 
 RESULTAAT SCHRIJVEN
-  Kill op "geen interesse" -> schrijf GEEN SIGNAAL (niet KILLED). Dat product mag later opnieuw.
-  Alle andere kills -> schrijf KILLED plus de toets die raakte.
+  Kill op het 10-euromoment -> schrijf GEEN SIGNAAL. Te weinig data om het product af te schrijven;
+  hij mag later opnieuw.
+  Kill op 20 of 30 euro -> schrijf KILLED OP 20 of KILLED OP 30.
 
-Alle voorwaarden binnen een regel moeten gelijktijdig waar zijn.
 STAP 5 - PAUZEREN: mcp__Windsor_ai__execute_action, connector "facebook",
 action "pause_campaign", params {"campaign_id":"<id>"}.
 

@@ -22,8 +22,9 @@ belanden.
 Let op de maandgrens: rapporteren over de 31e gebeurt op de 1e, en moet dan in de tab van de
 **vorige** maand.
 
-Deze routine **wijzigt niets** aan campagnes of budgetten. Ze rekent, beslist en legt vast.
-Pauzeren doet de kill-routine; budget aanpassen doet Stan met de hand.
+Deze routine **pauzeert nooit** — dat is van de kill-routine. Sinds 28 augustus 2026 zet ze wél
+zelf het budget een trede hoger of lager volgens de ladder hieronder, binnen het dagplafond dat
+Stan instelt. Alles boven dat plafond, en elke horizontale duplicatie, blijft een voorstel.
 
 ## Verschil met de kill-routine
 
@@ -48,6 +49,64 @@ shop-niveau (DAILY PROFIT SHEET) tellen ze wél mee, en daar rekent de sheet zel
 
 `BER = Prijs / (Prijs − COG)`. Afgeleid uit de PRODUCT DATA SHEET en nagerekend op meerdere
 producten. De sheet is de bron; nooit zelf berekenen als de kolom gevuld is.
+
+
+## De schaalladder — No Sheeps-methode
+
+Bron: `no-sheeps.thehuddle.nl` → Fase 3 → CBO campaign - Testen en Schalen → *Hoe schaal je een CBO
+campaign?* Letterlijk uit de lesbeschrijving:
+
+> - Begin met verticaal schalen (budget verhogen) 50 - 70 - 100 - 150 - 200 etc etc.
+> - Wanneer de performance dropt, ga je horizontaal schalen (nieuwe campagnes dupliceren)
+
+### Verticaal — vaste treden, geen percentages
+
+```
+50 → 70 → 100 → 150 → 200 → 300 → 400 → 500
+```
+
+Het zijn **treden**, geen vermenigvuldiging. Van 50 naar 70 is +40%, van 100 naar 150 is +50%. Reken
+niet met een percentage: pak de volgende trede uit de rij. Staat een campagne op een bedrag dat niet
+op de ladder staat, neem dan de eerstvolgende trede erboven.
+
+### Wanneer een trede omhoog
+
+| Voorwaarde | Waarom |
+|---|---|
+| ROAS over de laatste 48 uur ≥ BER van dat product | BER is de break-even-ROAS uit de PRODUCT DATA SHEET. Daaronder verlies je geld en schaal je verlies mee. |
+| minstens 2 sales in die 48 uur | Op één sale is de ROAS een toevalstreffer. |
+| hoogstens één trede per 48 uur | Meta weigert frequente budgetwijzigingen en de leerfase moet bij kunnen benen. |
+| niet boven het door Stan ingestelde dagplafond | Boven het plafond wordt het een voorstel, geen actie. |
+
+### Wanneer de performance dropt
+
+"Performance dropt" = de ROAS over de laatste 48 uur zakt onder de BER, ná een trede omhoog.
+
+1. **Eerst één trede terug.** Zakt hij op €100 onder break-even, ga terug naar €70. Niet naar €50 en
+   niet meteen killen — de vorige trede werkte wel.
+2. **Houdt het aan op de lagere trede, dan horizontaal.** Dupliceer de campagne en start de kopie
+   opnieuw op €50. Een duplicaat krijgt een schone leerfase; doorduwen op een campagne die zijn
+   plafond heeft gevonden kost alleen geld.
+
+### Wat de routine zelf mag doen
+
+| Handeling | Wie |
+|---|---|
+| Een trede omhoog binnen het dagplafond | de routine, via `set_campaign_budget` |
+| Een trede terug bij een drop | de routine |
+| Boven het dagplafond | voorstel aan Stan, niet uitvoeren |
+| Dupliceren voor horizontaal schalen | voorstel aan Stan — een nieuwe campagne raakt creatives en naamgeving, dat is geen budgetknop |
+| Pauzeren | nooit; dat is van de kill-routine |
+
+`set_campaign_budget` is geverifieerd beschikbaar via Windsor. Let op twee dingen uit de
+actiebeschrijving: het bedrag is in **centen** (5000 = €50,00), en Meta weigert frequente
+budgetwijzigingen op dezelfde campagne — vandaar de grens van één trede per 48 uur.
+
+### Vastleggen
+
+Elke tredewijziging gaat als regel naar het tabblad SCHALEN, met de oude en de nieuwe trede, de ROAS
+en BER waarop besloten is, en de reden. Zonder die regel is later niet na te gaan waarom een
+campagne op €150 stond.
 
 ## Het 48-uursmoment
 
