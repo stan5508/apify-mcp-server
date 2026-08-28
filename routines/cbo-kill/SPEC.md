@@ -5,7 +5,7 @@ Draait elke 10 minuten tussen 23:00 en 09:00 Europe/London (de advertiser-tijdzo
 
 ## Planning
 
-**Eén Routine**, `2 23,0-7 * * *` (UTC; London = UTC+1 in de zomertijd). Elke fire draait **zes checks binnen
+**Eén Routine**, `2 * * * *` (UTC; London = UTC+1 in de zomertijd). Elke fire draait **zes checks binnen
 dat uur**, telkens 10 minuten uit elkaar: op :02, :12, :22, :32, :42 en :52.
 
 Wachten tussen checks gaat met `sleep 600` als achtergrond-Bash, nooit op de voorgrond.
@@ -189,18 +189,38 @@ noem het in het rapport. Op 27 augustus 2026 lag het op 3,5%.
 
 ## Stap 3b — wanneer de checks draaien
 
-Dit is gecorrigeerd op 28 augustus 2026 en het is de enige wijziging aan de methode.
+Gecorrigeerd op 28 augustus 2026. Een eerdere versie van deze spec verschoof het beslismoment naar
+de avond. Dat was fout en is teruggedraaid.
 
-Bij €50 per dag wordt €30 spend pas rond 60% van de advertentiedag bereikt, dus in de late middag.
-Het oude venster liep van 23:00 tot 09:00 Londen en sloot daar dus vóór. De €30-regel kon er nooit
-vuren en de €20-regel zelden.
+**Waarom die redenering niet klopte.** Het argument was: 70 tot 75% van het verkeer komt ná 09:00
+UTC binnen, dus daarvóór oordelen is oordelen voordat de klant wakker is. Maar dat verwart *wanneer
+een oordeel eerlijk is* met *wanneer het mogelijk is*. Uit de sessiedata per uur over 24 t/m 27
+augustus blijkt dat er tussen 19:00 en 04:00 UTC nul tot vier sessies per uur zijn: Meta levert
+'s nachts nauwelijks uit. Spend en publiek bewegen dus samen. Een campagne die €20 heeft uitgegeven,
+hééft €20 aan wakkere mensen laten zien — hoe laat dat ook is.
 
-Daar komt bij: gemeten over 24 tot en met 27 augustus 2026 kwam **70 tot 75% van alle sessies ná
-09:00 UTC** binnen, en tussen 19:00 en 04:00 UTC is er vrijwel geen verkeer. Beslissen in het oude
-venster is beslissen voordat de klanten wakker zijn.
+**De drempel is zelf de timing.** €10, €20 en €30 vuren wanneer ze bereikt worden. Wachten tot de
+avond betekent dat een campagne die om 10:00 al op €20 zonder winkelwagen staat, doorloopt tot
+€45 of €50 voordat er iemand kijkt. Bij drie tot vijf tests per dag is dat elke dag geld weggooien.
 
-De checks lopen daarom door tot in de avond. De nachtelijke runs blijven bestaan: die vangen een
-campagne die 's nachts doorspendt zonder enig signaal.
+**Wat er wél mis was: het venster sloot te vroeg.** Bij €50 per dag wordt €10 rond 07:00 UTC
+bereikt, €20 rond 10:00 en €30 rond 13:00. Het oude venster liep tot 08:00 UTC — de €20- en
+€30-regel konden daar dus nooit vuren.
+
+### De cron
+
+```
+oud:  2 23,0-7 * * *     negen fires, alleen 's nachts
+nieuw: 2 * * * *          elk uur, de hele advertentiedag
+```
+
+De advertentiedag loopt in de accounttijdzone Europe/London van 00:00 tot 23:59, dus 23:00 tot
+22:59 UTC. Elk uur een fire betekent dat elke drempel binnen tien minuten na overschrijding wordt
+opgemerkt, want elke fire doet zes checks van tien minuten.
+
+**Kosten.** De poortwachter stopt een run meteen als er geen levende campagne is, dus lege uren
+kosten bijna niets. Op een dag met vijf actieve campagnes doen alle 24 fires wel echt werk. Dat is
+de prijs van op tijd killen, en die is lager dan het budget dat anders doorloopt.
 
 ## Stap 3c — break-even als informatie, niet als drempel
 
@@ -311,7 +331,7 @@ van een drempel zit. Nooit een melding voor een rustige check.
 
 ## Routine-prompt (voor de claude.ai Routines-UI)
 
-Eén Routine, cron in UTC `2 23,0-7 * * *`, met Windsor.ai, Shopify en Google Drive als connector,
+Eén Routine, cron in UTC `2 * * * *`, met Windsor.ai, Shopify en Google Drive als connector,
 "nieuwe sessie per fire" en push-notificaties aan. De prompt doet zelf zes checks binnen het uur.
 
 ```
