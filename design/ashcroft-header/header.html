@@ -4,7 +4,7 @@
 @font-face{font-family:'Work';src:url('file:///root/.claude/skills/synced/e447d251-c3f9-4d65-bec5-017d4e6caab9_d9542112-7794-4519-adfb-d9285c0a1874/canvas-design/canvas-fonts/WorkSans-Regular.ttf')}
 @font-face{font-family:'WorkB';src:url('file:///root/.claude/skills/synced/e447d251-c3f9-4d65-bec5-017d4e6caab9_d9542112-7794-4519-adfb-d9285c0a1874/canvas-design/canvas-fonts/WorkSans-Bold.ttf')}
 html,body{margin:0;padding:0}
-body{zoom:2;width:1600px;height:900px;background:#fbfaf7;font-family:'Work',sans-serif;color:#1c1c1e;position:relative;overflow:hidden}
+body{zoom:2;width:1600px;height:900px;background:transparent;font-family:'Work',sans-serif;color:#1c1c1e;position:relative;overflow:hidden}
 .wrap{position:absolute;left:0;right:0;top:0;bottom:150px;display:flex;flex-direction:column;align-items:center;justify-content:center}
 .mono{font-family:'Italiana',serif;font-size:250px;line-height:0.86;letter-spacing:-0.06em;color:#1c1c1e}
 .name{font-family:'Italiana',serif;font-size:150px;letter-spacing:0.2em;padding-left:0.2em;line-height:1;margin-top:18px}
@@ -17,7 +17,8 @@ body{zoom:2;width:1600px;height:900px;background:#fbfaf7;font-family:'Work',sans
 .score span{color:#7a7a80;font-size:44px}
 .sub{font-family:'Work',sans-serif;font-size:34px;letter-spacing:0.2em;padding-left:0.2em;text-transform:uppercase;color:#2e2e33;margin-top:18px}
 .sub b{font-family:'WorkB';font-weight:400;color:#1c1c1e}
-.usps{position:absolute;left:0;right:0;bottom:0;height:150px;border-top:2px solid #e3dfd5;background:#f4f1ea;display:flex;align-items:center;justify-content:center}
+.usps{position:absolute;left:0;right:0;bottom:0;height:150px;background:transparent;display:flex;align-items:center;justify-content:center}
+.usps::before{content:"";position:absolute;top:0;left:12%;right:12%;height:2px;background:#e3dfd5}
 .usp{display:flex;align-items:center;gap:20px;padding:0 52px;font-size:27px;letter-spacing:0.14em;text-transform:uppercase;color:#2a2a2f;position:relative;white-space:nowrap}
 .usp+.usp::before{content:'';position:absolute;left:0;top:50%;transform:translateY(-50%);width:2px;height:48px;background:#d3cec2}
 .usp svg{width:44px;height:44px;stroke:#1c1c1e;fill:none;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round;flex:none}
