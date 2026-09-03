@@ -14,14 +14,16 @@ Dit is geen onderdeel van de MCP-server in deze repo; het is een losstaande app 
 
 ## Werkwijze — houd je hieraan
 
-1. **Elke wijziging**: `APP_VERSION` in `index.html` én `CACHE` in `sw.js` ophogen (nu **65**).
+1. **Elke wijziging**: `APP_VERSION` in `index.html` én `CACHE` in `sw.js` ophogen (nu **66**).
+   De sporter-app toont het nummer onder Coach → Instellingen; pas dat mee aan.
    Zonder die twee ziet hij de wijziging niet op zijn tablet.
 2. **Testen** met Playwright (`playwright-core`, `executablePath: '/opt/pw-browsers/chromium'`)
    tegen `python3 -m http.server` in `gym-app/`. Schrijf per functie een klein `.mjs`-scriptje
    dat `pageerror` verzamelt en JSON print; die scripts staan in de scratchpad, niet in de repo.
 3. **Repo-checks**: `pnpm run format`, `format:check`, `lint`, `check:agents`. Allemaal groen
    voor je commit. `type-check` raakt `gym-app/` niet (tsconfig include is alleen `src`/`tests`).
-4. **Committen** op branch `claude/gym-training-progress-app-mt7wwr`, Conventional Commits,
+4. **Committen** op de branch van de open PR (nu `claude/coachlog-sporterslog-features-3azibr`,
+   met PR #5 en #1 als voorgangers), Conventional Commits,
    Engelse commitberichten, en pushen met `git push -u origin <branch>`.
 5. **Publiceren**: `bash gym-app/publish.sh` — kopieert naar de `gh-pages`-branch.
    Live op <https://stan5508.github.io/apify-mcp-server/>.
@@ -126,6 +128,21 @@ klanten en in het Coach-tabblad van de sporter-app), wekelijkse check-in van de 
 nemen als meting), techniekvideo's (`client_videos` + storage-bucket `technique-videos`,
 coach zet feedback terug), en pushmeldingen (code klaar; opzet in SUPABASE.md stap 8).
 
+**Sinds versie 66** — coach-app: **Van klanten**-vak op Vandaag (`fillCloudInbox()`: ongelezen
+berichten en check-ins van de laatste week), **Bericht aan iedereen** in Van klanten, de
+**koppel-link** bij een nieuwe uitnodigingscode (`sporter.html?url=…&key=…&code=…&naam=…`, met
+QR als hij past — een legacy JWT-anon-key is te lang voor versie 9, een `sb_publishable_…`-sleutel
+niet), `publishSchemas()` stuurt per oefening een `info`-blok mee (uitleg, aandachtspunten,
+video, technieknotitie), en Overzicht → Spiergroepen toont sets per trainingsweek tegen de
+richtlijn 10–20. Sporter-app: begonnen training overleeft sluiten (`local.draft`), sessieklok,
+leeg afvinken neemt de vorige keer over, cardio (min/km) en lichaamsgewicht als eigen soort,
+ⓘ-uitleg van de coach, warming-upvoorstel, schijven per kant, records bij opslaan, geschat 1RM,
+aanwezigheid + geschiedenis met **Herhaal**, training delen, en in Voeding: barcode (camera of
+cijfers), basislijst zonder internet, vaak gebruikt, kopieer gisteren, **Mijn maaltijden**
+(`local.recipes`, alleen op dat toestel), weekgemiddelde tegen het plan, waterdoel. Instellingen
+(rust, geluid, licht/donker, waterdoel) staan onderaan het Coach-tabblad in `local.settings`.
+Geen nieuwe tabellen: alles loopt over de bestaande kolommen.
+
 **Abonnementen** — eigen vormen (naam, prijs per maand, looptijd, sessies per week,
 opzegtermijn, voorwaardentekst, eigen velden) en contracten per klant. Ondertekenen met de
 vinger op de tablet (klant én coach), daarna vast; opzeggen rekent de opzegtermijn mee.
@@ -169,8 +186,9 @@ sporter-app stil terug op een losse training — zie SUPABASE.md.
   (VAPID-sleutels + tabellen + functie deployen, SUPABASE.md stap 8).
 - **Nieuwe tabellen draaien** — berichten, check-ins, video's, doelen en push vragen de SQL
   uit SUPABASE.md stap 7/7b/8; tot die tijd melden beide apps netjes "nog niet aangezet".
-- Geparkeerd: recepten en maaltijdsjablonen, offline productendatabase, echte
-  meerdere-coaches-rechten.
+- Geparkeerd: echte meerdere-coaches-rechten. Maaltijdsjablonen en een basislijst zonder
+  internet zitten sinds versie 66 in de sporter-app (alleen lokaal op het toestel van de klant);
+  synchroniseren van "Mijn maaltijden" tussen toestellen vraagt een tabel en is niet gebouwd.
 
 ## Wat je niet moet doen
 

@@ -585,7 +585,7 @@
 <script>
 (() => {
   'use strict';
-  const APP_VERSION = 65; // bump when publishing; shown on the home screen
+  const APP_VERSION = 66; // bump when publishing; shown on the home screen
   const KEY = 'coachlog-v1';
   const $app = document.getElementById('app');
 
@@ -2687,13 +2687,13 @@
     return mod;
   }
   // matrix → SVG met stille zone; altijd donker-op-wit, ook in het donkere thema
-  function qrSvg(text, sizePx) {
+  function qrSvg(text, sizePx, label = 'Betaal-QR') {
     const m = qrMatrix(text);
     if (!m) return '<p class="mut">Te veel tekst voor een QR-code.</p>';
     const n = m.length, q = 4;
     let path = '';
     for (let y = 0; y < n; y++) for (let x = 0; x < n; x++) if (m[y][x]) path += `M${x + q},${y + q}h1v1h-1z`;
-    return `<svg viewBox="0 0 ${n + 2 * q} ${n + 2 * q}" width="${sizePx}" height="${sizePx}" role="img" aria-label="Betaal-QR"
+    return `<svg viewBox="0 0 ${n + 2 * q} ${n + 2 * q}" width="${sizePx}" height="${sizePx}" role="img" aria-label="${esc(label)}"
       style="background:#fff;border-radius:8px"><path d="${path}" fill="#000"/></svg>`;
   }
   // EPC069-12 (SEPA-overboeking): de meeste NL bank-apps vullen hiermee alles vooraf in
@@ -3351,7 +3351,8 @@
         ${today.length ? `<div class="title" style="margin-bottom:6px">Vandaag (${today.length})</div>${today.map(apptLine).join('')}`
           : '<div class="mut">Vandaag geen afspraken.</div>'}
         ${tomorrow.length ? `<div class="title" style="margin:10px 0 6px">Morgen (${tomorrow.length})</div>${tomorrow.map(apptLine).join('')}` : ''}
-      </div>` +
+      </div>
+      <div id="cloud-inbox"></div>` +
       (recent.length ? `<div class="eyebrow">Snel starten</div>
         <div class="actions">${recent.map(({ c }) => `<button data-nav="/klant/${c.id}">${esc(c.name)} ›</button>`).join('')}</div>` : '') +
       (quiet.length ? `<div class="eyebrow">Langer dan een week niet geweest</div>
@@ -3388,6 +3389,7 @@
       <p class="mut" style="margin-top:16px">Coachlog versie ${APP_VERSION}</p>`;
 
     bindNav();
+    fillCloudInbox();
     document.getElementById('add-client').addEventListener('submit', (ev) => {
       ev.preventDefault();
       const f = new FormData(ev.target);
@@ -3679,8 +3681,24 @@
         await cloud.ensureProfile('coach', db.settings.coachName || '');
         const code = (Math.random().toString(36).slice(2, 6) + Math.random().toString(36).slice(2, 6)).toUpperCase();
         await cloud.insert('invites', [{ code, coach_id: cloud.userId(), label: label.trim() }]);
-        box.innerHTML = `<div class="note-box" style="margin-top:10px"><strong>Code voor ${esc(label.trim() || 'nieuwe klant')}:</strong> ${esc(code)}<br>
-          Stuur samen met de link: ${esc(location.origin + location.pathname.replace(/[^/]*$/, ''))}sporter.html</div>`;
+        // één link met alles erin: de sporter-app vult de projectgegevens en de code zelf in
+        const cfg = cloud.config();
+        const link = `${location.origin}${location.pathname.replace(/[^/]*$/, '')}sporter.html?url=${encodeURIComponent(cfg.url)}&key=${encodeURIComponent(cfg.key)}&code=${encodeURIComponent(code)}${label.trim() ? `&naam=${encodeURIComponent(label.trim())}` : ''}`;
+        const qr = qrMatrix(link) ? qrSvg(link, 200, 'Koppel-QR voor de sporter-app') : '';
+        box.innerHTML = `<div class="note-box" style="margin-top:10px"><strong>Code voor ${esc(label.trim() || 'nieuwe klant')}:</strong> ${esc(code)}
+          <p class="sub" style="margin:6px 0 8px">Stuur de klant deze link (WhatsApp of mail); de app staat dan meteen goed en vraagt alleen nog om in te loggen.</p>
+          <div class="row"><input class="grow" readonly value="${esc(link)}" id="invite-link"><button class="small" id="invite-copy">Kopieer</button>
+            ${navigator.share ? '<button class="small" id="invite-share">Delen</button>' : ''}</div>
+          ${qr ? `<div style="margin-top:10px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">${qr}<span class="mut">Of laat de klant deze QR scannen met de camera van de telefoon.</span></div>` : ''}
+        </div>`;
+        document.getElementById('invite-copy').addEventListener('click', async () => {
+          try { await navigator.clipboard.writeText(link); document.getElementById('invite-copy').textContent = 'Gekopieerd ✓'; }
+          catch { document.getElementById('invite-link').select(); }
+        });
+        const shareBtn = document.getElementById('invite-share');
+        if (shareBtn) shareBtn.addEventListener('click', () => {
+          navigator.share({ title: 'Coachlog', text: `Hier is je link voor de Coachlog-app. Open hem op je telefoon en log in met je e-mailadres.\n${link}` }).catch(() => {});
+        });
       } catch (e) {
         box.innerHTML = `<p class="mut">Aanmaken mislukt: ${esc(e.message)}</p>`;
       }
@@ -5822,6 +5840,19 @@
         group: groupOf(e.name, e.kind || kindFor(localClient.id, e.name)),
         rest: restFor(e.name),
         targets: (e.targets || []).map((t) => ({ ...t })),
+        // uitleg uit de bibliotheek plus de technieknotitie voor deze klant, zodat de
+        // sporter-app ze tijdens de training kan tonen
+        info: (() => {
+          const rec = exerciseByName(e.name);
+          const note = clientNote(localClient.id, e.name);
+          const out = {
+            instructions: (rec && rec.instructions) || '',
+            cues: (rec && rec.cues) || '',
+            video: safeUrl(rec && rec.videoUrl),
+            note,
+          };
+          return Object.values(out).some(Boolean) ? out : null;
+        })(),
       })),
     }));
     await cloud.remove('client_schemas', `client_id=eq.${cloudClientId}`);
@@ -5937,6 +5968,44 @@
   // Edge Function of de tabellen nog niet bestaan (zie SUPABASE.md stap 7)
   async function sendPushTo(cloudClientId, title, body) {
     try { await cloud.invoke('send-push', { client_id: cloudClientId, title, body: (body || '').slice(0, 140) }); } catch { /* niet opgezet */ }
+  }
+
+  // op Vandaag: wat er van klanten binnenkwam — ongelezen berichten en check-ins van de
+  // laatste zeven dagen. Zonder cloud, of zonder nieuws, blijft het vak leeg.
+  async function fillCloudInbox() {
+    const box = document.getElementById('cloud-inbox');
+    if (!box || !cloud.configured() || !cloud.signedIn()) return;
+    try {
+      const profiles = await cloud.select('profiles', `coach_id=eq.${cloud.userId()}&select=id,name`);
+      if (!profiles.length) return;
+      const ids = profiles.map((p) => p.id).join(',');
+      const since = addDays(todayIso(), -7);
+      // de tabellen bestaan pas na de extra SQL; ontbreken ze, dan is er gewoon geen nieuws
+      const [msgs, checkins] = await Promise.all([
+        cloud.select('client_messages', `client_id=in.(${ids})&sender=eq.client&read_by_coach=eq.false&select=client_id`).catch(() => []),
+        cloud.select('client_checkins', `client_id=in.(${ids})&date=gte.${since}&select=client_id,date`).catch(() => []),
+      ]);
+      const per = new Map();
+      for (const m of msgs) { const c = per.get(m.client_id) || { msgs: 0, checkin: '' }; c.msgs++; per.set(m.client_id, c); }
+      for (const ci of checkins) {
+        const c = per.get(ci.client_id) || { msgs: 0, checkin: '' };
+        if (ci.date > c.checkin) c.checkin = ci.date;
+        per.set(ci.client_id, c);
+      }
+      if (!per.size || !document.getElementById('cloud-inbox')) return;
+      box.innerHTML = `<div class="eyebrow">Van klanten</div>
+        <div class="card">${[...per].map(([id, c]) => {
+          const p = profiles.find((x) => x.id === id);
+          const bits = [
+            c.msgs ? `${c.msgs} ongelezen bericht${c.msgs === 1 ? '' : 'en'}` : '',
+            c.checkin ? `check-in ${fmtDate(c.checkin)}` : '',
+          ].filter(Boolean).join(' · ');
+          return `<div class="row" style="margin-bottom:4px"><div class="grow sub">${esc((p && p.name) || 'naamloos')}</div>
+            <span class="mut">${bits}</span>
+            <button class="small" data-nav="/vanklanten/${id}">Openen ›</button></div>`;
+        }).join('')}</div>`;
+      bindNav();
+    } catch { /* geen netwerk: Vandaag blijft gewoon werken */ }
   }
 
   // chat, check-ins en techniekvideo's van deze klant; null = tabel bestaat nog niet
@@ -6078,7 +6147,8 @@
         $app.innerHTML = topbar('Van klanten', '/') +
           `<div class="chips" style="margin-bottom:12px">${profiles.map((p) =>
             `<button class="chip" data-feed-client="${p.id}" aria-pressed="${p.id === active.id}">${esc(p.name || 'naamloos')}</button>`).join('')}</div>` +
-          `<p class="sub" style="margin:0 0 12px">Laatste 30 dagen van ${esc(active.name || 'deze klant')}.</p>` +
+          `<div class="row" style="margin:0 0 12px"><p class="sub grow" style="margin:0">Laatste 30 dagen van ${esc(active.name || 'deze klant')}.</p>
+            ${feedMsgs !== null && profiles.length > 1 ? '<button class="small" id="feed-broadcast">Bericht aan iedereen</button>' : ''}</div>` +
           (localClient ? `<div class="card">
             <div class="row"><div class="grow">
               <div class="title">Schema's klaarzetten</div>
@@ -6157,6 +6227,22 @@
         const feedMsgInput = document.getElementById('feed-msg-input');
         if (feedMsgInput) feedMsgInput.addEventListener('keydown', (ev) => {
           if (ev.key === 'Enter') { ev.preventDefault(); feedMsgSend.click(); }
+        });
+        // hetzelfde bericht naar alle gekoppelde klanten, bijv. een vakantiemelding
+        const broadcast = document.getElementById('feed-broadcast');
+        if (broadcast) broadcast.addEventListener('click', async () => {
+          const body = (prompt(`Bericht aan al je ${profiles.length} klanten:`) || '').trim();
+          if (!body) return;
+          broadcast.disabled = true;
+          try {
+            await cloud.insert('client_messages', profiles.map((p) => ({ client_id: p.id, coach_id: coachId, sender: 'coach', body })));
+            profiles.forEach((p) => sendPushTo(p.id, 'Bericht van je coach', body));
+            alert(`Verstuurd naar ${profiles.length} klanten.`);
+            render();
+          } catch (e) {
+            alert('Versturen mislukt: ' + e.message);
+            broadcast.disabled = false;
+          }
         });
         document.querySelectorAll('[data-ci-take]').forEach((b) => b.addEventListener('click', () => {
           const date = b.dataset.ciDate;
@@ -6338,6 +6424,12 @@
     const maxMinutes = Math.max(1, ...groups.map((g) => g.minutes));
     const maxSets = Math.max(1, ...groups.map((g) => g.sets));
     const barPct = (g) => Math.round(100 * (g.sets ? g.sets / maxSets : g.minutes / maxMinutes));
+    // werksets per spiergroep per trainingsweek, tegen de gangbare richtlijn van 10–20
+    const weeksTrained = new Set(workoutsOf(clientId).filter((w) => inPeriod(w.date, period)).map((w) => isoWeek(w.date))).size || 1;
+    const perWeek = (g) => Math.round((g.sets / weeksTrained) * 10) / 10;
+    const rated = groups.filter((g) => g.sets && g.group !== 'Cardio' && g.group !== 'Overig');
+    const lowGroups = rated.filter((g) => perWeek(g) < 10).map((g) => g.group);
+    const highGroups = rated.filter((g) => perWeek(g) > 20).map((g) => g.group);
 
     // attendance: last 12 weeks of days
     const days = [];
@@ -6353,14 +6445,6 @@
     $app.innerHTML = topbar(`Overzicht — ${c.name}`, `/klant/${clientId}`) +
       clientTabs(clientId, 'overzicht') +
       periodBar() +
-      `<div class="card">
-        <div class="row" style="margin-bottom:8px"><div class="title grow">Uitleg</div>
-          <button class="small ghost no-print" data-nav="/bibliotheek">Bibliotheek ›</button></div>
-        ${exerciseInfoHtml(name, clientId)}
-        <label class="field no-print" style="margin:10px 0 0"><span>Technieknotitie voor ${esc(c.name)}</span>
-          <textarea id="client-note" rows="2" placeholder="bijv. let op onderrug bij de laatste herhalingen">${esc(clientNote(clientId, name))}</textarea></label>
-        <button type="button" class="small no-print" id="save-note">Notitie opslaan</button>
-      </div>` +
       `<div class="stat-grid cols2">
         <div class="stat"><div class="lbl">Trainingen</div><div class="val">${totals.sessions}</div><div class="mut">${totals.minutes ? Math.round(totals.minutes / 60) + ' uur totaal' : 'geen tijd gelogd'}</div></div>
         <div class="stat"><div class="lbl">Sets</div><div class="val">${totals.sets}</div><div class="mut">zonder warming-up</div></div>
@@ -6393,8 +6477,12 @@
         ${groups.length ? groups.map((g) => `<div class="bar-row">
           <span>${esc(g.group)}</span>
           <span class="track"><span class="fill" style="width:${barPct(g)}%;background:${groupColor(g.group)}"></span></span>
-          <span class="val">${g.sets ? g.sets + ' sets' : fmtNum(g.minutes) + ' min'}</span>
+          <span class="val">${g.sets ? `${g.sets} sets <span class="mut">· ${fmtNum(perWeek(g))}/wk</span>` : fmtNum(g.minutes) + ' min'}</span>
         </div>`).join('') : '<p class="mut">Nog geen gegevens.</p>'}
+        ${rated.length ? `<p class="mut" style="margin:10px 0 0">Richtlijn: 10–20 werksets per spiergroep per week, gerekend over ${weeksTrained} trainingsweek${weeksTrained === 1 ? '' : 'en'}.${
+          lowGroups.length ? ` <span class="delta down">Onder: ${esc(lowGroups.join(', '))}.</span>` : ''}${
+          highGroups.length ? ` <span class="delta down">Boven: ${esc(highGroups.join(', '))}.</span>` : ''}${
+          !lowGroups.length && !highGroups.length ? ' <span class="delta up">Alles binnen de richtlijn.</span>' : ''}</p>` : ''}
         <p class="mut" style="margin:10px 0 0">Stel de spiergroep per oefening in op de oefeningpagina.</p>
       </div>` +
 

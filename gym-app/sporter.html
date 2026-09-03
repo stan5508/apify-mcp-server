@@ -18,6 +18,14 @@
     /* de schijfkleuren, gelijk aan de coach-app: duwen rood, trekken blauw, core geel, benen groen */
     --series-1: #e8384f; --series-2: #3d8bff; --series-3: #f2c200; --series-4: #2fbf62;
   }
+  /* licht thema, dezelfde tinten als de coach-app; te kiezen onder Coach → Instellingen */
+  :root[data-theme="light"] {
+    --page: #f2f2f0; --surface: #ffffff; --raised: #ececeb; --ink: #16181a; --ink-2: #4d545c; --muted: #666d76;
+    --grid: #e0e0dd; --baseline: #c2c2be; --border: rgba(22, 24, 26, 0.12);
+    --accent: #e39418; --accent-strong: #8a5200; --on-accent: #17130a; --wash: rgba(227, 148, 24, 0.16);
+    --good: #0f7b4f; --danger: #c0392b; --data: #c8102e; --data-wash: rgba(200, 16, 46, 0.12);
+    --series-1: #c8102e; --series-2: #0057b8; --series-3: #a87c00; --series-4: #007a2f;
+  }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--page); color: var(--ink); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
   main { max-width: 560px; margin: 0 auto; padding: 14px 14px 80px; }
@@ -54,7 +62,22 @@
   }
   .set-tick[aria-pressed="true"] { background: var(--good); border-color: var(--good); color: #fff; }
   .set-row.done input { border-color: var(--good); background: rgba(63, 158, 108, 0.16); }
+  .set-row.warm .n { color: var(--accent); font-weight: 650; }
+  .set-row.warm input { border-style: dashed; }
   .prev-line { color: var(--muted); font-size: 12.5px; margin: -2px 0 8px; }
+  .plates { color: var(--muted); font-size: 12.5px; margin: 2px 0 6px; min-height: 1em; }
+  .info-box { background: var(--raised); border-left: 3px solid var(--accent); border-radius: 8px; padding: 8px 10px; margin: 0 0 10px; font-size: 14px; white-space: pre-wrap; }
+  .info-box .mut { white-space: normal; }
+  .pr-card { border-color: var(--accent); background: var(--wash); }
+  .cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+  .cal div { aspect-ratio: 1; border-radius: 4px; background: var(--grid); }
+  .cal div.on { background: var(--good); }
+  .cal .head { background: transparent; color: var(--muted); font-size: 11px; text-align: center; aspect-ratio: auto; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
+  .chips button { padding: 6px 11px; border-radius: 999px; font-size: 13.5px; }
+  .seg { display: flex; gap: 6px; flex-wrap: wrap; }
+  .seg button[aria-pressed="true"] { background: var(--wash); border-color: var(--accent); color: var(--accent-strong); font-weight: 650; }
+  video.scan { width: 100%; border-radius: 8px; background: #000; margin-bottom: 8px; }
   .new-banner {
     display: flex; align-items: center; gap: 10px;
     border: 1px solid var(--accent); background: rgba(242, 169, 59, 0.14);
@@ -162,6 +185,72 @@
   const fmtDate = (iso) => new Date(iso + 'T12:00:00').toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' });
   const fmtNum = (n) => (Math.round(n * 10) / 10).toLocaleString('nl-NL');
   const MOMENTS = ['Ontbijt', 'Lunch', 'Diner', 'Snack'];
+
+  // ---------- rekenhulpjes voor in de sportschool ----------
+  const BAR = 20; // olympische stang; de coach-app rekent met dezelfde standaard
+  const PLATES = [25, 20, 15, 10, 5, 2.5, 1.25];
+  const isWarm = (s) => s.type === 'warmup';
+  // wat er per soort oefening ingevuld wordt: kracht en lichaamsgewicht kg × herh., cardio min en km
+  const FIELDS = {
+    kracht: [['weight', 'Gewicht', 'kg', 'decimal'], ['reps', 'Herh.', 'herh.', 'numeric']],
+    lichaamsgewicht: [['weight', 'Extra kg', '+kg', 'decimal'], ['reps', 'Herh.', 'herh.', 'numeric']],
+    cardio: [['minutes', 'Minuten', 'min', 'decimal'], ['distance', 'Afstand', 'km', 'decimal']],
+  };
+  const fieldsFor = (kind) => FIELDS[kind] || FIELDS.kracht;
+  const filled = (s, kind) => kind === 'cardio' ? (s.minutes > 0 || s.distance > 0) : (s.weight > 0 || s.reps > 0);
+  // Epley: geschat 1RM uit gewicht en herhalingen, net als in de coach-app
+  const epley = (w, r) => (r > 0 ? w * (1 + r / 30) : w);
+  const setText = (s, kind) => kind === 'cardio'
+    ? `${fmtNum(s.minutes || 0)} min · ${fmtNum(s.distance || 0)} km`
+    : `${fmtNum(s.weight || 0)}${kind === 'lichaamsgewicht' && s.weight > 0 ? '+' : ''} kg × ${s.reps || 0}`;
+  // schijven per kant voor een totaalgewicht op de stang
+  function platesFor(total) {
+    let perSide = (total - BAR) / 2;
+    if (perSide <= 0) return null;
+    const out = [];
+    for (const p of PLATES) {
+      const n = Math.floor((perSide + 1e-9) / p);
+      if (n > 0) { out.push(...Array(n).fill(p)); perSide -= n * p; }
+    }
+    return { plates: out, rest: Math.round(perSide * 100) / 100 };
+  }
+  // opbouwsets richting het eerste werkgewicht: ~50%×10, ~70%×5, ~85%×3, afgerond op 2,5
+  function warmupSetsFor(work) {
+    const out = [];
+    for (const [pct, reps] of [[0.5, 10], [0.7, 5], [0.85, 3]]) {
+      const w = Math.max(BAR, Math.round((work * pct) / 2.5) * 2.5);
+      if (w >= work || out.some((s) => s.weight === w)) continue;
+      out.push({ weight: w, reps, type: 'warmup' });
+    }
+    return out;
+  }
+
+  // basisproducten per 100 g voor als er geen internet is; zoeken via Open Food Facts blijft de eerste keus
+  const BASIC_FOODS = [
+    ['Havermout', 375, 13, 60, 7], ['Volkoren brood', 245, 10, 41, 3.5], ['Wit brood', 260, 8.5, 49, 2.5],
+    ['Rijst (gekookt)', 130, 2.7, 28, 0.3], ['Pasta (gekookt)', 155, 5.5, 30, 1], ['Aardappel (gekookt)', 80, 1.9, 17, 0.1],
+    ['Zoete aardappel', 86, 1.6, 20, 0.1], ['Quinoa (gekookt)', 120, 4.4, 21, 1.9], ['Couscous (gekookt)', 112, 3.8, 23, 0.2],
+    ['Kipfilet', 110, 23, 0, 1.5], ['Kippendij', 175, 19, 0, 11], ['Rundergehakt', 250, 19, 0, 19], ['Mager rundergehakt', 140, 21, 0, 6],
+    ['Biefstuk', 150, 27, 0, 4.5], ['Zalm', 200, 20, 0, 13], ['Tonijn (blik, water)', 105, 24, 0, 1], ['Witvis (kabeljauw)', 80, 18, 0, 0.7],
+    ['Garnalen', 85, 19, 0, 1], ['Ei', 145, 12.5, 0.5, 10], ['Eiwit (kip)', 50, 11, 0.7, 0], ['Tofu', 120, 12, 2, 7],
+    ['Magere kwark', 60, 10, 4, 0.3], ['Griekse yoghurt 0%', 57, 10, 4, 0.2], ['Griekse yoghurt 10%', 130, 5, 4, 10],
+    ['Halfvolle melk', 47, 3.5, 4.8, 1.5], ['Volle melk', 64, 3.4, 4.7, 3.6], ['Skyr', 63, 11, 4, 0.2], ['Cottage cheese', 98, 11, 3, 4.3],
+    ['Kaas 48+', 350, 24, 0, 28], ['Kaas 30+', 270, 30, 0, 17], ['Whey-eiwit (poeder)', 380, 78, 6, 5],
+    ['Banaan', 90, 1.1, 20, 0.3], ['Appel', 52, 0.3, 12, 0.2], ['Sinaasappel', 47, 0.9, 9, 0.1], ['Blauwe bessen', 57, 0.7, 12, 0.3],
+    ['Aardbeien', 32, 0.7, 6, 0.3], ['Druiven', 70, 0.6, 16, 0.2], ['Avocado', 160, 2, 2, 15],
+    ['Broccoli', 34, 2.8, 4, 0.4], ['Spinazie', 23, 2.9, 1, 0.4], ['Sperziebonen', 31, 1.8, 4, 0.2], ['Wortel', 41, 0.9, 8, 0.2],
+    ['Paprika', 26, 1, 4, 0.3], ['Tomaat', 18, 0.9, 3, 0.2], ['Komkommer', 15, 0.7, 2, 0.1], ['Sla (gemengd)', 17, 1.3, 2, 0.2],
+    ['Kikkererwten (blik)', 120, 7, 15, 2.5], ['Linzen (gekookt)', 115, 9, 17, 0.4], ['Zwarte bonen (blik)', 90, 6, 13, 0.5],
+    ['Pindakaas', 600, 25, 12, 50], ['Noten (gemengd)', 610, 20, 12, 53], ['Amandelen', 590, 21, 8, 51], ['Olijfolie', 900, 0, 0, 100],
+    ['Roomboter', 740, 0.5, 0.5, 82], ['Hummus', 230, 7, 12, 17], ['Rijstwafel', 390, 8, 80, 3], ['Cracker (volkoren)', 400, 10, 65, 10],
+    ['Muesli', 370, 9, 60, 9], ['Granola', 450, 10, 55, 20], ['Honing', 320, 0.3, 80, 0], ['Jam', 250, 0.3, 60, 0],
+    ['Chocolade (puur)', 550, 6, 40, 40], ['Chips', 530, 6, 50, 33], ['Cola', 42, 0, 10.6, 0], ['Sinaasappelsap', 45, 0.7, 10, 0.1],
+    ['Bier (pils)', 43, 0.5, 3, 0], ['Wijn (rood)', 85, 0.1, 2.6, 0], ['Cappuccino', 45, 2.5, 4, 2], ['Koffie (zwart)', 2, 0.2, 0, 0],
+  ].map(([name, kcal, protein, carbs, fat]) => ({ name, kcal, protein, carbs, fat, basic: true }));
+  const basicSearch = (term) => {
+    const q = term.trim().toLowerCase();
+    return q ? BASIC_FOODS.filter((f) => f.name.toLowerCase().includes(q)) : [];
+  };
 
   function toast(msg, ms = 2500) {
     $status.textContent = msg;
@@ -299,10 +388,25 @@
   const load = () => { try { return JSON.parse(localStorage.getItem(LOCAL_KEY) || 'null') || {}; } catch { return {}; } };
   let local = load();
   const saveLocal = () => localStorage.setItem(LOCAL_KEY, JSON.stringify(local));
+  // eigen voorkeuren van de sporter, alleen op dit toestel
+  local.settings = { rest: 90, sound: true, theme: 'dark', water: 2000, ...(local.settings || {}) };
+  local.recipes = local.recipes || [];
+  const settings = local.settings;
+  function applyTheme() {
+    document.documentElement.setAttribute('data-theme', settings.theme === 'light' ? 'light' : 'dark');
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.content = settings.theme === 'light' ? '#f2f2f0' : '#0b0d0f';
+  }
+  applyTheme();
 
   let ui = { tab: 'training', date: todayIso(), draft: null, meals: [], workouts: [], water: 0, schemas: [], schemaError: '', history: new Map(), sessions: [], progressEx: null, appointments: [], measurements: [], measMetric: null, plan: null, profile: null, busy: false,
     // coach-tab: null betekent "tabel bestaat nog niet bij de coach", [] betekent leeg
-    goals: [], messages: null, checkins: null, videos: null, pushKey: null, msgDraft: '', ci: { energy: 0, sleep: 0, motivation: 0 }, videoBusy: false };
+    goals: [], messages: null, checkins: null, videos: null, pushKey: null, msgDraft: '', ci: { energy: 0, sleep: 0, motivation: 0 }, videoBusy: false,
+    // sinds versie 66: open uitleg per oefening, records van de laatste opslag, maaltijden van de laatste 30 dagen
+    infoOpen: null, lastPrs: null, recentMeals: [], scanning: false, clockTick: null };
+  // een begonnen training overleeft het sluiten van de app
+  const persistDraft = () => { local.draft = ui.draft || null; saveLocal(); };
+  if (local.draft && local.draft.entries) ui.draft = local.draft;
 
   // ---------- views ----------
   function setupView(message) {
@@ -351,12 +455,14 @@
   }
 
   function inviteView() {
+    // via de koppel-link van de coach staan naam en code al klaar
+    const pending = local.pendingInvite || {};
     $app.innerHTML = `
       <h1>Koppelen aan je coach</h1>
-      <p class="sub">Vul je naam en de uitnodigingscode in die je van je coach kreeg.</p>
+      <p class="sub">${pending.code ? 'Controleer je naam en tik op Koppelen.' : 'Vul je naam en de uitnodigingscode in die je van je coach kreeg.'}</p>
       <div class="card">
-        <label class="field"><span>Je naam</span><input id="i-name" placeholder="Voornaam Achternaam"></label>
-        <label class="field"><span>Uitnodigingscode</span><input id="i-code" placeholder="ABCD1234" style="text-transform:uppercase"></label>
+        <label class="field"><span>Je naam</span><input id="i-name" placeholder="Voornaam Achternaam" value="${esc(pending.name || '')}"></label>
+        <label class="field"><span>Uitnodigingscode</span><input id="i-code" placeholder="ABCD1234" style="text-transform:uppercase" value="${esc(pending.code || '')}"></label>
         <button class="primary wide" id="i-go">Koppelen</button>
         <p class="mut" id="i-msg" style="margin:10px 0 0"></p>
       </div>
@@ -370,6 +476,8 @@
       try {
         await cloud.ensureProfile('client', name);
         await cloud.rpc('redeem_invite', { p_code: code });
+        delete local.pendingInvite;
+        saveLocal();
         toast('Gekoppeld aan je coach.');
         start();
       } catch (e) {
@@ -387,47 +495,86 @@
     </div>`;
   }
 
+  // schijven per kant voor het zwaarste ingevulde gewicht van een oefening
+  function platesLine(sets) {
+    const top = Math.max(0, ...sets.map((s) => num(s.weight)));
+    const p = top > BAR ? platesFor(top) : null;
+    if (!p) return '';
+    const fmtPlate = (x) => x.toLocaleString('nl-NL', { maximumFractionDigits: 2 });
+    return `Per kant: ${p.plates.map(fmtPlate).join(' + ')}${p.rest ? ` (${fmtPlate(p.rest)} kg past niet)` : ''} · stang ${BAR}`;
+  }
+  // uitleg die de coach meestuurde met het schema: notitie voor jou, uitvoering, aandachtspunten, video
+  function infoHtml(e) {
+    const i = e.info || {};
+    return `<div class="info-box">${i.note ? `<strong>Van je coach:</strong> ${esc(i.note)}\n` : ''}${i.instructions ? esc(i.instructions) + '\n' : ''}${i.cues ? `<strong>Let op:</strong> ${esc(i.cues)}\n` : ''}${
+      i.video ? `<a href="${esc(i.video)}" target="_blank" rel="noopener">Video bekijken ↗</a>` : ''}</div>`;
+  }
+  const elapsedText = (startedAt) => {
+    const m = Math.max(0, Math.round((Date.now() - startedAt) / 60000));
+    return m < 60 ? `${m} min` : `${Math.floor(m / 60)} u ${m % 60} min`;
+  };
+  // samenvatting om te delen of te kopiëren
+  function workoutText(w) {
+    return `Training ${fmtDateFull(w.date)}${w.duration_min ? ` (${w.duration_min} min)` : ''}\n` +
+      (w.entries || []).map((e) => `• ${e.name}: ${(e.sets || []).filter((s) => !isWarm(s)).map((s) => setText(s, e.kind || 'kracht')).join(', ')}`).join('\n') +
+      (w.notes ? `\n${w.notes}` : '');
+  }
+
   function trainingTab() {
     const draft = ui.draft;
     const done = ui.workouts.filter((w) => w.date === ui.date);
     return `
       ${dayHeader()}
+      ${ui.lastPrs && ui.lastPrs.length ? `<div class="card pr-card">
+        <div class="title">🏆 Nieuw record${ui.lastPrs.length === 1 ? '' : 's'}</div>
+        ${ui.lastPrs.map((p) => `<div class="sub">${esc(p.name)}: <strong>${esc(p.text)}</strong>${p.was ? ` <span class="mut">(was ${esc(p.was)})</span>` : ''}</div>`).join('')}
+      </div>` : ''}
       ${done.map((w) => `<div class="card">
         <div class="row"><div class="grow"><div class="title">Training opgeslagen</div>
           <div class="sub">${(w.entries || []).map((e) => esc(e.name)).join(' · ')}</div>
           ${w.duration_min ? `<div class="mut">${w.duration_min} minuten</div>` : ''}</div>
+          <button class="small" data-share-workout="${w.id}" aria-label="Training delen">Delen</button>
           <button class="small danger ghost" data-del-workout="${w.id}">✕</button></div>
       </div>`).join('')}
       ${draft ? `<div class="card">
-        <div class="title" style="margin-bottom:8px">${draft.schemaName ? esc(draft.schemaName) : 'Training bezig'}</div>
+        <div class="row" style="margin-bottom:8px"><div class="grow title">${draft.schemaName ? esc(draft.schemaName) : 'Training bezig'}</div>
+          <span class="mut" id="sess-clock">${elapsedText(draft.startedAt)}</span></div>
         ${draft.entries.map((e, xi) => {
+          const kind = e.kind || 'kracht';
+          const fields = fieldsFor(kind);
           const prev = lastTime(e.name);
           const ghost = (si, f, fallback) => {
             const p = prev && prev.sets[si];
             return p && p[f] ? esc(fmtNum(p[f])) : fallback;
           };
+          const canWarm = kind === 'kracht' && !e.sets.some(isWarm) && e.sets.some((s) => num(s.weight) > BAR);
           return `<div class="card" style="margin-bottom:8px">
           <div class="row" style="margin-bottom:4px"><div class="grow title">${esc(e.name)}</div>
+            ${e.info ? `<button class="small ghost" data-info="${xi}" aria-pressed="${ui.infoOpen === xi}" aria-label="Uitleg">ⓘ</button>` : ''}
             <button class="small danger ghost" data-del-ex="${xi}">✕</button></div>
-          <div class="prev-line">${esc(prevLine(e.name))}</div>
-          <div class="set-row"><span></span><span class="col-head">Gewicht</span><span class="col-head">Herh.</span><span></span><span></span></div>
-          ${e.sets.map((st, si) => `<div class="set-row${st.done ? ' done' : ''}">
-            <span class="n">${si + 1}</span>
-            <input data-set="${xi}.${si}" data-f="weight" type="text" inputmode="decimal" value="${st.weight || ''}" placeholder="${ghost(si, 'weight', 'kg')}">
-            <input data-set="${xi}.${si}" data-f="reps" type="number" inputmode="numeric" value="${st.reps || ''}" placeholder="${ghost(si, 'reps', 'herh.')}">
+          ${ui.infoOpen === xi && e.info ? infoHtml(e) : ''}
+          <div class="prev-line">${esc(prevLine(e.name, kind))}${e.rest ? ` · rust ${e.rest} s` : ''}</div>
+          <div class="set-row"><span></span>${fields.map(([, label]) => `<span class="col-head">${label}</span>`).join('')}<span></span><span></span></div>
+          ${e.sets.map((st, si) => `<div class="set-row${st.done ? ' done' : ''}${isWarm(st) ? ' warm' : ''}">
+            <span class="n">${isWarm(st) ? 'W' : e.sets.filter((s, j) => j < si && !isWarm(s)).length + 1}</span>
+            ${fields.map(([f, , ph, mode]) => `<input data-set="${xi}.${si}" data-f="${f}" type="text" inputmode="${mode}" value="${st[f] || ''}" placeholder="${ghost(si, f, ph)}">`).join('')}
             <button type="button" class="set-tick" data-tick="${xi}.${si}" aria-pressed="${!!st.done}" aria-label="Set ${si + 1} afvinken">✓</button>
             <button class="small danger ghost" data-del-set="${xi}.${si}">✕</button>
           </div>`).join('')}
-          <button class="small" data-add-set="${xi}">+ Set</button>
+          ${kind === 'kracht' ? `<div class="plates" data-plates="${xi}">${esc(platesLine(e.sets))}</div>` : ''}
+          <div class="row"><button class="small" data-add-set="${xi}">+ Set</button>
+            ${canWarm ? `<button class="small ghost" data-warmup="${xi}">+ Warming-up</button>` : ''}</div>
         </div>`;
         }).join('')}
         <div class="row" style="margin-top:8px">
           <input id="new-ex" class="grow" placeholder="Oefening toevoegen" list="known-ex">
+          <select id="new-kind" aria-label="Soort" style="width:auto"><option value="kracht">kg × herh.</option><option value="lichaamsgewicht">lichaamsgewicht</option><option value="cardio">cardio</option></select>
           <button class="small" id="add-ex">+</button>
         </div>
         <datalist id="known-ex">${(local.knownExercises || []).map((n) => `<option value="${esc(n)}">`).join('')}</datalist>
         <label class="field" style="margin-top:10px"><span>Notitie</span><input id="w-note" value="${esc(draft.notes || '')}" placeholder="hoe ging het?"></label>
         <button class="primary wide" id="save-workout">Training opslaan</button>
+        <button class="small danger ghost wide" id="discard-workout" style="margin-top:8px">Training weggooien</button>
       </div>`
       : `${hasNewSchema() ? `<div class="new-banner">
             <div class="grow"><strong>Je coach heeft een nieuw schema klaargezet.</strong>
@@ -447,7 +594,8 @@
           : `<div class="card"><div class="sub">${ui.schemaError
               ? esc(ui.schemaError)
               : 'Je coach heeft nog geen schema klaargezet. Zodra dat gebeurt staat het hier.'}</div></div>`}
-        <button class="primary wide" id="start-workout">${(ui.schemas || []).length ? 'Losse training starten' : 'Training starten'}</button>`}`;
+        <button class="primary wide" id="start-workout">${(ui.schemas || []).length ? 'Losse training starten' : 'Training starten'}</button>
+        ${ui.sessions.length ? `<button class="wide" id="repeat-last" style="margin-top:8px">Vorige training herhalen (${esc(fmtDate(ui.sessions[0].date))})</button>` : ''}`}`;
   }
 
   // de doelen die je coach zette, met de voortgang die hij meestuurde
@@ -537,8 +685,11 @@
     if (ui.progressEx) {
       const pts = seriesFor(ui.progressEx);
       const unit = pts.length ? pts[pts.length - 1].unit : 'kg';
+      const kind = pts.length ? pts[pts.length - 1].kind : 'kracht';
       const best = pts.length ? Math.max(...pts.map((p) => p.value)) : 0;
       const bestDate = pts.find((p) => p.value === best);
+      // geschat 1RM (Epley) over alle werksets; alleen zinvol bij gewicht × herhalingen
+      const e1rm = kind === 'kracht' ? Math.max(0, ...pts.flatMap((p) => p.sets.map((s) => epley(s.weight || 0, s.reps || 0)))) : 0;
       return `<div class="row" style="margin-bottom:10px">
           <button class="small" id="prog-back">‹ Terug</button>
           <div class="grow title">${esc(ui.progressEx)}</div>
@@ -546,6 +697,7 @@
         <div class="stat-grid" style="margin-bottom:10px">
           <div class="card"><div class="mut">Record</div><div class="title">${fmtNum(best)} ${esc(unit)}</div>
             <div class="mut">${bestDate ? esc(fmtDate(bestDate.date)) : ''}</div></div>
+          ${e1rm > 0 ? `<div class="card"><div class="mut">Geschat 1RM</div><div class="title">${fmtNum(Math.round(e1rm * 2) / 2)} kg</div><div class="mut">Epley-formule</div></div>` : ''}
           <div class="card"><div class="mut">Sessies</div><div class="title">${pts.length}</div></div>
         </div>
         <div class="card">${chartSvg(pts, unit)}</div>
@@ -553,7 +705,7 @@
         ${[...pts].reverse().map((p) => `<div class="card">
           <div class="row"><div class="grow">
             <div class="title">${esc(fmtDateFull(p.date))}${p.value === best ? ' 🏆' : ''}</div>
-            <div class="sub">${p.sets.map((st) => `${fmtNum(st.weight || 0)} kg × ${st.reps || 0}`).join(' · ')}</div>
+            <div class="sub">${p.sets.map((st) => setText(st, kind)).join(' · ')}</div>
           </div></div>
         </div>`).join('')}`;
     }
@@ -596,7 +748,35 @@
             <div class="grow sub">Record ${fmtNum(best)} ${esc(unit)} · ${pts.length} sessie${pts.length === 1 ? '' : 's'}</div>
             <span class="mut">›</span></div>
         </div>`;
-      }).join('')}`;
+      }).join('')}
+      ${historyBlock()}`;
+  }
+
+  // de laatste twaalf weken als stippen, en daaronder elke training met een knop om hem te herhalen
+  function historyBlock() {
+    const trained = new Set(ui.sessions.map((w) => w.date));
+    const days = [];
+    const cursor = new Date(todayIso() + 'T12:00:00');
+    cursor.setDate(cursor.getDate() - ((cursor.getDay() + 6) % 7) + 6); // zondag van deze week
+    for (let i = 0; i < 84; i++) {
+      const iso = cursor.toISOString().slice(0, 10);
+      days.unshift({ iso, on: trained.has(iso), future: iso > todayIso() });
+      cursor.setDate(cursor.getDate() - 1);
+    }
+    const shown = ui.sessions.slice(0, ui.historyAll ? 200 : 10);
+    return `<div class="eyebrow">Aanwezigheid (12 weken)</div>
+      <div class="card">
+        <div class="cal">${['m', 'd', 'w', 'd', 'v', 'z', 'z'].map((d) => `<div class="head">${d}</div>`).join('')}
+          ${days.map((d) => `<div class="${d.on ? 'on' : ''}" title="${d.iso}"${d.future ? ' style="opacity:.35"' : ''}></div>`).join('')}</div>
+      </div>
+      <div class="eyebrow">Geschiedenis</div>
+      ${shown.map((w) => `<div class="card">
+        <div class="row"><div class="grow">
+          <div class="title">${esc(fmtDateFull(w.date))}</div>
+          <div class="sub">${(w.entries || []).map((e) => `${esc(e.name)} <span class="mut">${(e.sets || []).filter((s) => !isWarm(s)).length}×</span>`).join(' · ')}</div>
+        </div><button class="small" data-repeat="${w.id}">Herhaal</button></div>
+      </div>`).join('')}
+      ${ui.sessions.length > shown.length ? `<button class="wide ghost" id="history-more">Alle ${ui.sessions.length} trainingen tonen</button>` : ''}`;
   }
 
   // what the coach set as a target, next to what you have eaten today
@@ -636,41 +816,99 @@
     </div>`;
   }
 
+  const sumMacros = (list) => list.reduce((t, m) => ({
+    kcal: t.kcal + Number(m.kcal || 0), protein: t.protein + Number(m.protein || 0),
+    carbs: t.carbs + Number(m.carbs || 0), fat: t.fat + Number(m.fat || 0),
+  }), { kcal: 0, protein: 0, carbs: 0, fat: 0 });
+
+  // gemiddelde per gelogde dag over de laatste zeven dagen, naast het plan van de coach
+  function weekAverageHtml() {
+    const since = addDays(todayIso(), -6);
+    const byDate = new Map();
+    for (const m of ui.recentMeals) {
+      if (m.date < since || m.date > todayIso()) continue;
+      byDate.set(m.date, [...(byDate.get(m.date) || []), m]);
+    }
+    if (byDate.size < 2) return '';
+    const days = [...byDate.values()];
+    const avg = sumMacros(days.flat());
+    for (const k of Object.keys(avg)) avg[k] = Math.round(avg[k] / days.length);
+    const plan = ui.plan;
+    const d = (key) => plan && Number(plan[key]) > 0 ? ` <span class="${avg[key] - Number(plan[key]) > 0 ? 'trend down' : 'trend up'}" style="padding:1px 6px">${avg[key] - Number(plan[key]) > 0 ? '+' : ''}${avg[key] - Math.round(Number(plan[key]))}</span>` : '';
+    return `<div class="card">
+      <div class="mut">Gemiddeld per dag, laatste 7 dagen (${days.length} gelogd)${plan ? ' · verschil met je plan' : ''}</div>
+      <div class="stat-grid" style="margin-top:8px">
+        <div class="stat"><div class="lbl">Calorieën</div><div class="val">${avg.kcal}${d('kcal')}</div></div>
+        <div class="stat"><div class="lbl">Eiwit</div><div class="val">${avg.protein} g${d('protein')}</div></div>
+        <div class="stat"><div class="lbl">Koolh.</div><div class="val">${avg.carbs} g${d('carbs')}</div></div>
+        <div class="stat"><div class="lbl">Vet</div><div class="val">${avg.fat} g${d('fat')}</div></div>
+      </div>
+    </div>`;
+  }
+  // wat je het vaakst logde in de laatste 30 dagen, met dezelfde hoeveelheid
+  function frequentFoods(limit = 8) {
+    const counts = new Map();
+    for (const m of ui.recentMeals) {
+      const key = String(m.name || '').trim().toLowerCase();
+      if (!key) continue;
+      const cur = counts.get(key) || { uses: 0, last: m };
+      cur.uses++;
+      if (m.date >= cur.last.date) cur.last = m;
+      counts.set(key, cur);
+    }
+    return [...counts.values()].sort((a, b) => b.uses - a.uses).slice(0, limit).map((c) => c.last);
+  }
+  const mealFields = (m) => ({ name: m.name, amount: m.amount || null, kcal: Number(m.kcal || 0), protein: Number(m.protein || 0), carbs: Number(m.carbs || 0), fat: Number(m.fat || 0) });
+
   function foodTab() {
     const meals = ui.meals.filter((m) => m.date === ui.date);
-    const totals = meals.reduce((t, m) => ({
-      kcal: t.kcal + Number(m.kcal || 0), protein: t.protein + Number(m.protein || 0),
-      carbs: t.carbs + Number(m.carbs || 0), fat: t.fat + Number(m.fat || 0),
-    }), { kcal: 0, protein: 0, carbs: 0, fat: 0 });
+    const totals = sumMacros(meals);
+    const yesterday = ui.recentMeals.filter((m) => m.date === addDays(ui.date, -1));
     const group = (moment) => {
       const items = meals.filter((m) => m.moment === moment);
       return `<div class="card">
         <div class="row" style="margin-bottom:6px"><div class="title grow">${moment}</div>
           <div class="mut">${Math.round(items.reduce((t, m) => t + Number(m.kcal || 0), 0))} kcal</div>
+          ${items.length ? `<button class="small ghost" data-save-recipe="${moment}" aria-label="Bewaar ${moment} als maaltijd">Bewaar</button>` : ''}
           <button class="small" data-add-meal="${moment}">+</button></div>
         ${items.length ? items.map((m) => `<div class="row" style="margin-bottom:4px">
-          <div class="grow"><div class="sub">${esc(m.name)}</div>
+          <div class="grow"><div class="sub">${esc(m.name)}${m.amount ? ` <span class="mut">${fmtNum(m.amount)} g</span>` : ''}</div>
             <div class="mut">${Math.round(m.kcal || 0)} kcal · E ${fmtNum(m.protein || 0)} · K ${fmtNum(m.carbs || 0)} · V ${fmtNum(m.fat || 0)}</div></div>
           <button class="small danger ghost" data-del-meal="${m.id}">✕</button></div>`).join('')
           : '<div class="mut">Niets gelogd.</div>'}
       </div>`;
     };
+    const frequent = frequentFoods();
+    const waterGoal = settings.water || 2000;
     return `
       ${dayHeader()}
       ${planCardHtml(totals)}
+      ${weekAverageHtml()}
+      ${!meals.length && yesterday.length ? `<button class="wide" id="copy-yesterday" style="margin-bottom:10px">Kopieer gisteren (${yesterday.length} item${yesterday.length === 1 ? '' : 's'})</button>` : ''}
       ${ui.addMoment ? `<div class="card">
         <div class="row" style="margin-bottom:8px"><div class="title grow">Toevoegen aan ${esc(ui.addMoment)}</div>
           <button class="small ghost" id="meal-close">Sluiten</button></div>
         <div class="row" style="margin-bottom:8px">
           <input id="food-q" class="grow" placeholder="Zoek een product…">
           <button class="small" id="food-search">Zoek</button>
+          ${'BarcodeDetector' in window ? '<button class="small" id="food-scan" aria-label="Barcode scannen">📷</button>' : ''}
+        </div>
+        ${ui.scanning ? '<video class="scan" id="scan-video" playsinline muted></video>' : ''}
+        <div class="row" style="margin-bottom:8px">
+          <input id="food-code" class="grow" inputmode="numeric" placeholder="Of typ de barcode (cijfers onder de streepjes)">
+          <button class="small" id="food-code-go">Zoek op</button>
         </div>
         <p class="mut" id="food-msg" style="margin:0 0 8px">${esc(ui.foodMsg || '')}</p>
         <div id="food-results">${(ui.foodResults || []).map((f, i) => `<div class="row" style="margin-bottom:8px">
-          <div class="grow"><div class="sub">${esc(f.name)}</div><div class="mut">${Math.round(f.kcal)} kcal / 100 g</div></div>
+          <div class="grow"><div class="sub">${esc(f.name)}</div><div class="mut">${Math.round(f.kcal)} kcal / 100 g${f.basic ? ' · basislijst' : ''}</div></div>
           <input class="pick-amount" data-idx="${i}" type="text" inputmode="decimal" value="100" style="width:72px">
           <button class="small primary" data-pick="${i}">+</button>
         </div>`).join('')}</div>
+        ${local.recipes.length ? `<div class="mut" style="margin:6px 0 4px">Mijn maaltijden</div>
+          <div class="chips">${local.recipes.map((r, i) => `<button data-recipe="${i}" title="${esc(r.items.map((x) => x.name).join(', '))}">${esc(r.name)} <span class="mut">${Math.round(sumMacros(r.items).kcal)} kcal</span></button>
+            <button class="danger ghost" data-del-recipe="${i}" aria-label="Maaltijd ${esc(r.name)} verwijderen">✕</button>`).join('')}</div>` : ''}
+        ${frequent.length ? `<div class="mut" style="margin:6px 0 4px">Vaak gebruikt</div>
+          <div class="chips">${frequent.map((m, i) => `<button data-frequent="${i}">${esc(m.name)}${m.amount ? ` <span class="mut">${fmtNum(m.amount)} g</span>` : ''}</button>`).join('')}</div>` : ''}
         <form id="quick-meal">
           <div class="row" style="margin-bottom:8px">
             <input name="name" class="grow" placeholder="Zelf invullen: wat at je?" required>
@@ -688,8 +926,8 @@
       <div class="eyebrow">Water</div>
       <div class="card">
         <div class="bar-row"><span>Vandaag</span>
-          <span class="track"><span class="fill" style="width:${Math.min(100, Math.round((ui.water / 2000) * 100))}%"></span></span>
-          <span class="val">${(ui.water / 1000).toLocaleString('nl-NL')} l</span></div>
+          <span class="track"><span class="fill" style="width:${Math.min(100, Math.round((ui.water / waterGoal) * 100))}%"></span></span>
+          <span class="val">${(ui.water / 1000).toLocaleString('nl-NL')} / ${(waterGoal / 1000).toLocaleString('nl-NL')} l</span></div>
         <div class="row"><button class="small" data-water="250">+250 ml</button>
           <button class="small" data-water="500">+500 ml</button>
           <button class="small ghost" data-water="-250">−250</button></div>
@@ -760,7 +998,22 @@
           </div>`).join('')}` : ''}
       </div>`}
 
-      ${pushBlock()}`;
+      ${pushBlock()}
+      ${settingsBlock()}`;
+  }
+
+  // eigen voorkeuren: rusttijd, geluid, thema, waterdoel — alleen op dit toestel
+  function settingsBlock() {
+    const seg = (key, options) => `<div class="seg">${options.map(([v, label]) =>
+      `<button type="button" data-setting="${key}.${v}" aria-pressed="${String(settings[key]) === String(v)}">${label}</button>`).join('')}</div>`;
+    return `<div class="eyebrow">Instellingen</div>
+      <div class="card">
+        <label class="field"><span>Rusttijd als je coach er geen meegeeft</span>${seg('rest', [[60, '1:00'], [90, '1:30'], [120, '2:00'], [180, '3:00']])}</label>
+        <label class="field"><span>Geluid als de rust voorbij is</span>${seg('sound', [[true, 'Aan'], [false, 'Uit']])}</label>
+        <label class="field"><span>Thema</span>${seg('theme', [['dark', 'Donker'], ['light', 'Licht']])}</label>
+        <label class="field"><span>Waterdoel per dag</span>${seg('water', [[1500, '1,5 l'], [2000, '2 l'], [2500, '2,5 l'], [3000, '3 l']])}</label>
+        <p class="mut" style="margin:0">Coachlog versie 66 · ingelogd als ${esc(cloud.userEmail() || '')}</p>
+      </div>`;
   }
 
   function pushBlock() {
@@ -824,6 +1077,15 @@
       <p class="sub" style="margin:0 0 12px">${esc(fmtDateFull(ui.date))}</p>
       ${ui.tab === 'training' ? trainingTab() : ui.tab === 'voortgang' ? progressTab() : ui.tab === 'voeding' ? foodTab() : coachTab()}`;
     bindApp();
+    persistDraft();
+    // de sessieklok loopt zonder het scherm opnieuw te tekenen
+    clearInterval(ui.clockTick);
+    if (ui.draft && ui.tab === 'training') {
+      ui.clockTick = setInterval(() => {
+        const el = document.getElementById('sess-clock');
+        if (el && ui.draft) el.textContent = elapsedText(ui.draft.startedAt);
+      }, 15000);
+    }
     if (ui.tab === 'coach') {
       const list = document.getElementById('msg-list');
       if (list) list.scrollTop = list.scrollHeight;
@@ -837,7 +1099,28 @@
     document.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => {
       ui.tab = b.dataset.tab;
       ui.progressEx = null;
+      ui.lastPrs = null;
       appView();
+    }));
+    // instellingen (Coach-tab)
+    document.querySelectorAll('[data-setting]').forEach((b) => b.addEventListener('click', () => {
+      const [key, raw] = b.dataset.setting.split('.');
+      settings[key] = raw === 'true' ? true : raw === 'false' ? false : /^\d+$/.test(raw) ? Number(raw) : raw;
+      saveLocal();
+      applyTheme();
+      appView();
+    }));
+    // voortgang: geschiedenis
+    const histMore = document.getElementById('history-more');
+    if (histMore) histMore.addEventListener('click', () => { ui.historyAll = true; appView(); });
+    document.querySelectorAll('[data-repeat]').forEach((b) => b.addEventListener('click', () => {
+      const w = ui.sessions.find((x) => x.id === b.dataset.repeat);
+      if (!w) return;
+      if (ui.draft && !confirm('Er is al een training bezig. Die vervangen?')) return;
+      startFromWorkout(w);
+      ui.tab = 'training';
+      ui.date = todayIso();
+      loadDay().then(appView, appView);
     }));
     document.querySelectorAll('[data-meas]').forEach((b) => b.addEventListener('click', () => {
       ui.measMetric = b.dataset.meas; appView();
@@ -859,13 +1142,17 @@
     const start = document.getElementById('start-workout');
     if (start) start.addEventListener('click', () => {
       ui.draft = { entries: [], notes: '', startedAt: Date.now() };
+      ui.lastPrs = null;
       appView();
     });
+    const repeatLast = document.getElementById('repeat-last');
+    if (repeatLast) repeatLast.addEventListener('click', () => { startFromWorkout(ui.sessions[0]); appView(); });
     document.querySelectorAll('[data-use-schema]').forEach((b) => b.addEventListener('click', () => {
       const sc = ui.schemas[Number(b.dataset.useSchema)];
       if (!sc) return;
       markSchemasSeen();
       startFromSchema(sc);
+      ui.lastPrs = null;
       appView();
     }));
     const addEx = document.getElementById('add-ex');
@@ -874,29 +1161,77 @@
       const name = input.value.trim();
       if (!name) return;
       syncDraft();
-      ui.draft.entries.push({ name, kind: 'kracht', sets: [{ weight: 0, reps: 0 }] });
+      const kind = document.getElementById('new-kind').value || 'kracht';
+      // bekende oefening: dezelfde soort als de vorige keer
+      const prev = lastTime(name);
+      ui.draft.entries.push({ name, kind: prev && prev.kind ? prev.kind : kind, sets: [{}] });
       local.knownExercises = [...new Set([...(local.knownExercises || []), name])];
       saveLocal();
       appView();
     });
+    document.querySelectorAll('[data-info]').forEach((b) => b.addEventListener('click', () => {
+      syncDraft();
+      const xi = Number(b.dataset.info);
+      ui.infoOpen = ui.infoOpen === xi ? null : xi;
+      appView();
+    }));
+    document.querySelectorAll('[data-warmup]').forEach((b) => b.addEventListener('click', () => {
+      syncDraft();
+      const e = ui.draft.entries[Number(b.dataset.warmup)];
+      const work = e.sets.map((s) => num(s.weight)).find((v) => v > 0) || 0;
+      const ramp = warmupSetsFor(work);
+      if (!ramp.length) { toast(`${fmtNum(work)} kg is te licht voor opbouwsets — pak gewoon de stang.`); return; }
+      e.sets.unshift(...ramp);
+      appView();
+    }));
     document.querySelectorAll('[data-tick]').forEach((b) => b.addEventListener('click', () => {
       syncDraft();
       const [xi, si] = b.dataset.tick.split('.').map(Number);
       const entry = ui.draft.entries[xi];
+      const kind = entry.kind || 'kracht';
       const set = entry.sets[si];
       set.done = !set.done;
       if (set.done) {
+        // leeg afgevinkt = "zelfde als vorige keer": de spookwaarden worden echt
+        if (!filled(set, kind)) {
+          const p = lastTime(entry.name);
+          const src = p && (p.sets[si] || p.sets[p.sets.length - 1]);
+          if (src) for (const [f] of fieldsFor(kind)) set[f] = num(src[f]);
+        }
         buzz(35);
-        startRest(entry.rest > 0 ? entry.rest : 90);
+        if (!isWarm(set)) startRest(entry.rest > 0 ? entry.rest : settings.rest || 90);
       }
       appView();
     }));
     document.querySelectorAll('[data-add-set]').forEach((b) => b.addEventListener('click', () => {
       syncDraft();
       const e = ui.draft.entries[Number(b.dataset.addSet)];
-      const last = e.sets[e.sets.length - 1];
-      e.sets.push(last ? { ...last } : { weight: 0, reps: 0 });
+      const last = [...e.sets].reverse().find((s) => !isWarm(s)) || e.sets[e.sets.length - 1];
+      e.sets.push(last ? { ...last, done: false, type: undefined } : {});
       appView();
+    }));
+    // typen bewaart meteen (app dicht = niets kwijt) en werkt de schijven bij
+    document.querySelectorAll('[data-set]').forEach((inp) => inp.addEventListener('input', () => {
+      syncDraft();
+      const xi = Number(inp.dataset.set.split('.')[0]);
+      const el = document.querySelector(`[data-plates="${xi}"]`);
+      if (el) el.textContent = platesLine(ui.draft.entries[xi].sets);
+    }));
+    const discard = document.getElementById('discard-workout');
+    if (discard) discard.addEventListener('click', () => {
+      if (!confirm('Deze training weggooien? Wat je invulde gaat verloren.')) return;
+      ui.draft = null;
+      stopRest();
+      appView();
+    });
+    document.querySelectorAll('[data-share-workout]').forEach((b) => b.addEventListener('click', async () => {
+      const w = ui.workouts.find((x) => x.id === b.dataset.shareWorkout);
+      if (!w) return;
+      const text = workoutText(w);
+      try {
+        if (navigator.share) await navigator.share({ title: 'Mijn training', text });
+        else { await navigator.clipboard.writeText(text); toast('Gekopieerd — plak het in een bericht.'); }
+      } catch { /* delen afgebroken */ }
     }));
     document.querySelectorAll('[data-del-set]').forEach((b) => b.addEventListener('click', () => {
       syncDraft();
@@ -930,13 +1265,74 @@
       const term = document.getElementById('food-q').value.trim();
       if (!term) return;
       ui.foodMsg = 'Zoeken…'; appView();
+      // de basislijst staat altijd vooraan; Open Food Facts vult aan zolang er internet is
+      const basics = basicSearch(term);
       try {
-        ui.foodResults = await searchProducts(term);
+        const online = await searchProducts(term);
+        ui.foodResults = [...basics, ...online];
         ui.foodMsg = ui.foodResults.length ? '' : 'Niets gevonden — vul het hieronder zelf in.';
       } catch (e) {
-        ui.foodMsg = 'Zoeken lukte niet (' + e.message + '). Vul het hieronder zelf in.';
+        ui.foodResults = basics;
+        ui.foodMsg = basics.length ? 'Geen internet; dit is de basislijst.' : 'Zoeken lukte niet (' + e.message + '). Vul het hieronder zelf in.';
       }
       appView();
+    });
+    const foodQ = document.getElementById('food-q');
+    if (foodQ) foodQ.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); foodSearch.click(); } });
+    const lookupCode = async (code) => {
+      if (!/^\d{6,14}$/.test(code)) { ui.foodMsg = 'Een barcode bestaat uit 8 of 13 cijfers.'; appView(); return; }
+      ui.foodMsg = 'Product opzoeken…'; appView();
+      try {
+        const food = await productByBarcode(code);
+        ui.foodResults = [food];
+        ui.foodMsg = '';
+      } catch (e) {
+        ui.foodMsg = 'Niet gevonden (' + e.message + '). Zoek op naam of vul het zelf in.';
+      }
+      appView();
+    };
+    const codeGo = document.getElementById('food-code-go');
+    if (codeGo) codeGo.addEventListener('click', () => lookupCode(document.getElementById('food-code').value.trim()));
+    const scanBtn = document.getElementById('food-scan');
+    if (scanBtn) scanBtn.addEventListener('click', async () => {
+      ui.scanning = true; ui.foodMsg = 'Richt de camera op de barcode…'; appView();
+      try {
+        const code = await scanBarcode(document.getElementById('scan-video'));
+        ui.scanning = false;
+        await lookupCode(code);
+      } catch (e) {
+        ui.scanning = false;
+        ui.foodMsg = 'Scannen lukte niet (' + e.message + '). Typ de cijfers hieronder.';
+        appView();
+      }
+    });
+    document.querySelectorAll('[data-frequent]').forEach((b) => b.addEventListener('click', () => {
+      const m = frequentFoods()[Number(b.dataset.frequent)];
+      if (m) addMeal(mealFields(m));
+    }));
+    document.querySelectorAll('[data-recipe]').forEach((b) => b.addEventListener('click', () => {
+      const r = local.recipes[Number(b.dataset.recipe)];
+      if (r) addMeals(r.items.map(mealFields), `${r.name} toegevoegd.`);
+    }));
+    document.querySelectorAll('[data-del-recipe]').forEach((b) => b.addEventListener('click', () => {
+      const r = local.recipes[Number(b.dataset.delRecipe)];
+      if (!r || !confirm(`Maaltijd "${r.name}" verwijderen?`)) return;
+      local.recipes.splice(Number(b.dataset.delRecipe), 1);
+      saveLocal(); appView();
+    }));
+    document.querySelectorAll('[data-save-recipe]').forEach((b) => b.addEventListener('click', () => {
+      const items = ui.meals.filter((m) => m.date === ui.date && m.moment === b.dataset.saveRecipe);
+      if (!items.length) return;
+      const name = (prompt('Naam voor deze maaltijd (bijv. "Ontbijt doordeweeks"):') || '').trim();
+      if (!name) return;
+      local.recipes.push({ name, items: items.map(mealFields) });
+      saveLocal();
+      toast(`"${name}" bewaard onder Mijn maaltijden.`);
+    }));
+    const copyYesterday = document.getElementById('copy-yesterday');
+    if (copyYesterday) copyYesterday.addEventListener('click', () => {
+      const items = ui.recentMeals.filter((m) => m.date === addDays(ui.date, -1));
+      addMeals(items.map((m) => ({ ...mealFields(m), moment: m.moment || 'Snack' })), 'Gisteren gekopieerd.');
     });
     document.querySelectorAll('[data-pick]').forEach((b) => b.addEventListener('click', () => {
       const idx = Number(b.dataset.pick);
@@ -1091,6 +1487,26 @@
     });
     const note = document.getElementById('w-note');
     if (note) ui.draft.notes = note.value;
+    persistDraft();
+  }
+
+  // records in wat je nu opslaat, vergeleken met alles wat eerder gelogd is
+  function findPrs(entries) {
+    const out = [];
+    for (const e of entries) {
+      const kind = e.kind || 'kracht';
+      if (kind === 'cardio') continue;
+      const work = e.sets.filter((s) => !isWarm(s));
+      const prev = seriesFor(e.name);
+      if (!prev.length) continue; // eerste keer is geen record, alleen een startpunt
+      const bestPrev = Math.max(...prev.map((p) => p.value));
+      const top = Math.max(...work.map((s) => s.weight || 0));
+      const reps = Math.max(...work.map((s) => s.reps || 0));
+      const unit = prev[prev.length - 1].unit;
+      const now = unit === 'kg' ? top : reps;
+      if (now > bestPrev) out.push({ name: e.name, text: `${fmtNum(now)} ${unit}`, was: `${fmtNum(bestPrev)} ${unit}` });
+    }
+    return out;
   }
 
   async function saveWorkout() {
@@ -1099,10 +1515,14 @@
       .map((e) => ({
         name: e.name,
         kind: e.kind || 'kracht',
-        sets: e.sets.filter((s) => s.weight > 0 || s.reps > 0).map(({ done, ...rest }) => rest),
+        sets: e.sets.filter((s) => filled(s, e.kind || 'kracht')).map(({ done, ...rest }) => {
+          if (!rest.type) delete rest.type;
+          return rest;
+        }),
       }))
-      .filter((e) => e.sets.length);
+      .filter((e) => e.sets.some((s) => !isWarm(s)));
     if (!entries.length) { toast('Vul minstens één set in.'); return; }
+    const prs = findPrs(entries);
     try {
       await cloud.insert('client_workouts', [{
         client_id: cloud.userId(), date: ui.date, entries,
@@ -1110,20 +1530,43 @@
         notes: ui.draft.notes || '',
       }]);
       ui.draft = null;
+      ui.infoOpen = null;
+      ui.lastPrs = prs;
       stopRest();
       await Promise.all([loadDay(), loadHistory()]);
       appView();
-      toast('Opgeslagen. Je coach ziet dit.');
+      if (prs.length) { buzz([80, 60, 80, 60, 160]); toast(`🏆 Nieuw record: ${prs.map((p) => p.name).join(', ')}!`, 4000); }
+      else toast('Opgeslagen. Je coach ziet dit.');
     } catch (e) {
       toast('Opslaan mislukt: ' + e.message, 5000);
     }
   }
 
-  async function addMeal(meal) {
+  // een eerdere training opnieuw doen: dezelfde oefeningen, de vorige waarden als doel
+  function startFromWorkout(w) {
+    ui.draft = {
+      entries: (w.entries || []).map((e) => ({
+        name: e.name, kind: e.kind || 'kracht',
+        sets: (e.sets || []).filter((s) => !isWarm(s)).map((s) => {
+          const out = {};
+          for (const [f] of fieldsFor(e.kind || 'kracht')) out[f] = num(s[f]);
+          return out;
+        }),
+      })).filter((e) => e.sets.length),
+      notes: '', startedAt: Date.now(), schemaName: `Herhaling van ${fmtDate(w.date)}`,
+    };
+    ui.lastPrs = null;
+  }
+
+  const addMeal = (meal) => addMeals([meal], `${meal.name} toegevoegd.`);
+  async function addMeals(list, msg) {
+    if (!list.length) return;
     try {
-      await cloud.insert('client_meals', [{ client_id: cloud.userId(), date: ui.date, moment: ui.addMoment || 'Snack', ...meal }]);
+      const rows = list.map(({ moment, ...meal }) => ({ client_id: cloud.userId(), date: ui.date, moment: moment || ui.addMoment || 'Snack', ...meal }));
+      const saved = await cloud.insert('client_meals', rows);
+      ui.recentMeals = [...(Array.isArray(saved) ? saved : rows), ...ui.recentMeals];
       ui.foodResults = [];
-      ui.foodMsg = `${meal.name} toegevoegd.`;
+      ui.foodMsg = msg || '';
       await loadDay();
       appView();
     } catch (e) {
@@ -1150,6 +1593,40 @@
         fat: Math.round((n.fat_100g || 0) * 10) / 10,
       };
     }).filter((f) => f && f.kcal > 0);
+  }
+  async function productByBarcode(code) {
+    const res = await fetch(`https://world.openfoodfacts.org/api/v2/product/${encodeURIComponent(code)}.json?fields=code,product_name,brands,nutriments`, { signal: AbortSignal.timeout(12000) });
+    if (!res.ok) throw new Error('product niet gevonden');
+    const data = await res.json();
+    const p = data.product;
+    const n = (p && p.nutriments) || {};
+    const name = p ? [p.product_name, p.brands ? p.brands.split(',')[0].trim() : ''].filter(Boolean).join(' — ') : '';
+    if (!name) throw new Error('product niet gevonden');
+    return {
+      name,
+      kcal: Math.round(n['energy-kcal_100g'] || (n.energy_100g ? n.energy_100g / 4.184 : 0)),
+      protein: Math.round((n.proteins_100g || 0) * 10) / 10,
+      carbs: Math.round((n.carbohydrates_100g || 0) * 10) / 10,
+      fat: Math.round((n.fat_100g || 0) * 10) / 10,
+    };
+  }
+  // camera op de streepjescode; Chrome en Android kennen BarcodeDetector, Safari (nog) niet
+  async function scanBarcode(videoEl) {
+    const detector = new window.BarcodeDetector({ formats: ['ean_13', 'ean_8', 'upc_a', 'upc_e', 'code_128'] });
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    videoEl.srcObject = stream;
+    await videoEl.play();
+    const stop = () => stream.getTracks().forEach((t) => t.stop());
+    const deadline = Date.now() + 20000;
+    while (Date.now() < deadline && ui.scanning) {
+      try {
+        const found = await detector.detect(videoEl);
+        if (found.length) { stop(); return found[0].rawValue; }
+      } catch { /* volgende poging */ }
+      await new Promise((r) => setTimeout(r, 300));
+    }
+    stop();
+    throw new Error('geen barcode herkend');
   }
 
   // ---------- data ----------
@@ -1212,6 +1689,21 @@
     return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
   };
   const buzz = (ms) => { if (navigator.vibrate) navigator.vibrate(ms); };
+  // kort piepje als de rust om is; uit te zetten in de instellingen
+  function beep() {
+    if (!settings.sound || !('AudioContext' in window)) return;
+    try {
+      const ctx = new AudioContext();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.frequency.value = 880;
+      gain.gain.value = 0.15;
+      osc.connect(gain).connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.25);
+      osc.onended = () => ctx.close();
+    } catch { /* geen geluid mogelijk */ }
+  }
 
   function stopRest() {
     clearInterval(rest.tick);
@@ -1231,7 +1723,7 @@
       const left = rest.paused ? rest.left : (rest.endsAt - Date.now()) / 1000;
       bar.querySelector('.t-time').textContent = mmss(left);
       bar.querySelector('.t-pause').textContent = rest.paused ? '▶' : '⏸';
-      if (!rest.paused && left <= 0) { buzz([200, 100, 200]); stopRest(); }
+      if (!rest.paused && left <= 0) { buzz([200, 100, 200]); beep(); stopRest(); }
     };
     paint();
     rest.tick = setInterval(paint, 250);
@@ -1257,7 +1749,7 @@
       for (const w of rows) {
         for (const e of w.entries || []) {
           const key = String(e.name || '').trim().toLowerCase();
-          if (key && !map.has(key)) map.set(key, { date: w.date, sets: e.sets || [] });
+          if (key && !map.has(key)) map.set(key, { date: w.date, kind: e.kind || 'kracht', sets: (e.sets || []).filter((s) => !isWarm(s)) });
         }
       }
       ui.history = map;
@@ -1275,11 +1767,19 @@
     for (const w of ui.sessions) {
       for (const e of w.entries || []) {
         if (String(e.name || '').trim().toLowerCase() !== key) continue;
-        const sets = (e.sets || []).filter((x) => x.weight > 0 || x.reps > 0);
+        const kind = e.kind || 'kracht';
+        // warming-upsets tellen nooit mee voor records of grafieken
+        const sets = (e.sets || []).filter((x) => !isWarm(x) && filled(x, kind));
         if (!sets.length) continue;
+        if (kind === 'cardio') {
+          const km = sets.reduce((t, x) => t + (x.distance || 0), 0);
+          const min = sets.reduce((t, x) => t + (x.minutes || 0), 0);
+          out.push({ date: w.date, value: km > 0 ? km : min, unit: km > 0 ? 'km' : 'min', kind, sets });
+          continue;
+        }
         const top = Math.max(...sets.map((x) => x.weight || 0));
         const reps = Math.max(...sets.map((x) => x.reps || 0));
-        out.push({ date: w.date, value: top > 0 ? top : reps, unit: top > 0 ? 'kg' : 'herh.', sets });
+        out.push({ date: w.date, value: top > 0 ? top : reps, unit: top > 0 ? 'kg' : 'herh.', kind, sets });
       }
     }
     return out.sort((a, b) => a.date.localeCompare(b.date));
@@ -1330,11 +1830,12 @@
   };
 
   const lastTime = (name) => ui.history.get(String(name || '').trim().toLowerCase()) || null;
-  const prevLine = (name) => {
+  const prevLine = (name, kind) => {
     const p = lastTime(name);
     if (!p) return 'eerste keer';
-    const txt = p.sets.filter((x) => x.weight > 0 || x.reps > 0).slice(0, 4)
-      .map((x) => `${fmtNum(x.weight || 0)}×${x.reps || 0}`).join(' · ');
+    const k = kind || p.kind || 'kracht';
+    const txt = p.sets.filter((x) => filled(x, k)).slice(0, 4)
+      .map((x) => k === 'cardio' ? `${fmtNum(x.minutes || 0)} min/${fmtNum(x.distance || 0)} km` : `${fmtNum(x.weight || 0)}×${x.reps || 0}`).join(' · ');
     return `vorige keer ${fmtDate(p.date)}${txt ? ' — ' + txt : ''}`;
   };
 
@@ -1428,8 +1929,11 @@
         name: e.name,
         kind: e.kind || 'kracht',
         rest: e.rest || 0,
-        sets: (e.targets && e.targets.length ? e.targets : [{ weight: 0, reps: 0 }])
-          .map((t) => ({ weight: t.weight || 0, reps: t.reps || 0 })),
+        info: e.info || null,
+        sets: (e.targets && e.targets.length ? e.targets : [{}])
+          .map((t) => (e.kind === 'cardio'
+            ? { minutes: t.minutes || 0, distance: t.distance || 0 }
+            : { weight: t.weight || 0, reps: t.reps || 0 })),
       })),
       notes: '',
       startedAt: Date.now(),
@@ -1437,7 +1941,27 @@
     };
   }
 
+  // maaltijden van de laatste 30 dagen: voor "vaak gebruikt", "kopieer gisteren" en het weekgemiddelde
+  async function loadRecentMeals() {
+    try {
+      ui.recentMeals = await cloud.select('client_meals',
+        `client_id=eq.${cloud.userId()}&date=gte.${addDays(todayIso(), -30)}&select=*&order=date.desc`);
+    } catch {
+      ui.recentMeals = [];
+    }
+  }
+
+  // de koppel-link van de coach: ?url=…&key=…&code=…&naam=… vult alles in één keer in
+  function captureInviteFromUrl() {
+    const q = new URLSearchParams(location.search);
+    if (!q.get('url') && !q.get('code')) return;
+    if (q.get('url') && q.get('key')) cloud.setConfig(q.get('url'), q.get('key'));
+    if (q.get('code')) { local.pendingInvite = { code: q.get('code').toUpperCase(), name: q.get('naam') || '' }; saveLocal(); }
+    history.replaceState(null, '', location.pathname);
+  }
+
   async function start() {
+    captureInviteFromUrl();
     if (!cloud.configured()) { setupView(); return; }
     cloud.captureSessionFromUrl();
     if (!cloud.signedIn()) { loginView(); return; }
@@ -1446,7 +1970,7 @@
       const profile = await cloud.ensureProfile('client', '');
       ui.profile = profile;
       if (!profile.coach_id) { inviteView(); return; }
-      await Promise.all([loadDay(), loadSchemas(), loadHistory(), loadAppointments(), loadMeasurements(), loadPlan(), loadGoals(), loadCoachTab()]);
+      await Promise.all([loadDay(), loadSchemas(), loadHistory(), loadAppointments(), loadMeasurements(), loadPlan(), loadGoals(), loadCoachTab(), loadRecentMeals()]);
       appView();
       bindRestBar();
       // service worker: nodig voor pushmeldingen; deelt de cache met de coach-app
