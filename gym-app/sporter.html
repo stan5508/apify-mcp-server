@@ -1,0 +1,1466 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0b0d0f">
+<title>Coachlog — mijn training</title>
+<link rel="icon" href="icon-180.png">
+<link rel="apple-touch-icon" href="icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Coachlog">
+<style>
+  :root {
+    --page: #0b0d0f; --surface: #15181c; --raised: #22272f; --ink: #f5f7f8; --ink-2: #96a0ac; --muted: #8a939f;
+    --grid: #262b33; --baseline: #39414c; --border: rgba(255, 255, 255, 0.11);
+    --accent: #f2a93b; --accent-strong: #ffc163; --on-accent: #0b0d0f; --wash: rgba(242, 169, 59, 0.14);
+    --good: #3f9e6c; --danger: #e5645c; --data: #e8384f; --data-wash: rgba(232, 56, 79, 0.16);
+    /* de schijfkleuren, gelijk aan de coach-app: duwen rood, trekken blauw, core geel, benen groen */
+    --series-1: #e8384f; --series-2: #3d8bff; --series-3: #f2c200; --series-4: #2fbf62;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page); color: var(--ink); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 560px; margin: 0 auto; padding: 14px 14px 80px; }
+  h1 { font-size: 19px; margin: 0 0 12px; }
+  .brand { display: flex; align-items: center; gap: 9px; font-weight: 750; letter-spacing: -0.025em; }
+  .brand i { font-style: normal; font-weight: 400; color: var(--muted); }
+  .brand-mark { width: 26px; height: 26px; flex: none; }
+  .sub { color: var(--ink-2); font-size: 14px; }
+  .mut { color: var(--muted); font-size: 13px; }
+  .eyebrow { font-size: 12px; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 22px 0 8px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-bottom: 10px; }
+  .row { display: flex; align-items: center; gap: 8px; }
+  .grow { flex: 1; min-width: 0; }
+  .title { font-weight: 650; }
+  button { font: inherit; cursor: pointer; border: 1px solid var(--border); background: var(--surface); color: var(--ink); border-radius: 8px; padding: 9px 14px; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
+  button.small { padding: 6px 10px; font-size: 14px; }
+  button.ghost { background: transparent; }
+  button.danger { color: var(--danger); }
+  button.wide { width: 100%; padding: 12px; }
+  button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  input, select, textarea { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--baseline); border-radius: 8px; padding: 9px 10px; width: 100%; }
+  label.field { display: block; margin-bottom: 10px; }
+  label.field span { display: block; font-size: 13px; color: var(--ink-2); margin-bottom: 4px; }
+  .tabs { display: flex; gap: 6px; margin-bottom: 14px; }
+  .tabs button { flex: 1; }
+  .tabs button[aria-pressed="true"] { background: var(--wash); border-color: var(--accent); color: var(--accent-strong); font-weight: 650; }
+  .set-row { display: grid; grid-template-columns: 24px 1fr 1fr 44px 30px; gap: 7px; align-items: center; margin-bottom: 8px; }
+  .set-row .n { color: var(--muted); font-size: 13px; }
+  .set-tick {
+    height: 40px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--raised, var(--surface)); color: var(--baseline, var(--muted));
+    font-size: 16px; line-height: 1; display: grid; place-items: center; cursor: pointer;
+  }
+  .set-tick[aria-pressed="true"] { background: var(--good); border-color: var(--good); color: #fff; }
+  .set-row.done input { border-color: var(--good); background: rgba(63, 158, 108, 0.16); }
+  .prev-line { color: var(--muted); font-size: 12.5px; margin: -2px 0 8px; }
+  .new-banner {
+    display: flex; align-items: center; gap: 10px;
+    border: 1px solid var(--accent); background: rgba(242, 169, 59, 0.14);
+    border-radius: 10px; padding: 12px 14px; margin-bottom: 12px;
+  }
+  .mg-dot { width: 9px; height: 9px; border-radius: 50%; flex: none; display: inline-block; }
+  .schema-sum { display: flex; align-items: center; gap: 9px; }
+  .mg-row { display: inline-flex; gap: 4px; align-items: center; }
+  .plan-tips { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--grid); white-space: pre-wrap; font-size: 14px; }
+  .meas-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(112px, 1fr)); gap: 8px; margin-top: 10px; }
+  .meas-cell {
+    display: flex; flex-direction: column; gap: 2px; align-items: flex-start; text-align: left;
+    background: var(--raised); border: 1px solid var(--border); border-radius: 9px; padding: 9px 10px;
+    font: inherit; color: var(--ink); cursor: pointer; width: 100%;
+  }
+  .meas-cell.on { border-color: var(--accent); }
+  .meas-cell .mut { font-size: 11.5px; }
+  .meas-val { font-size: 19px; font-weight: 650; font-variant-numeric: tabular-nums; }
+  .appt-rest { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--grid); }
+  .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); margin-left: 5px; vertical-align: middle; }
+  .trend { font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+  .trend.up { background: rgba(63, 158, 108, 0.17); color: var(--good); }
+  .trend.down { background: rgba(229, 100, 92, 0.16); color: var(--danger); }
+  .trend.flat { background: var(--raised); color: var(--muted); }
+
+  #rest-bar {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 20;
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px calc(10px + env(safe-area-inset-bottom));
+    background: var(--ink); color: var(--page);
+    box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.25);
+  }
+  #rest-bar[hidden] { display: none; }
+  #rest-bar .t-time { font-variant-numeric: tabular-nums; font-weight: 700; font-size: 19px; margin-left: auto; }
+  #rest-bar button { background: transparent; border: 1px solid currentColor; color: inherit; border-radius: 7px; padding: 5px 10px; font-size: 13px; }
+  body.rest-on { padding-bottom: 70px; }
+  .col-head { font-size: 12px; color: var(--muted); }
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 8px; }
+  .stat { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; }
+  .stat .lbl { font-size: 12px; color: var(--muted); }
+  .stat .val { font-size: 20px; font-weight: 650; }
+  .bar-row { display: grid; grid-template-columns: 96px 1fr 74px; gap: 8px; align-items: center; margin-bottom: 8px; font-size: 14px; }
+  .track { display: block; background: var(--grid); border-radius: 4px; height: 12px; overflow: hidden; }
+  .fill { display: block; background: var(--accent); height: 100%; border-radius: 4px; }
+  .val { text-align: right; color: var(--ink-2); }
+  .status { position: fixed; left: 0; right: 0; bottom: 0; padding: 8px 14px calc(8px + env(safe-area-inset-bottom)); background: var(--ink); color: var(--page); font-size: 13px; }
+  .status[hidden] { display: none; }
+  .msg { max-width: 82%; border-radius: 12px; padding: 8px 11px; margin-bottom: 6px; font-size: 14.5px; }
+  .msg .mut { font-size: 11px; margin-top: 2px; }
+  .msg.me { margin-left: auto; background: var(--wash); border: 1px solid var(--accent); border-top-right-radius: 4px; }
+  .msg.them { margin-right: auto; background: var(--raised); border: 1px solid var(--border); border-top-left-radius: 4px; }
+  .pillbar { display: flex; gap: 6px; flex-wrap: wrap; }
+  .pillbar button { padding: 7px 12px; border-radius: 999px; font-size: 14px; }
+  .pillbar button[aria-pressed="true"] { background: var(--wash); border-color: var(--accent); color: var(--accent-strong); font-weight: 650; }
+</style>
+</head>
+<body>
+<main id="app"><p class="mut">Laden…</p></main>
+<div id="rest-bar" hidden>
+  <span class="t-label">⏱ Rust</span>
+  <span class="t-time">0:00</span>
+  <button type="button" class="t-plus" aria-label="30 seconden erbij">+30s</button>
+  <button type="button" class="t-pause" aria-label="Pauzeer">⏸</button>
+  <button type="button" class="t-stop" aria-label="Stop">✕</button>
+</div>
+<div class="status" id="status" hidden></div>
+<script>
+(() => {
+  'use strict';
+  const $app = document.getElementById('app');
+  const $status = document.getElementById('status');
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const num = (v) => { const n = parseFloat(String(v).replace(',', '.')); return Number.isFinite(n) ? n : 0; };
+  const todayIso = () => new Date().toISOString().slice(0, 10);
+  const addDays = (iso, n) => { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
+  const fmtDateFull = (iso) => new Date(iso + 'T12:00:00').toLocaleDateString('nl-NL', { weekday: 'long', day: 'numeric', month: 'long' });
+  // the coach's schemas carry a muscle group per exercise; these are the same colours he sees
+  const GROUP_COLOURS = {
+    'Pectoralis major': 'var(--series-1)', Deltoideus: 'var(--series-1)', 'Triceps brachii': 'var(--series-1)',
+    'Latissimus dorsi': 'var(--series-2)', Trapezius: 'var(--series-2)', 'Biceps brachii': 'var(--series-2)',
+    'Erector spinae': 'var(--series-2)',
+    Quadriceps: 'var(--series-4)', Hamstrings: 'var(--series-4)', 'Gluteus maximus': 'var(--series-4)',
+    'Triceps surae': 'var(--series-4)',
+    'Rectus abdominis': 'var(--series-3)',
+  };
+  // a schema at a glance: a dot per muscle group, then how many exercises
+  function schemaSummaryHtml(exercises) {
+    const list = exercises || [];
+    if (!list.length) return `<div class="sub">nog geen oefeningen</div>`;
+    // one dot per colour, not per group: pull work is one blue dot, not one per back muscle
+    const byColour = new Map();
+    for (const e of list) {
+      if (!e.group) continue;
+      const col = GROUP_COLOURS[e.group] || 'var(--baseline)';
+      const seen = byColour.get(col) || [];
+      if (!seen.includes(e.group)) byColour.set(col, [...seen, e.group]);
+    }
+    return `<div class="schema-sum">
+      ${byColour.size ? `<span class="mg-row">${[...byColour].slice(0, 5).map(([col, names]) =>
+        `<span class="mg-dot" style="background:${col}" title="${esc(names.join(', '))}"></span>`).join('')}</span>` : ''}
+      <span class="sub">${list.length} oefening${list.length === 1 ? '' : 'en'}</span>
+    </div>`;
+  }
+
+  const fmtDate = (iso) => new Date(iso + 'T12:00:00').toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' });
+  const fmtNum = (n) => (Math.round(n * 10) / 10).toLocaleString('nl-NL');
+  const MOMENTS = ['Ontbijt', 'Lunch', 'Diner', 'Snack'];
+
+  function toast(msg, ms = 2500) {
+    $status.textContent = msg;
+    $status.hidden = false;
+    clearTimeout(toast.t);
+    toast.t = setTimeout(() => { $status.hidden = true; }, ms);
+  }
+
+  // ---------- cloud accounts (Supabase REST, no SDK) ----------
+  const cloud = (() => {
+    const CFG_KEY = 'coachlog-cloud';
+    const SESSION_KEY = 'coachlog-session';
+    let cfg = null;
+    let session = null;
+    // Project Settings shows the REST endpoint too; accept either form
+    const baseUrl = (url) => String(url).trim().replace(/\/+$/, '').replace(/\/(rest|auth)\/v1$/, '');
+    try { cfg = JSON.parse(localStorage.getItem(CFG_KEY) || 'null'); } catch { cfg = null; }
+    if (cfg && cfg.url) cfg.url = baseUrl(cfg.url);
+    try { session = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'); } catch { session = null; }
+
+    const configured = () => !!(cfg && cfg.url && cfg.key);
+    const signedIn = () => !!(session && session.access_token);
+    const setConfig = (url, key) => {
+      cfg = { url: baseUrl(url), key: String(key).trim() };
+      localStorage.setItem(CFG_KEY, JSON.stringify(cfg));
+    };
+    const clearConfig = () => { cfg = null; localStorage.removeItem(CFG_KEY); };
+    const setSession = (s) => {
+      session = s;
+      if (s) localStorage.setItem(SESSION_KEY, JSON.stringify(s));
+      else localStorage.removeItem(SESSION_KEY);
+    };
+
+    async function call(path, opts = {}, auth = true) {
+      if (!configured()) throw new Error('cloud niet ingesteld');
+      const headers = { apikey: cfg.key, 'Content-Type': 'application/json', ...(opts.headers || {}) };
+      if (auth && session) headers.Authorization = 'Bearer ' + session.access_token;
+      const res = await fetch(cfg.url + path, { ...opts, headers, signal: AbortSignal.timeout(15000) });
+      if (res.status === 401 && auth && session && session.refresh_token) {
+        await refresh();
+        return call(path, opts, auth);
+      }
+      const text = await res.text();
+      const body = text ? JSON.parse(text) : null;
+      if (!res.ok) throw new Error((body && (body.msg || body.message || body.error_description)) || `fout ${res.status}`);
+      return body;
+    }
+
+    async function refresh() {
+      const body = await call('/auth/v1/token?grant_type=refresh_token', {
+        method: 'POST', body: JSON.stringify({ refresh_token: session.refresh_token }),
+      }, false);
+      setSession(body);
+    }
+
+    // magic link: no passwords for clients to forget
+    async function sendLink(email, redirectTo) {
+      await call(`/auth/v1/otp?redirect_to=${encodeURIComponent(redirectTo)}`, {
+        method: 'POST', body: JSON.stringify({ email, create_user: true }),
+      }, false);
+    }
+    function captureSessionFromUrl() {
+      const hash = location.hash.startsWith('#') ? location.hash.slice(1) : '';
+      if (!hash.includes('access_token=')) return false;
+      const params = new URLSearchParams(hash);
+      setSession({
+        access_token: params.get('access_token'),
+        refresh_token: params.get('refresh_token'),
+        expires_at: Date.now() + Number(params.get('expires_in') || 3600) * 1000,
+      });
+      history.replaceState(null, '', location.pathname + location.search);
+      return true;
+    }
+    const signOut = () => setSession(null);
+    const userId = () => {
+      if (!signedIn()) return null;
+      try { return JSON.parse(atob(session.access_token.split('.')[1])).sub; } catch { return null; }
+    };
+    const userEmail = () => {
+      if (!signedIn()) return null;
+      try { return JSON.parse(atob(session.access_token.split('.')[1])).email; } catch { return null; }
+    };
+
+    const select = (table, query) => call(`/rest/v1/${table}?${query}`, { method: 'GET' });
+    const insert = (table, rows) => call(`/rest/v1/${table}`, {
+      method: 'POST', headers: { Prefer: 'return=representation' }, body: JSON.stringify(rows),
+    });
+    const upsert = (table, rows, onConflict) => call(`/rest/v1/${table}?on_conflict=${onConflict}`, {
+      method: 'POST', headers: { Prefer: 'resolution=merge-duplicates,return=representation' }, body: JSON.stringify(rows),
+    });
+    const remove = (table, query) => call(`/rest/v1/${table}?${query}`, { method: 'DELETE' });
+    const rpc = (fn, args) => call(`/rest/v1/rpc/${fn}`, { method: 'POST', body: JSON.stringify(args || {}) });
+    const patchRow = (table, query, body) => call(`/rest/v1/${table}?${query}`, { method: 'PATCH', body: JSON.stringify(body) });
+    // storage: raw upload (videos zijn te groot voor JSON) en een getekende link om af te spelen
+    async function upload(bucket, path, file, retried) {
+      const headers = { apikey: cfg.key, Authorization: 'Bearer ' + session.access_token, 'Content-Type': file.type || 'application/octet-stream', 'x-upsert': 'true' };
+      const res = await fetch(`${cfg.url}/storage/v1/object/${bucket}/${path}`, { method: 'POST', headers, body: file, signal: AbortSignal.timeout(180000) });
+      if (res.status === 401 && !retried && session && session.refresh_token) { await refresh(); return upload(bucket, path, file, true); }
+      if (!res.ok) {
+        let msg = 'fout ' + res.status;
+        try { const b = await res.json(); msg = b.message || b.error || msg; } catch { /* geen JSON-fout */ }
+        throw new Error(msg);
+      }
+    }
+    async function signUrl(bucket, path, seconds) {
+      const body = await call(`/storage/v1/object/sign/${bucket}/${path}`, { method: 'POST', body: JSON.stringify({ expiresIn: seconds || 3600 }) });
+      return cfg.url + '/storage/v1' + body.signedURL;
+    }
+
+    // make sure this account has a profile row
+    async function ensureProfile(role, name) {
+      const id = userId();
+      if (!id) throw new Error('niet ingelogd');
+      const rows = await select('profiles', `id=eq.${id}&select=*`);
+      if (rows.length) {
+        if (name && rows[0].name !== name) {
+          await call(`/rest/v1/profiles?id=eq.${id}`, { method: 'PATCH', body: JSON.stringify({ name }) });
+          rows[0].name = name;
+        }
+        return rows[0];
+      }
+      const created = await insert('profiles', [{ id, role, name: name || (userEmail() || '').split('@')[0] }]);
+      return created[0];
+    }
+
+    return {
+      configured, signedIn, setConfig, clearConfig, config: () => cfg,
+      sendLink, captureSessionFromUrl, signOut, userId, userEmail,
+      select, insert, upsert, remove, rpc, ensureProfile, patchRow, upload, signUrl,
+    };
+  })();
+
+  // ---------- local state ----------
+  const LOCAL_KEY = 'coachlog-sporter';
+  const load = () => { try { return JSON.parse(localStorage.getItem(LOCAL_KEY) || 'null') || {}; } catch { return {}; } };
+  let local = load();
+  const saveLocal = () => localStorage.setItem(LOCAL_KEY, JSON.stringify(local));
+
+  let ui = { tab: 'training', date: todayIso(), draft: null, meals: [], workouts: [], water: 0, schemas: [], schemaError: '', history: new Map(), sessions: [], progressEx: null, appointments: [], measurements: [], measMetric: null, plan: null, profile: null, busy: false,
+    // coach-tab: null betekent "tabel bestaat nog niet bij de coach", [] betekent leeg
+    goals: [], messages: null, checkins: null, videos: null, pushKey: null, msgDraft: '', ci: { energy: 0, sleep: 0, motivation: 0 }, videoBusy: false };
+
+  // ---------- views ----------
+  function setupView(message) {
+    $app.innerHTML = `
+      <h1 class="brand"><svg class="brand-mark" viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="96" fill="#15181c"/><g stroke="#f5f7f8" stroke-width="46" stroke-linecap="round"><line x1="178" y1="164" x2="178" y2="348"/><line x1="256" y1="164" x2="256" y2="348"/><line x1="334" y1="164" x2="334" y2="348"/></g><line x1="146" y1="366" x2="366" y2="146" stroke="#f2a93b" stroke-width="46" stroke-linecap="round"/></svg><span>Coach<i>log</i></span></h1>
+      <p class="sub">Log je trainingen en voeding. Je coach kijkt mee; andere sporters zien niets van jou.</p>
+      <div class="card">
+        <label class="field"><span>Project-URL van je coach</span><input id="s-url" placeholder="https://xxxx.supabase.co"></label>
+        <label class="field"><span>Anon-sleutel</span><input id="s-key" placeholder="eyJhbGciOi…"></label>
+        <button class="primary wide" id="s-save">Verbinden</button>
+        <p class="mut" style="margin:8px 0 0">Deze twee waarden krijg je van je coach, samen met een uitnodigingscode.</p>
+        ${message ? `<p class="mut">${esc(message)}</p>` : ''}
+      </div>`;
+    document.getElementById('s-save').addEventListener('click', () => {
+      const url = document.getElementById('s-url').value.trim();
+      const key = document.getElementById('s-key').value.trim();
+      if (!/^https:\/\/.+/.test(url) || key.length < 20) { alert('Controleer de gegevens van je coach.'); return; }
+      cloud.setConfig(url, key);
+      start();
+    });
+  }
+
+  function loginView() {
+    $app.innerHTML = `
+      <h1>Inloggen</h1>
+      <p class="sub">Vul je e-mailadres in. Je krijgt een link waarmee je inlogt — geen wachtwoord nodig.</p>
+      <div class="card">
+        <label class="field"><span>E-mailadres</span><input id="l-email" type="email" placeholder="jij@voorbeeld.nl"></label>
+        <button class="primary wide" id="l-send">Stuur inloglink</button>
+        <p class="mut" id="l-msg" style="margin:10px 0 0"></p>
+      </div>
+      <button class="small ghost" id="l-reset">Andere coach-gegevens invullen</button>`;
+    document.getElementById('l-send').addEventListener('click', async () => {
+      const email = document.getElementById('l-email').value.trim();
+      const msg = document.getElementById('l-msg');
+      if (!email) return;
+      msg.textContent = 'Versturen…';
+      try {
+        await cloud.sendLink(email, location.origin + location.pathname);
+        msg.textContent = 'Gelukt. Open de link in je mail op dit apparaat.';
+      } catch (e) {
+        msg.textContent = 'Versturen mislukt: ' + e.message;
+      }
+    });
+    document.getElementById('l-reset').addEventListener('click', () => { cloud.clearConfig(); start(); });
+  }
+
+  function inviteView() {
+    $app.innerHTML = `
+      <h1>Koppelen aan je coach</h1>
+      <p class="sub">Vul je naam en de uitnodigingscode in die je van je coach kreeg.</p>
+      <div class="card">
+        <label class="field"><span>Je naam</span><input id="i-name" placeholder="Voornaam Achternaam"></label>
+        <label class="field"><span>Uitnodigingscode</span><input id="i-code" placeholder="ABCD1234" style="text-transform:uppercase"></label>
+        <button class="primary wide" id="i-go">Koppelen</button>
+        <p class="mut" id="i-msg" style="margin:10px 0 0"></p>
+      </div>
+      <button class="small ghost" id="i-out">Uitloggen</button>`;
+    document.getElementById('i-go').addEventListener('click', async () => {
+      const name = document.getElementById('i-name').value.trim();
+      const code = document.getElementById('i-code').value.trim().toUpperCase();
+      const msg = document.getElementById('i-msg');
+      if (!name || !code) { msg.textContent = 'Vul allebei de velden in.'; return; }
+      msg.textContent = 'Bezig…';
+      try {
+        await cloud.ensureProfile('client', name);
+        await cloud.rpc('redeem_invite', { p_code: code });
+        toast('Gekoppeld aan je coach.');
+        start();
+      } catch (e) {
+        msg.textContent = 'Koppelen mislukt: ' + e.message;
+      }
+    });
+    document.getElementById('i-out').addEventListener('click', () => { cloud.signOut(); start(); });
+  }
+
+  function dayHeader() {
+    return `<div class="row" style="margin-bottom:12px">
+      <button class="small" data-day="${addDays(ui.date, -1)}">‹</button>
+      <input type="date" id="day-date" class="grow" value="${ui.date}">
+      <button class="small" data-day="${addDays(ui.date, 1)}">›</button>
+    </div>`;
+  }
+
+  function trainingTab() {
+    const draft = ui.draft;
+    const done = ui.workouts.filter((w) => w.date === ui.date);
+    return `
+      ${dayHeader()}
+      ${done.map((w) => `<div class="card">
+        <div class="row"><div class="grow"><div class="title">Training opgeslagen</div>
+          <div class="sub">${(w.entries || []).map((e) => esc(e.name)).join(' · ')}</div>
+          ${w.duration_min ? `<div class="mut">${w.duration_min} minuten</div>` : ''}</div>
+          <button class="small danger ghost" data-del-workout="${w.id}">✕</button></div>
+      </div>`).join('')}
+      ${draft ? `<div class="card">
+        <div class="title" style="margin-bottom:8px">${draft.schemaName ? esc(draft.schemaName) : 'Training bezig'}</div>
+        ${draft.entries.map((e, xi) => {
+          const prev = lastTime(e.name);
+          const ghost = (si, f, fallback) => {
+            const p = prev && prev.sets[si];
+            return p && p[f] ? esc(fmtNum(p[f])) : fallback;
+          };
+          return `<div class="card" style="margin-bottom:8px">
+          <div class="row" style="margin-bottom:4px"><div class="grow title">${esc(e.name)}</div>
+            <button class="small danger ghost" data-del-ex="${xi}">✕</button></div>
+          <div class="prev-line">${esc(prevLine(e.name))}</div>
+          <div class="set-row"><span></span><span class="col-head">Gewicht</span><span class="col-head">Herh.</span><span></span><span></span></div>
+          ${e.sets.map((st, si) => `<div class="set-row${st.done ? ' done' : ''}">
+            <span class="n">${si + 1}</span>
+            <input data-set="${xi}.${si}" data-f="weight" type="text" inputmode="decimal" value="${st.weight || ''}" placeholder="${ghost(si, 'weight', 'kg')}">
+            <input data-set="${xi}.${si}" data-f="reps" type="number" inputmode="numeric" value="${st.reps || ''}" placeholder="${ghost(si, 'reps', 'herh.')}">
+            <button type="button" class="set-tick" data-tick="${xi}.${si}" aria-pressed="${!!st.done}" aria-label="Set ${si + 1} afvinken">✓</button>
+            <button class="small danger ghost" data-del-set="${xi}.${si}">✕</button>
+          </div>`).join('')}
+          <button class="small" data-add-set="${xi}">+ Set</button>
+        </div>`;
+        }).join('')}
+        <div class="row" style="margin-top:8px">
+          <input id="new-ex" class="grow" placeholder="Oefening toevoegen" list="known-ex">
+          <button class="small" id="add-ex">+</button>
+        </div>
+        <datalist id="known-ex">${(local.knownExercises || []).map((n) => `<option value="${esc(n)}">`).join('')}</datalist>
+        <label class="field" style="margin-top:10px"><span>Notitie</span><input id="w-note" value="${esc(draft.notes || '')}" placeholder="hoe ging het?"></label>
+        <button class="primary wide" id="save-workout">Training opslaan</button>
+      </div>`
+      : `${hasNewSchema() ? `<div class="new-banner">
+            <div class="grow"><strong>Je coach heeft een nieuw schema klaargezet.</strong>
+              <div class="sub">Bijgewerkt ${esc(fmtDate(newestSchemaAt().slice(0, 10)))}. Kies hieronder om ermee te starten.</div></div>
+            <button class="small" id="seen-schema">Gezien</button>
+          </div>` : ''}
+        ${apptBlock()}
+        <div class="eyebrow">Van je coach</div>
+        ${(ui.schemas || []).length
+          ? ui.schemas.map((sc, i) => `<div class="card">
+              <div class="row"><div class="grow">
+                <div class="title">${esc(sc.name || 'Schema')}</div>
+                ${schemaSummaryHtml(sc.exercises)}
+              </div>
+              <button class="small primary" data-use-schema="${i}">Start</button></div>
+            </div>`).join('')
+          : `<div class="card"><div class="sub">${ui.schemaError
+              ? esc(ui.schemaError)
+              : 'Je coach heeft nog geen schema klaargezet. Zodra dat gebeurt staat het hier.'}</div></div>`}
+        <button class="primary wide" id="start-workout">${(ui.schemas || []).length ? 'Losse training starten' : 'Training starten'}</button>`}`;
+  }
+
+  // de doelen die je coach zette, met de voortgang die hij meestuurde
+  function goalsBlock() {
+    const list = ui.goals || [];
+    if (!list.length) return '';
+    return `<div class="eyebrow">Doelen van je coach</div>
+      <div class="card">${list.map((g) => {
+        const label = g.text || (g.exercise ? `${esc(g.exercise)} naar ${fmtNum(g.target)} kg` : 'Doel');
+        const pct = g.done ? 100 : g.pct == null ? null : Math.max(0, Math.min(100, Number(g.pct)));
+        return `<div style="margin-bottom:10px">
+          <div class="row"><div class="grow sub">${esc(g.text || '') || label}</div>
+            ${g.done ? '<span class="trend up">behaald 🎉</span>' : g.date ? `<span class="mut">vóór ${esc(fmtDate(g.date))}</span>` : ''}</div>
+          ${pct != null ? `<div class="bar-row" style="grid-template-columns:1fr 92px;margin-top:4px">
+            <span class="track"><span class="fill" style="width:${pct}%"></span></span>
+            <span class="val">${g.exercise && g.current != null ? `${fmtNum(g.current)} / ${fmtNum(g.target)}` : pct + '%'}</span>
+          </div>` : ''}
+        </div>`;
+      }).join('')}</div>`;
+  }
+
+  // measurements your coach took: where you stand now, and what changed since last time
+  function measBlock() {
+    const list = ui.measurements || [];
+    if (!list.length) return '';
+    const latest = list[list.length - 1];
+    const prev = list.length > 1 ? list[list.length - 2] : null;
+    const filled = MEAS_FIELDS.filter((f) => measValue(latest, f.key) != null);
+    if (!filled.length) return '';
+    if (!filled.some((f) => f.key === ui.measMetric)) ui.measMetric = filled[0].key;
+    const pts = list
+      .map((m) => ({ date: m.date, value: measValue(m, ui.measMetric) }))
+      .filter((x) => x.value != null);
+    const cur = MEAS_FIELDS.find((f) => f.key === ui.measMetric) || filled[0];
+    // only colour where the direction means something either way: less fat and a smaller waist
+    // is progress, more muscle is progress. Weight, BMI and the other tapes stay neutral,
+    // because whether up or down is good depends on what this client is after.
+    const goodWhenDown = ['fat', 'waist'];
+    const goodWhenUp = ['muscle'];
+    return `<div class="eyebrow">Metingen</div>
+      <div class="card">
+        <div class="mut">Laatste meting ${esc(fmtDateFull(latest.date))}${list.length > 1 ? ` · ${list.length} metingen` : ''}</div>
+        <div class="meas-grid">
+          ${filled.map((f) => {
+            const now = measValue(latest, f.key);
+            const was = prev ? measValue(prev, f.key) : null;
+            const d = was == null ? null : Math.round((now - was) * 10) / 10;
+            const cls = d === null || d === 0 ? 'flat'
+              : goodWhenDown.includes(f.key) ? (d < 0 ? 'up' : 'down')
+              : goodWhenUp.includes(f.key) ? (d > 0 ? 'up' : 'down')
+              : 'flat';
+            return `<button type="button" class="meas-cell${f.key === ui.measMetric ? ' on' : ''}" data-meas="${f.key}">
+              <span class="mut">${esc(f.label)}</span>
+              <span class="meas-val">${fmtNum(now)}${f.unit ? ' ' + esc(f.unit) : ''}</span>
+              ${d === null ? '<span class="mut">eerste meting</span>'
+                : `<span class="trend ${cls}">${d > 0 ? '+' : d < 0 ? '−' : ''}${fmtNum(Math.abs(d))}${f.unit ? ' ' + esc(f.unit) : ''}</span>`}
+            </button>`;
+          }).join('')}
+        </div>
+        ${pts.length > 1 ? `<div class="mut" style="margin-top:10px">${esc(cur.label)} door de tijd</div>
+          ${chartSvg(pts, cur.label)}` : ''}
+      </div>`;
+  }
+
+  // upcoming sessions with your coach; the first one gets the spotlight
+  function apptBlock() {
+    const list = (ui.appointments || []).filter((a) => a.status !== 'geannuleerd');
+    if (!list.length) return '';
+    const [next, ...rest] = list;
+    const when = (a) => `${fmtDateFull(a.date)}${a.time ? ` om ${esc(a.time)}` : ''}`;
+    const today = a => a.date === todayIso();
+    return `<div class="eyebrow">Je afspraken</div>
+      <div class="card">
+        <div class="mut">${today(next) ? 'Vandaag' : 'Volgende afspraak'}</div>
+        <div class="title">${esc(when(next))}</div>
+        ${next.note ? `<div class="sub">${esc(next.note)}</div>` : ''}
+        ${next.duration_min ? `<div class="mut">${next.duration_min} minuten</div>` : ''}
+        ${rest.length ? `<div class="appt-rest">${rest.slice(0, 6).map((a) =>
+          `<div class="sub">${esc(when(a))}${a.note ? ` · ${esc(a.note)}` : ''}</div>`).join('')}
+          ${rest.length > 6 ? `<div class="mut">en nog ${rest.length - 6}.</div>` : ''}</div>` : ''}
+      </div>`;
+  }
+
+  function progressTab() {
+    const exercises = loggedExercises();
+    // one exercise opened: the big chart plus its sessions
+    if (ui.progressEx) {
+      const pts = seriesFor(ui.progressEx);
+      const unit = pts.length ? pts[pts.length - 1].unit : 'kg';
+      const best = pts.length ? Math.max(...pts.map((p) => p.value)) : 0;
+      const bestDate = pts.find((p) => p.value === best);
+      return `<div class="row" style="margin-bottom:10px">
+          <button class="small" id="prog-back">‹ Terug</button>
+          <div class="grow title">${esc(ui.progressEx)}</div>
+        </div>
+        <div class="stat-grid" style="margin-bottom:10px">
+          <div class="card"><div class="mut">Record</div><div class="title">${fmtNum(best)} ${esc(unit)}</div>
+            <div class="mut">${bestDate ? esc(fmtDate(bestDate.date)) : ''}</div></div>
+          <div class="card"><div class="mut">Sessies</div><div class="title">${pts.length}</div></div>
+        </div>
+        <div class="card">${chartSvg(pts, unit)}</div>
+        <div class="eyebrow">Alle sessies</div>
+        ${[...pts].reverse().map((p) => `<div class="card">
+          <div class="row"><div class="grow">
+            <div class="title">${esc(fmtDateFull(p.date))}${p.value === best ? ' 🏆' : ''}</div>
+            <div class="sub">${p.sets.map((st) => `${fmtNum(st.weight || 0)} kg × ${st.reps || 0}`).join(' · ')}</div>
+          </div></div>
+        </div>`).join('')}`;
+    }
+
+    // measurements stand on their own: a client can have those before their first logged session
+    if (!ui.sessions.length) {
+      return goalsBlock() + measBlock()
+        + `<div class="eyebrow">Trainingen</div>
+           <div class="card"><div class="sub">Zodra je je eerste training opslaat verschijnt hier je voortgang.</div></div>`;
+    }
+
+    const thisWeek = ui.sessions.filter((w) => {
+      const d = new Date(todayIso() + 'T12:00:00');
+      d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+      return w.date >= d.toISOString().slice(0, 10);
+    }).length;
+    const streak = weekStreak();
+    return `<div class="stat-grid" style="margin-bottom:12px">
+        <div class="card"><div class="mut">Trainingen</div><div class="title">${ui.sessions.length}</div></div>
+        <div class="card"><div class="mut">Deze week</div><div class="title">${thisWeek}</div></div>
+        <div class="card"><div class="mut">Reeks</div><div class="title">${streak} ${streak === 1 ? 'week' : 'weken'}</div></div>
+      </div>
+      ${goalsBlock()}
+      ${measBlock()}
+      <div class="eyebrow">Per oefening</div>
+      ${exercises.map((name) => {
+        const pts = seriesFor(name);
+        if (!pts.length) return '';
+        const vals = pts.map((p) => p.value);
+        const best = Math.max(...vals);
+        const delta = vals.length > 1 ? vals[vals.length - 1] - vals[0] : 0;
+        const unit = pts[pts.length - 1].unit;
+        const trend = vals.length < 2 ? ''
+          : delta > 0 ? `<span class="trend up">+${fmtNum(delta)} ${esc(unit)} ↑</span>`
+          : delta < 0 ? `<span class="trend down">−${fmtNum(Math.abs(delta))} ${esc(unit)} ↓</span>`
+          : '<span class="trend flat">gelijk</span>';
+        return `<div class="card" data-prog="${esc(name)}" role="button" tabindex="0" style="cursor:pointer">
+          <div class="row" style="margin-bottom:4px"><div class="grow title">${esc(name)}</div>${trend}</div>
+          <div class="row">${sparkSvg(vals.slice(-12))}
+            <div class="grow sub">Record ${fmtNum(best)} ${esc(unit)} · ${pts.length} sessie${pts.length === 1 ? '' : 's'}</div>
+            <span class="mut">›</span></div>
+        </div>`;
+      }).join('')}`;
+  }
+
+  // what the coach set as a target, next to what you have eaten today
+  function planCardHtml(totals) {
+    const plan = ui.plan;
+    const rows = [
+      ['kcal', 'Calorieën', '', Math.round(totals.kcal)],
+      ['protein', 'Eiwit', 'g', Math.round(totals.protein)],
+      ['carbs', 'Koolhydraten', 'g', Math.round(totals.carbs)],
+      ['fat', 'Vet', 'g', Math.round(totals.fat)],
+    ];
+    if (!plan) {
+      return `<div class="card"><div class="stat-grid">
+        ${rows.map(([, label, unit, val]) =>
+          `<div class="stat"><div class="lbl">${label}</div><div class="val">${val}${unit ? ' ' + unit : ''}</div></div>`).join('')}
+      </div>
+      <p class="mut" style="margin:8px 0 0">Je coach heeft nog geen dagdoel klaargezet.</p></div>`;
+    }
+    const left = Math.round((Number(plan.kcal) || 0) - totals.kcal);
+    return `<div class="card">
+      ${plan.kcal ? `<div class="row" style="margin-bottom:10px">
+        <div class="grow"><div class="mut">Nog te gaan vandaag</div>
+          <div class="meas-val" style="font-size:26px;color:${left < 0 ? 'var(--danger)' : 'var(--good)'}">${left} kcal</div></div>
+        <div style="text-align:right"><div class="mut">Doel</div>
+          <div class="title">${Math.round(plan.kcal)} kcal</div></div>
+      </div>` : ''}
+      ${rows.map(([key, label, unit, val]) => {
+        const target = Math.round(Number(plan[key]) || 0);
+        const pct = target > 0 ? Math.min(100, Math.round((val / target) * 100)) : 0;
+        return `<div class="bar-row">
+          <span>${label}</span>
+          <span class="track"><span class="fill" style="width:${pct}%"></span></span>
+          <span class="val">${val}${target ? ' / ' + target : ''}${unit ? ' ' + unit : ''}</span>
+        </div>`;
+      }).join('')}
+      ${plan.guidelines ? `<div class="plan-tips"><div class="mut">Van je coach</div>${esc(plan.guidelines)}</div>` : ''}
+    </div>`;
+  }
+
+  function foodTab() {
+    const meals = ui.meals.filter((m) => m.date === ui.date);
+    const totals = meals.reduce((t, m) => ({
+      kcal: t.kcal + Number(m.kcal || 0), protein: t.protein + Number(m.protein || 0),
+      carbs: t.carbs + Number(m.carbs || 0), fat: t.fat + Number(m.fat || 0),
+    }), { kcal: 0, protein: 0, carbs: 0, fat: 0 });
+    const group = (moment) => {
+      const items = meals.filter((m) => m.moment === moment);
+      return `<div class="card">
+        <div class="row" style="margin-bottom:6px"><div class="title grow">${moment}</div>
+          <div class="mut">${Math.round(items.reduce((t, m) => t + Number(m.kcal || 0), 0))} kcal</div>
+          <button class="small" data-add-meal="${moment}">+</button></div>
+        ${items.length ? items.map((m) => `<div class="row" style="margin-bottom:4px">
+          <div class="grow"><div class="sub">${esc(m.name)}</div>
+            <div class="mut">${Math.round(m.kcal || 0)} kcal · E ${fmtNum(m.protein || 0)} · K ${fmtNum(m.carbs || 0)} · V ${fmtNum(m.fat || 0)}</div></div>
+          <button class="small danger ghost" data-del-meal="${m.id}">✕</button></div>`).join('')
+          : '<div class="mut">Niets gelogd.</div>'}
+      </div>`;
+    };
+    return `
+      ${dayHeader()}
+      ${planCardHtml(totals)}
+      ${ui.addMoment ? `<div class="card">
+        <div class="row" style="margin-bottom:8px"><div class="title grow">Toevoegen aan ${esc(ui.addMoment)}</div>
+          <button class="small ghost" id="meal-close">Sluiten</button></div>
+        <div class="row" style="margin-bottom:8px">
+          <input id="food-q" class="grow" placeholder="Zoek een product…">
+          <button class="small" id="food-search">Zoek</button>
+        </div>
+        <p class="mut" id="food-msg" style="margin:0 0 8px">${esc(ui.foodMsg || '')}</p>
+        <div id="food-results">${(ui.foodResults || []).map((f, i) => `<div class="row" style="margin-bottom:8px">
+          <div class="grow"><div class="sub">${esc(f.name)}</div><div class="mut">${Math.round(f.kcal)} kcal / 100 g</div></div>
+          <input class="pick-amount" data-idx="${i}" type="text" inputmode="decimal" value="100" style="width:72px">
+          <button class="small primary" data-pick="${i}">+</button>
+        </div>`).join('')}</div>
+        <form id="quick-meal">
+          <div class="row" style="margin-bottom:8px">
+            <input name="name" class="grow" placeholder="Zelf invullen: wat at je?" required>
+            <input name="kcal" type="text" inputmode="decimal" placeholder="kcal" style="width:80px" required>
+          </div>
+          <div class="row">
+            <input name="protein" type="text" inputmode="decimal" placeholder="eiwit" class="grow">
+            <input name="carbs" type="text" inputmode="decimal" placeholder="koolh." class="grow">
+            <input name="fat" type="text" inputmode="decimal" placeholder="vet" class="grow">
+            <button class="small primary" type="submit">+</button>
+          </div>
+        </form>
+      </div>` : ''}
+      ${MOMENTS.map(group).join('')}
+      <div class="eyebrow">Water</div>
+      <div class="card">
+        <div class="bar-row"><span>Vandaag</span>
+          <span class="track"><span class="fill" style="width:${Math.min(100, Math.round((ui.water / 2000) * 100))}%"></span></span>
+          <span class="val">${(ui.water / 1000).toLocaleString('nl-NL')} l</span></div>
+        <div class="row"><button class="small" data-water="250">+250 ml</button>
+          <button class="small" data-water="500">+500 ml</button>
+          <button class="small ghost" data-water="-250">−250</button></div>
+      </div>`;
+  }
+
+  // ---------- Coach-tab: berichten, check-in, techniekvideo, meldingen ----------
+  const unreadFromCoach = () => (ui.messages || []).some((m) => m.sender === 'coach' && !m.read_by_client);
+
+  function coachTab() {
+    const msgs = ui.messages;
+    const checkins = ui.checkins;
+    const videos = ui.videos;
+    const offline = '<div class="card"><div class="sub">De coach heeft dit onderdeel nog niet aangezet.</div></div>';
+    const lastCheck = checkins && checkins.length ? checkins[0] : null;
+    const daysAgo = lastCheck ? Math.round((new Date(todayIso() + 'T12:00:00') - new Date(lastCheck.date + 'T12:00:00')) / 86400000) : null;
+    const scoreRow = (key, label) => `<label class="field"><span>${label}</span>
+      <div class="pillbar">${[1, 2, 3, 4, 5].map((v) =>
+        `<button type="button" data-ci="${key}.${v}" aria-pressed="${ui.ci[key] === v}">${v}</button>`).join('')}</div></label>`;
+    return `
+      <div class="eyebrow">Berichten</div>
+      ${msgs === null ? offline : `<div class="card">
+        <div id="msg-list" style="max-height:300px;overflow-y:auto;display:flex;flex-direction:column">
+          ${msgs.length ? msgs.map((m) => `<div class="msg ${m.sender === 'client' ? 'me' : 'them'}">${esc(m.body)}
+            <div class="mut">${esc(fmtDate(String(m.created_at || '').slice(0, 10)))}</div></div>`).join('')
+          : '<div class="mut">Nog geen berichten. Stel je vraag hieronder — je coach leest mee.</div>'}
+        </div>
+        <div class="row" style="margin-top:8px">
+          <input id="msg-input" class="grow" placeholder="Bericht aan je coach…" value="${esc(ui.msgDraft || '')}" maxlength="2000">
+          <button class="small primary" id="msg-send">Stuur</button>
+        </div>
+      </div>`}
+
+      <div class="eyebrow">Wekelijkse check-in</div>
+      ${checkins === null ? offline : `<div class="card">
+        <div class="mut" style="margin-bottom:8px">${lastCheck
+          ? `Laatste check-in ${daysAgo === 0 ? 'vandaag' : daysAgo === 1 ? 'gisteren' : daysAgo + ' dagen geleden'}.${daysAgo >= 7 ? ' Tijd voor een nieuwe.' : ''}`
+          : 'Nog geen check-in gestuurd. Doe dit één keer per week.'}</div>
+        <label class="field"><span>Gewicht (kg, optioneel)</span><input id="ci-weight" type="text" inputmode="decimal" placeholder="bijv. 78,4"></label>
+        ${scoreRow('energy', 'Energie deze week')}
+        ${scoreRow('sleep', 'Slaap')}
+        ${scoreRow('motivation', 'Motivatie')}
+        <label class="field"><span>Hoe ging het? (optioneel)</span><textarea id="ci-note" rows="2" placeholder="bijv. schema ging goed, schouder voelde beter"></textarea></label>
+        <label class="field"><span>Foto's (optioneel, max 2)</span><input id="ci-photos" type="file" accept="image/*" multiple></label>
+        <button class="primary wide" id="ci-send">Check-in versturen</button>
+        ${checkins.length ? `<div class="eyebrow">Eerdere check-ins</div>
+          ${checkins.map((c) => `<div class="row" style="margin-bottom:4px">
+            <div class="grow sub">${esc(fmtDate(c.date))}${c.weight ? ` · ${fmtNum(c.weight)} kg` : ''}${c.energy ? ` · energie ${c.energy}/5` : ''}</div>
+            ${(c.photos || []).length ? `<span class="mut">${(c.photos || []).length} foto${(c.photos || []).length === 1 ? '' : "'s"}</span>` : ''}
+          </div>`).join('')}` : ''}
+      </div>`}
+
+      <div class="eyebrow">Techniekvideo</div>
+      ${videos === null ? offline : `<div class="card">
+        <p class="mut" style="margin:0 0 8px">Twijfel je over je uitvoering? Stuur een filmpje; je coach kijkt ernaar en zet zijn feedback hieronder.</p>
+        <label class="field"><span>Oefening</span>
+          <input id="vid-ex" list="known-ex-vid" placeholder="bijv. Squat">
+          <datalist id="known-ex-vid">${[...new Set([...loggedExercises(), ...(ui.schemas || []).flatMap((sc) => (sc.exercises || []).map((e) => e.name))])].map((n) => `<option value="${esc(n)}">`).join('')}</datalist></label>
+        <label class="field"><span>Video (max 60 MB)</span><input id="vid-file" type="file" accept="video/*"></label>
+        <label class="field"><span>Vraag of opmerking</span><input id="vid-note" placeholder="bijv. zak ik diep genoeg?"></label>
+        <button class="primary wide" id="vid-send"${ui.videoBusy ? ' disabled' : ''}>${ui.videoBusy ? 'Uploaden…' : 'Video versturen'}</button>
+        ${videos.length ? `<div class="eyebrow">Eerder gestuurd</div>
+          ${videos.map((v) => `<div style="margin-bottom:10px">
+            <div class="row"><div class="grow sub">${esc(v.exercise || 'Video')} · ${esc(fmtDate(String(v.created_at || '').slice(0, 10)))}</div>
+              <button class="small" data-vid-play="${esc(v.path)}">▶ Bekijk</button></div>
+            ${v.note ? `<div class="mut">Jij: ${esc(v.note)}</div>` : ''}
+            ${v.coach_note ? `<div class="sub" style="border-left:2px solid var(--accent);padding-left:8px;margin-top:4px">Coach: ${esc(v.coach_note)}</div>` : '<div class="mut">Nog geen reactie van je coach.</div>'}
+          </div>`).join('')}` : ''}
+      </div>`}
+
+      ${pushBlock()}`;
+  }
+
+  function pushBlock() {
+    if (!ui.pushKey || !('serviceWorker' in navigator) || !('PushManager' in window)) return '';
+    return `<div class="eyebrow">Meldingen</div>
+      <div class="card">
+        <p class="mut" style="margin:0 0 8px">Krijg een melding op je telefoon als je coach een schema klaarzet of een bericht stuurt — ook als de app dicht is.</p>
+        <button id="push-btn">${local.pushOn ? 'Meldingen staan aan' : 'Meldingen aanzetten'}</button>
+      </div>`;
+  }
+
+  const urlB64ToUint8 = (b64) => {
+    const pad = '='.repeat((4 - (b64.length % 4)) % 4);
+    const raw = atob((b64 + pad).replace(/-/g, '+').replace(/_/g, '/'));
+    return Uint8Array.from(raw, (c) => c.charCodeAt(0));
+  };
+  async function subscribePush() {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToUint8(ui.pushKey) });
+    await cloud.upsert('push_subscriptions', [{
+      client_id: cloud.userId(), endpoint: sub.endpoint, subscription: sub.toJSON(),
+    }], 'endpoint');
+    local.pushOn = true;
+    saveLocal();
+  }
+
+  // foto's flink verkleinen voordat ze de database in gaan
+  function shrinkPhoto(file, maxSize = 640, quality = 0.55) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error('kan bestand niet lezen'));
+      reader.onload = () => {
+        const img = new Image();
+        img.onerror = () => reject(new Error('geen geldige afbeelding'));
+        img.onload = () => {
+          const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.round(img.width * scale);
+          canvas.height = Math.round(img.height * scale);
+          canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+          resolve(canvas.toDataURL('image/jpeg', quality));
+        };
+        img.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function appView() {
+    $app.innerHTML = `
+      <div class="row" style="margin-bottom:10px">
+        <h1 class="grow" style="margin:0">Hoi ${esc((ui.profile && ui.profile.name) || '')}</h1>
+        <button class="small ghost" id="sign-out">Uitloggen</button>
+      </div>
+      <div class="tabs">
+        <button data-tab="training" aria-pressed="${ui.tab === 'training'}">Training${hasNewSchema() ? '<span class="dot" aria-label="nieuw"></span>' : ''}</button>
+        <button data-tab="voortgang" aria-pressed="${ui.tab === 'voortgang'}">Voortgang</button>
+        <button data-tab="voeding" aria-pressed="${ui.tab === 'voeding'}">Voeding</button>
+        <button data-tab="coach" aria-pressed="${ui.tab === 'coach'}">Coach${unreadFromCoach() ? '<span class="dot" aria-label="nieuw bericht"></span>' : ''}</button>
+      </div>
+      <p class="sub" style="margin:0 0 12px">${esc(fmtDateFull(ui.date))}</p>
+      ${ui.tab === 'training' ? trainingTab() : ui.tab === 'voortgang' ? progressTab() : ui.tab === 'voeding' ? foodTab() : coachTab()}`;
+    bindApp();
+    if (ui.tab === 'coach') {
+      const list = document.getElementById('msg-list');
+      if (list) list.scrollTop = list.scrollHeight;
+      markMessagesRead();
+    }
+  }
+
+  // ---------- interactions ----------
+  function bindApp() {
+    document.getElementById('sign-out').addEventListener('click', () => { cloud.signOut(); start(); });
+    document.querySelectorAll('[data-tab]').forEach((b) => b.addEventListener('click', () => {
+      ui.tab = b.dataset.tab;
+      ui.progressEx = null;
+      appView();
+    }));
+    document.querySelectorAll('[data-meas]').forEach((b) => b.addEventListener('click', () => {
+      ui.measMetric = b.dataset.meas; appView();
+    }));
+    document.querySelectorAll('[data-prog]').forEach((b) => b.addEventListener('click', () => {
+      ui.progressEx = b.dataset.prog; appView();
+    }));
+    const seenBtn = document.getElementById('seen-schema');
+    if (seenBtn) seenBtn.addEventListener('click', () => { markSchemasSeen(); appView(); });
+    const progBack = document.getElementById('prog-back');
+    if (progBack) progBack.addEventListener('click', () => { ui.progressEx = null; appView(); });
+    document.querySelectorAll('[data-day]').forEach((b) => b.addEventListener('click', async () => {
+      ui.date = b.dataset.day; await loadDay(); appView();
+    }));
+    const dayInput = document.getElementById('day-date');
+    if (dayInput) dayInput.addEventListener('change', async (ev) => { ui.date = ev.target.value; await loadDay(); appView(); });
+
+    // training
+    const start = document.getElementById('start-workout');
+    if (start) start.addEventListener('click', () => {
+      ui.draft = { entries: [], notes: '', startedAt: Date.now() };
+      appView();
+    });
+    document.querySelectorAll('[data-use-schema]').forEach((b) => b.addEventListener('click', () => {
+      const sc = ui.schemas[Number(b.dataset.useSchema)];
+      if (!sc) return;
+      markSchemasSeen();
+      startFromSchema(sc);
+      appView();
+    }));
+    const addEx = document.getElementById('add-ex');
+    if (addEx) addEx.addEventListener('click', () => {
+      const input = document.getElementById('new-ex');
+      const name = input.value.trim();
+      if (!name) return;
+      syncDraft();
+      ui.draft.entries.push({ name, kind: 'kracht', sets: [{ weight: 0, reps: 0 }] });
+      local.knownExercises = [...new Set([...(local.knownExercises || []), name])];
+      saveLocal();
+      appView();
+    });
+    document.querySelectorAll('[data-tick]').forEach((b) => b.addEventListener('click', () => {
+      syncDraft();
+      const [xi, si] = b.dataset.tick.split('.').map(Number);
+      const entry = ui.draft.entries[xi];
+      const set = entry.sets[si];
+      set.done = !set.done;
+      if (set.done) {
+        buzz(35);
+        startRest(entry.rest > 0 ? entry.rest : 90);
+      }
+      appView();
+    }));
+    document.querySelectorAll('[data-add-set]').forEach((b) => b.addEventListener('click', () => {
+      syncDraft();
+      const e = ui.draft.entries[Number(b.dataset.addSet)];
+      const last = e.sets[e.sets.length - 1];
+      e.sets.push(last ? { ...last } : { weight: 0, reps: 0 });
+      appView();
+    }));
+    document.querySelectorAll('[data-del-set]').forEach((b) => b.addEventListener('click', () => {
+      syncDraft();
+      const [xi, si] = b.dataset.delSet.split('.').map(Number);
+      ui.draft.entries[xi].sets.splice(si, 1);
+      appView();
+    }));
+    document.querySelectorAll('[data-del-ex]').forEach((b) => b.addEventListener('click', () => {
+      syncDraft();
+      ui.draft.entries.splice(Number(b.dataset.delEx), 1);
+      appView();
+    }));
+    const saveW = document.getElementById('save-workout');
+    if (saveW) saveW.addEventListener('click', saveWorkout);
+    document.querySelectorAll('[data-del-workout]').forEach((b) => b.addEventListener('click', async () => {
+      if (!confirm('Deze training verwijderen?')) return;
+      try {
+        await cloud.remove('client_workouts', `id=eq.${b.dataset.delWorkout}`);
+        await loadDay(); appView(); toast('Verwijderd.');
+      } catch (e) { toast('Verwijderen mislukt: ' + e.message, 4000); }
+    }));
+
+    // nutrition
+    document.querySelectorAll('[data-add-meal]').forEach((b) => b.addEventListener('click', () => {
+      ui.addMoment = b.dataset.addMeal; ui.foodResults = []; ui.foodMsg = ''; appView();
+    }));
+    const mealClose = document.getElementById('meal-close');
+    if (mealClose) mealClose.addEventListener('click', () => { ui.addMoment = null; appView(); });
+    const foodSearch = document.getElementById('food-search');
+    if (foodSearch) foodSearch.addEventListener('click', async () => {
+      const term = document.getElementById('food-q').value.trim();
+      if (!term) return;
+      ui.foodMsg = 'Zoeken…'; appView();
+      try {
+        ui.foodResults = await searchProducts(term);
+        ui.foodMsg = ui.foodResults.length ? '' : 'Niets gevonden — vul het hieronder zelf in.';
+      } catch (e) {
+        ui.foodMsg = 'Zoeken lukte niet (' + e.message + '). Vul het hieronder zelf in.';
+      }
+      appView();
+    });
+    document.querySelectorAll('[data-pick]').forEach((b) => b.addEventListener('click', () => {
+      const idx = Number(b.dataset.pick);
+      const food = (ui.foodResults || [])[idx];
+      if (!food) return;
+      const amount = num(document.querySelector(`.pick-amount[data-idx="${idx}"]`).value) || 100;
+      const factor = amount / 100;
+      addMeal({
+        name: food.name, amount,
+        kcal: Math.round(food.kcal * factor), protein: Math.round(food.protein * factor * 10) / 10,
+        carbs: Math.round(food.carbs * factor * 10) / 10, fat: Math.round(food.fat * factor * 10) / 10,
+      });
+    }));
+    const quick = document.getElementById('quick-meal');
+    if (quick) quick.addEventListener('submit', (ev) => {
+      ev.preventDefault();
+      const f = new FormData(ev.target);
+      const name = String(f.get('name')).trim();
+      if (!name) return;
+      addMeal({ name, kcal: num(f.get('kcal')), protein: num(f.get('protein')), carbs: num(f.get('carbs')), fat: num(f.get('fat')) });
+    });
+    document.querySelectorAll('[data-del-meal]').forEach((b) => b.addEventListener('click', async () => {
+      try {
+        await cloud.remove('client_meals', `id=eq.${b.dataset.delMeal}`);
+        await loadDay(); appView();
+      } catch (e) { toast('Verwijderen mislukt: ' + e.message, 4000); }
+    }));
+    document.querySelectorAll('[data-water]').forEach((b) => b.addEventListener('click', async () => {
+      const ml = Math.max(0, ui.water + Number(b.dataset.water));
+      try {
+        await cloud.upsert('client_water', [{ client_id: cloud.userId(), date: ui.date, ml }], 'client_id,date');
+        ui.water = ml; appView();
+      } catch (e) { toast('Opslaan mislukt: ' + e.message, 4000); }
+    }));
+
+    // coach: berichten
+    const msgSend = document.getElementById('msg-send');
+    if (msgSend) msgSend.addEventListener('click', async () => {
+      const input = document.getElementById('msg-input');
+      const body = input.value.trim();
+      if (!body) return;
+      try {
+        await cloud.insert('client_messages', [{ client_id: cloud.userId(), sender: 'client', body }]);
+        ui.msgDraft = '';
+        await loadCoachTab();
+        appView();
+      } catch (e) { toast('Versturen mislukt: ' + e.message, 4000); }
+    });
+    const msgInput = document.getElementById('msg-input');
+    if (msgInput) {
+      msgInput.addEventListener('input', () => { ui.msgDraft = msgInput.value; });
+      msgInput.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); msgSend.click(); } });
+    }
+
+    // coach: check-in
+    document.querySelectorAll('[data-ci]').forEach((b) => b.addEventListener('click', () => {
+      const [key, v] = b.dataset.ci.split('.');
+      // invoer eerst vastleggen; opnieuw renderen wist anders wat er al getypt is
+      ui.ciWeight = document.getElementById('ci-weight').value;
+      ui.ciNote = document.getElementById('ci-note').value;
+      ui.ci[key] = ui.ci[key] === Number(v) ? 0 : Number(v);
+      appView();
+      const w = document.getElementById('ci-weight'); if (w) w.value = ui.ciWeight || '';
+      const n = document.getElementById('ci-note'); if (n) n.value = ui.ciNote || '';
+    }));
+    const ciSend = document.getElementById('ci-send');
+    if (ciSend) ciSend.addEventListener('click', async () => {
+      const weight = num(document.getElementById('ci-weight').value) || null;
+      const note = document.getElementById('ci-note').value.trim();
+      const files = [...(document.getElementById('ci-photos').files || [])].slice(0, 2);
+      if (!weight && !note && !ui.ci.energy && !ui.ci.sleep && !ui.ci.motivation && !files.length) {
+        toast('Vul minstens één ding in.'); return;
+      }
+      ciSend.disabled = true; ciSend.textContent = 'Versturen…';
+      try {
+        const photos = [];
+        for (const f of files) photos.push(await shrinkPhoto(f));
+        await cloud.insert('client_checkins', [{
+          client_id: cloud.userId(), date: todayIso(), weight,
+          energy: ui.ci.energy || null, sleep: ui.ci.sleep || null, motivation: ui.ci.motivation || null,
+          note, photos,
+        }]);
+        ui.ci = { energy: 0, sleep: 0, motivation: 0 };
+        ui.ciWeight = ''; ui.ciNote = '';
+        await loadCoachTab();
+        appView();
+        toast('Check-in verstuurd. Je coach ziet dit.');
+      } catch (e) {
+        toast('Versturen mislukt: ' + e.message, 5000);
+        ciSend.disabled = false; ciSend.textContent = 'Check-in versturen';
+      }
+    });
+
+    // coach: techniekvideo
+    const vidSend = document.getElementById('vid-send');
+    if (vidSend) vidSend.addEventListener('click', async () => {
+      const exercise = document.getElementById('vid-ex').value.trim();
+      const file = (document.getElementById('vid-file').files || [])[0];
+      const note = document.getElementById('vid-note').value.trim();
+      if (!file) { toast('Kies eerst een video.'); return; }
+      if (file.size > 60 * 1024 * 1024) { toast('Video is groter dan 60 MB. Film korter of in een lagere kwaliteit.', 5000); return; }
+      ui.videoBusy = true; appView();
+      try {
+        const ext = (file.name.split('.').pop() || 'mp4').toLowerCase().replace(/[^a-z0-9]/g, '') || 'mp4';
+        const path = `${cloud.userId()}/${Date.now()}.${ext}`;
+        await cloud.upload('technique-videos', path, file);
+        await cloud.insert('client_videos', [{ client_id: cloud.userId(), exercise, note, path }]);
+        await loadCoachTab();
+        toast('Video verstuurd. Je coach kijkt ernaar.');
+      } catch (e) {
+        toast('Uploaden mislukt: ' + e.message, 5000);
+      }
+      ui.videoBusy = false;
+      appView();
+    });
+    document.querySelectorAll('[data-vid-play]').forEach((b) => b.addEventListener('click', async () => {
+      try {
+        const url = await cloud.signUrl('technique-videos', b.dataset.vidPlay, 3600);
+        window.open(url, '_blank');
+      } catch (e) { toast('Openen mislukt: ' + e.message, 4000); }
+    }));
+
+    // coach: pushmeldingen
+    const pushBtn = document.getElementById('push-btn');
+    if (pushBtn) pushBtn.addEventListener('click', async () => {
+      try {
+        if (!('Notification' in window)) { toast('Deze browser ondersteunt geen meldingen.'); return; }
+        const perm = await Notification.requestPermission();
+        if (perm !== 'granted') { toast('Meldingen zijn geweigerd in de browser.'); return; }
+        await subscribePush();
+        toast('Meldingen staan aan.');
+        appView();
+      } catch (e) { toast('Aanzetten mislukt: ' + e.message, 5000); }
+    });
+  }
+
+  // gelezen-vinkje richting de coach; stil falen is prima (tabel kan ontbreken)
+  async function markMessagesRead() {
+    const unread = (ui.messages || []).filter((m) => m.sender === 'coach' && !m.read_by_client);
+    if (!unread.length) return;
+    try {
+      await cloud.patchRow('client_messages', `client_id=eq.${cloud.userId()}&sender=eq.coach&read_by_client=eq.false`, { read_by_client: true });
+      unread.forEach((m) => { m.read_by_client = true; });
+    } catch { /* tabel ontbreekt of geen netwerk */ }
+  }
+
+  function syncDraft() {
+    if (!ui.draft) return;
+    document.querySelectorAll('[data-set]').forEach((inp) => {
+      const [xi, si] = inp.dataset.set.split('.').map(Number);
+      ui.draft.entries[xi].sets[si][inp.dataset.f] = num(inp.value);
+    });
+    const note = document.getElementById('w-note');
+    if (note) ui.draft.notes = note.value;
+  }
+
+  async function saveWorkout() {
+    syncDraft();
+    const entries = ui.draft.entries
+      .map((e) => ({
+        name: e.name,
+        kind: e.kind || 'kracht',
+        sets: e.sets.filter((s) => s.weight > 0 || s.reps > 0).map(({ done, ...rest }) => rest),
+      }))
+      .filter((e) => e.sets.length);
+    if (!entries.length) { toast('Vul minstens één set in.'); return; }
+    try {
+      await cloud.insert('client_workouts', [{
+        client_id: cloud.userId(), date: ui.date, entries,
+        duration_min: Math.max(1, Math.round((Date.now() - ui.draft.startedAt) / 60000)),
+        notes: ui.draft.notes || '',
+      }]);
+      ui.draft = null;
+      stopRest();
+      await Promise.all([loadDay(), loadHistory()]);
+      appView();
+      toast('Opgeslagen. Je coach ziet dit.');
+    } catch (e) {
+      toast('Opslaan mislukt: ' + e.message, 5000);
+    }
+  }
+
+  async function addMeal(meal) {
+    try {
+      await cloud.insert('client_meals', [{ client_id: cloud.userId(), date: ui.date, moment: ui.addMoment || 'Snack', ...meal }]);
+      ui.foodResults = [];
+      ui.foodMsg = `${meal.name} toegevoegd.`;
+      await loadDay();
+      appView();
+    } catch (e) {
+      toast('Opslaan mislukt: ' + e.message, 5000);
+    }
+  }
+
+  // ---------- product search ----------
+  async function searchProducts(term) {
+    const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(term)}` +
+      '&search_simple=1&action=process&json=1&page_size=12&fields=code,product_name,brands,nutriments';
+    const res = await fetch(url, { signal: AbortSignal.timeout(12000) });
+    if (!res.ok) throw new Error('status ' + res.status);
+    const data = await res.json();
+    return (data.products || []).map((p) => {
+      const n = p.nutriments || {};
+      const name = [p.product_name, p.brands ? p.brands.split(',')[0].trim() : ''].filter(Boolean).join(' — ');
+      if (!name) return null;
+      return {
+        name,
+        kcal: Math.round(n['energy-kcal_100g'] || (n.energy_100g ? n.energy_100g / 4.184 : 0)),
+        protein: Math.round((n.proteins_100g || 0) * 10) / 10,
+        carbs: Math.round((n.carbohydrates_100g || 0) * 10) / 10,
+        fat: Math.round((n.fat_100g || 0) * 10) / 10,
+      };
+    }).filter((f) => f && f.kcal > 0);
+  }
+
+  // ---------- data ----------
+  async function loadDay() {
+    const id = cloud.userId();
+    const [workouts, meals, water] = await Promise.all([
+      cloud.select('client_workouts', `client_id=eq.${id}&date=eq.${ui.date}&select=*`),
+      cloud.select('client_meals', `client_id=eq.${id}&date=eq.${ui.date}&select=*`),
+      cloud.select('client_water', `client_id=eq.${id}&date=eq.${ui.date}&select=*`),
+    ]);
+    ui.workouts = workouts;
+    ui.meals = meals;
+    ui.water = water.length ? water[0].ml : 0;
+  }
+
+  // ---------- grafiekjes ----------
+  // a plain line with an area under it; same shape as the coach app, minus the hover
+  function chartSvg(points, unit) {
+    if (points.length < 2) return '<p class="mut">Nog te weinig sessies voor een grafiek.</p>';
+    const W = 320, H = 150, padL = 34, padR = 12, padT = 12, padB = 22;
+    const iw = W - padL - padR, ih = H - padT - padB;
+    const vals = points.map((p) => p.value);
+    const lo = Math.min(...vals), hi = Math.max(...vals);
+    const span = hi - lo || 1;
+    const x = (i) => padL + (i / (points.length - 1)) * iw;
+    const y = (v) => padT + ih - ((v - lo) / span) * ih;
+    const d = points.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(p.value).toFixed(1)}`).join(' ');
+    const area = `${d} L${x(points.length - 1).toFixed(1)},${padT + ih} L${padL},${padT + ih} Z`;
+    const last = points[points.length - 1];
+    return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Verloop van ${esc(unit)}">
+      <line x1="${padL}" y1="${padT}" x2="${W - padR}" y2="${padT}" stroke="var(--grid)" stroke-width="1"/>
+      <line x1="${padL}" y1="${padT + ih}" x2="${W - padR}" y2="${padT + ih}" stroke="var(--baseline)" stroke-width="1"/>
+      <text x="${padL - 6}" y="${padT + 4}" text-anchor="end" font-size="10" fill="var(--muted)">${fmtNum(hi)}</text>
+      <text x="${padL - 6}" y="${padT + ih}" text-anchor="end" font-size="10" fill="var(--muted)">${fmtNum(lo)}</text>
+      <path d="${area}" fill="var(--data-wash)"/>
+      <path d="${d}" fill="none" stroke="var(--data)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+      ${points.map((p, i) => `<circle cx="${x(i).toFixed(1)}" cy="${y(p.value).toFixed(1)}" r="3" fill="var(--data)"/>`).join('')}
+      <text x="${padL}" y="${H - 6}" font-size="10" fill="var(--muted)">${esc(fmtDate(points[0].date))}</text>
+      <text x="${W - padR}" y="${H - 6}" text-anchor="end" font-size="10" fill="var(--muted)">${esc(fmtDate(last.date))}</text>
+    </svg>`;
+  }
+
+  function sparkSvg(values) {
+    if (values.length < 2) return '<span style="width:70px;display:inline-block"></span>';
+    const w = 70, h = 22, pad = 3;
+    const lo = Math.min(...values), hi = Math.max(...values);
+    const x = (i) => pad + (i / (values.length - 1)) * (w - pad * 2);
+    const y = (v) => h - pad - ((v - lo) / (hi - lo || 1)) * (h - pad * 2);
+    const d = values.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+    return `<svg viewBox="0 0 ${w} ${h}" width="${w}" height="${h}" aria-hidden="true" style="flex:none">
+      <path d="${d}" fill="none" stroke="var(--data)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      <circle cx="${x(values.length - 1).toFixed(1)}" cy="${y(values[values.length - 1]).toFixed(1)}" r="2.5" fill="var(--data)"/>
+    </svg>`;
+  }
+
+  // ---------- rusttimer ----------
+  const rest = { endsAt: 0, tick: null, paused: false, left: 0 };
+  const mmss = (sec) => {
+    const t = Math.max(0, Math.round(sec));
+    return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
+  };
+  const buzz = (ms) => { if (navigator.vibrate) navigator.vibrate(ms); };
+
+  function stopRest() {
+    clearInterval(rest.tick);
+    rest.tick = null;
+    rest.paused = false;
+    document.getElementById('rest-bar').hidden = true;
+    document.body.classList.remove('rest-on');
+  }
+  function startRest(seconds) {
+    clearInterval(rest.tick);
+    rest.paused = false;
+    rest.endsAt = Date.now() + seconds * 1000;
+    const bar = document.getElementById('rest-bar');
+    bar.hidden = false;
+    document.body.classList.add('rest-on');
+    const paint = () => {
+      const left = rest.paused ? rest.left : (rest.endsAt - Date.now()) / 1000;
+      bar.querySelector('.t-time').textContent = mmss(left);
+      bar.querySelector('.t-pause').textContent = rest.paused ? '▶' : '⏸';
+      if (!rest.paused && left <= 0) { buzz([200, 100, 200]); stopRest(); }
+    };
+    paint();
+    rest.tick = setInterval(paint, 250);
+  }
+  function bindRestBar() {
+    const bar = document.getElementById('rest-bar');
+    bar.querySelector('.t-plus').addEventListener('click', () => {
+      if (rest.paused) rest.left += 30; else rest.endsAt += 30000;
+    });
+    bar.querySelector('.t-pause').addEventListener('click', () => {
+      if (rest.paused) { rest.endsAt = Date.now() + rest.left * 1000; rest.paused = false; }
+      else { rest.left = (rest.endsAt - Date.now()) / 1000; rest.paused = true; }
+    });
+    bar.querySelector('.t-stop').addEventListener('click', stopRest);
+  }
+
+  // the last 60 logged sessions, used to show what was done last time per exercise
+  async function loadHistory() {
+    try {
+      const rows = await cloud.select('client_workouts',
+        `client_id=eq.${cloud.userId()}&select=date,entries&order=date.desc&limit=60`);
+      const map = new Map();
+      for (const w of rows) {
+        for (const e of w.entries || []) {
+          const key = String(e.name || '').trim().toLowerCase();
+          if (key && !map.has(key)) map.set(key, { date: w.date, sets: e.sets || [] });
+        }
+      }
+      ui.history = map;
+      ui.sessions = rows;
+    } catch {
+      ui.history = new Map();
+      ui.sessions = [];
+    }
+  }
+
+  // every session of one exercise, oldest first, with the heaviest set of that day
+  function seriesFor(name) {
+    const key = String(name || '').trim().toLowerCase();
+    const out = [];
+    for (const w of ui.sessions) {
+      for (const e of w.entries || []) {
+        if (String(e.name || '').trim().toLowerCase() !== key) continue;
+        const sets = (e.sets || []).filter((x) => x.weight > 0 || x.reps > 0);
+        if (!sets.length) continue;
+        const top = Math.max(...sets.map((x) => x.weight || 0));
+        const reps = Math.max(...sets.map((x) => x.reps || 0));
+        out.push({ date: w.date, value: top > 0 ? top : reps, unit: top > 0 ? 'kg' : 'herh.', sets });
+      }
+    }
+    return out.sort((a, b) => a.date.localeCompare(b.date));
+  }
+
+  // the exercises this client has actually logged, most recent first
+  function loggedExercises() {
+    const seen = new Map();
+    for (const w of ui.sessions) {
+      for (const e of w.entries || []) {
+        const name = String(e.name || '').trim();
+        if (name && !seen.has(name.toLowerCase())) seen.set(name.toLowerCase(), name);
+      }
+    }
+    return [...seen.values()];
+  }
+
+  // weeks in a row with at least one session, counting back from this week
+  function weekStreak() {
+    const wk = (iso) => {
+      const d = new Date(iso + 'T12:00:00');
+      d.setDate(d.getDate() + 4 - (d.getDay() || 7));
+      return d.getFullYear() + '-' + Math.ceil(((d - new Date(d.getFullYear(), 0, 1)) / 86400000 + 1) / 7);
+    };
+    const weeks = new Set(ui.sessions.map((w) => wk(w.date)));
+    let streak = 0;
+    const cur = new Date();
+    for (let i = 0; i < 104; i++) {
+      const key = wk(cur.toISOString().slice(0, 10));
+      if (weeks.has(key)) streak++;
+      else if (i > 0) break;
+      cur.setDate(cur.getDate() - 7);
+    }
+    return streak;
+  }
+  // the moment the coach last put schemas ready; anything newer than what we saw is news
+  const newestSchemaAt = () => (ui.schemas || [])
+    .map((sc) => sc.updated_at || '')
+    .sort()
+    .pop() || '';
+  const hasNewSchema = () => {
+    const at = newestSchemaAt();
+    return !!at && at !== (local.schemasSeenAt || '');
+  };
+  const markSchemasSeen = () => {
+    const at = newestSchemaAt();
+    if (at && at !== local.schemasSeenAt) { local.schemasSeenAt = at; saveLocal(); }
+  };
+
+  const lastTime = (name) => ui.history.get(String(name || '').trim().toLowerCase()) || null;
+  const prevLine = (name) => {
+    const p = lastTime(name);
+    if (!p) return 'eerste keer';
+    const txt = p.sets.filter((x) => x.weight > 0 || x.reps > 0).slice(0, 4)
+      .map((x) => `${fmtNum(x.weight || 0)}×${x.reps || 0}`).join(' · ');
+    return `vorige keer ${fmtDate(p.date)}${txt ? ' — ' + txt : ''}`;
+  };
+
+  // the calorie and macro targets the coach set for this client
+  async function loadPlan() {
+    try {
+      const rows = await cloud.select('client_nutrition_plans', `client_id=eq.${cloud.userId()}&select=*`);
+      ui.plan = rows.length ? rows[0] : null;
+    } catch {
+      ui.plan = null;
+    }
+  }
+
+  // what the coach measured, oldest first; BMI comes from the height he sent along
+  const MEAS_FIELDS = [
+    { key: 'weight', label: 'Lichaamsgewicht', unit: 'kg' },
+    { key: 'fat', label: 'Vetpercentage', unit: '%' },
+    { key: 'muscle', label: 'Spiermassa', unit: 'kg' },
+    { key: 'bmi', label: 'BMI', unit: '' },
+    { key: 'waist', label: 'Taille', unit: 'cm' },
+    { key: 'chest', label: 'Borst', unit: 'cm' },
+    { key: 'hip', label: 'Heup', unit: 'cm' },
+    { key: 'arm', label: 'Arm', unit: 'cm' },
+    { key: 'leg', label: 'Bovenbeen', unit: 'cm' },
+  ];
+  const measValue = (m, key) => {
+    if (key !== 'bmi') return m[key] == null ? null : Number(m[key]);
+    const h = Number(m.height) > 0 ? Number(m.height) / 100 : 0;
+    const w = Number(m.weight) || 0;
+    return h > 0 && w > 0 ? Math.round((w / (h * h)) * 10) / 10 : null;
+  };
+  async function loadMeasurements() {
+    try {
+      ui.measurements = await cloud.select('client_measurements',
+        `client_id=eq.${cloud.userId()}&select=*&order=date`);
+    } catch {
+      ui.measurements = [];
+    }
+  }
+
+  // the coach's agenda for this client, from today on
+  async function loadAppointments() {
+    try {
+      ui.appointments = await cloud.select('client_appointments',
+        `client_id=eq.${cloud.userId()}&date=gte.${todayIso()}&select=*&order=date`);
+    } catch {
+      ui.appointments = [];
+    }
+  }
+
+  // de doelen die de coach meestuurde met Klaarzetten
+  async function loadGoals() {
+    try {
+      ui.goals = await cloud.select('client_goals', `client_id=eq.${cloud.userId()}&select=*&order=done.asc,date.asc.nullslast`);
+    } catch {
+      ui.goals = [];
+    }
+  }
+
+  // berichten, check-ins, video's en de push-sleutel; null = de coach heeft de tabel nog niet
+  async function loadCoachTab() {
+    const id = cloud.userId();
+    try { ui.messages = await cloud.select('client_messages', `client_id=eq.${id}&select=*&order=created_at.asc&limit=200`); } catch { ui.messages = null; }
+    try { ui.checkins = await cloud.select('client_checkins', `client_id=eq.${id}&select=*&order=date.desc&limit=8`); } catch { ui.checkins = null; }
+    try { ui.videos = await cloud.select('client_videos', `client_id=eq.${id}&select=*&order=created_at.desc&limit=10`); } catch { ui.videos = null; }
+    try {
+      const r = await cloud.select('push_config', 'id=eq.1&select=public_key');
+      ui.pushKey = r.length ? r[0].public_key : null;
+    } catch { ui.pushKey = null; }
+  }
+
+  // schemas the coach put ready; missing table or no rows simply means nothing to show
+  async function loadSchemas() {
+    ui.schemaError = '';
+    try {
+      ui.schemas = await cloud.select('client_schemas',
+        `client_id=eq.${cloud.userId()}&select=*&order=day_order`);
+    } catch (e) {
+      ui.schemas = [];
+      // the table is only there once the coach ran the extra SQL; say so instead of staying blank
+      ui.schemaError = /client_schemas|not exist|schema cache/i.test(e.message)
+        ? 'De coach heeft dit onderdeel nog niet aangezet.'
+        : 'Schema ophalen lukte niet: ' + e.message;
+    }
+  }
+
+  // start a session from one of the coach's schemas, with his targets already filled in
+  function startFromSchema(schema) {
+    ui.draft = {
+      entries: (schema.exercises || []).map((e) => ({
+        name: e.name,
+        kind: e.kind || 'kracht',
+        rest: e.rest || 0,
+        sets: (e.targets && e.targets.length ? e.targets : [{ weight: 0, reps: 0 }])
+          .map((t) => ({ weight: t.weight || 0, reps: t.reps || 0 })),
+      })),
+      notes: '',
+      startedAt: Date.now(),
+      schemaName: schema.name,
+    };
+  }
+
+  async function start() {
+    if (!cloud.configured()) { setupView(); return; }
+    cloud.captureSessionFromUrl();
+    if (!cloud.signedIn()) { loginView(); return; }
+    $app.innerHTML = '<p class="mut">Laden…</p>';
+    try {
+      const profile = await cloud.ensureProfile('client', '');
+      ui.profile = profile;
+      if (!profile.coach_id) { inviteView(); return; }
+      await Promise.all([loadDay(), loadSchemas(), loadHistory(), loadAppointments(), loadMeasurements(), loadPlan(), loadGoals(), loadCoachTab()]);
+      appView();
+      bindRestBar();
+      // service worker: nodig voor pushmeldingen; deelt de cache met de coach-app
+      if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+    } catch (e) {
+      $app.innerHTML = `<div class="card"><p class="sub">Verbinden mislukt: ${esc(e.message)}</p>
+        <button class="small" id="retry">Opnieuw</button> <button class="small ghost" id="out">Uitloggen</button></div>`;
+      document.getElementById('retry').addEventListener('click', start);
+      document.getElementById('out').addEventListener('click', () => { cloud.signOut(); start(); });
+    }
+  }
+
+  start();
+})();
+</script>
+</body>
+</html>
