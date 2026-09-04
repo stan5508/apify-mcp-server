@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0b0d0f">
+<title>Mijn voortgang — Coachlog</title>
+<style>
+  :root {
+    --page: #0b0d0f; --surface: #15181c; --raised: #22272f; --ink: #f5f7f8; --ink-2: #96a0ac; --muted: #8a939f;
+    --grid: #262b33; --baseline: #39414c; --border: rgba(255, 255, 255, 0.11);
+    --accent: #f2a93b; --accent-strong: #ffc163; --on-accent: #0b0d0f; --wash: rgba(242, 169, 59, 0.14);
+    --good: #3f9e6c; --danger: #e5645c; --data: #e8384f; --data-wash: rgba(232, 56, 79, 0.16);
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page); color: var(--ink); font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 640px; margin: 0 auto; padding: 16px 16px 64px; }
+  h1 { font-size: 20px; margin: 0 0 2px; }
+  .sub { color: var(--ink-2); font-size: 14px; }
+  .mut { color: var(--muted); font-size: 13px; }
+  .eyebrow { font-size: 12px; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 24px 0 8px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-bottom: 10px; }
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+  .stat .lbl { font-size: 12px; color: var(--muted); }
+  .stat .val { font-size: 20px; font-weight: 650; }
+  .row { display: flex; align-items: center; gap: 10px; }
+  .grow { flex: 1; min-width: 0; }
+  .title { font-weight: 650; }
+  .badge { display: inline-block; font-size: 12px; color: var(--accent-strong); background: var(--wash); border-radius: 99px; padding: 2px 9px; font-weight: 600; }
+  .track { display: block; background: var(--grid); border-radius: 4px; height: 14px; overflow: hidden; }
+  .fill { display: block; background: var(--accent); height: 100%; border-radius: 4px; }
+  svg { display: block; width: 100%; height: auto; }
+  select { font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--baseline); border-radius: 8px; padding: 9px 10px; width: 100%; }
+</style>
+</head>
+<body>
+<main id="app"><p class="mut">Laden…</p></main>
+<script>
+(() => {
+  'use strict';
+  const $app = document.getElementById('app');
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const fmtDate = (iso) => new Date(iso + 'T12:00:00').toLocaleDateString('nl-NL', { day: 'numeric', month: 'short' });
+  const fmtDateFull = (iso) => new Date(iso + 'T12:00:00').toLocaleDateString('nl-NL', { weekday: 'short', day: 'numeric', month: 'long' });
+  const fmtNum = (n) => (Math.round(n * 10) / 10).toLocaleString('nl-NL');
+  let data = null;
+  let unit = 'kg';
+  const fmtKg = (n) => fmtNum(n) + ' ' + unit;
+
+  function niceTicks(min, max, count) {
+    if (min === max) { min = Math.max(0, min - 1); max += 1; }
+    const step0 = (max - min) / count;
+    const mag = Math.pow(10, Math.floor(Math.log10(step0)));
+    const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((x) => x >= step0) || 10 * mag;
+    const ticks = [];
+    for (let v = Math.floor(min / step) * step; v <= Math.ceil(max / step) * step + step / 2; v += step) {
+      ticks.push(Math.round(v * 100) / 100);
+    }
+    return ticks;
+  }
+
+  function lineChart(points) {
+    const W = 600, H = 240, padL = 46, padR = 14, padT = 12, padB = 28;
+    const iw = W - padL - padR, ih = H - padT - padB;
+    const vals = points.map((p) => p.value);
+    const ticks = niceTicks(Math.min(...vals), Math.max(...vals), 4);
+    const yMin = ticks[0], yMax = ticks[ticks.length - 1];
+    const x = (i) => points.length === 1 ? padL + iw / 2 : padL + (i / (points.length - 1)) * iw;
+    const y = (v) => padT + ih - ((v - yMin) / (yMax - yMin || 1)) * ih;
+    const grid = ticks.map((t) =>
+      `<line x1="${padL}" y1="${y(t)}" x2="${W - padR}" y2="${y(t)}" stroke="var(--grid)" stroke-width="1"/>` +
+      `<text x="${padL - 8}" y="${y(t) + 4}" text-anchor="end" font-size="11" fill="var(--muted)">${t.toLocaleString('nl-NL')}</text>`).join('');
+    const d = points.map((p, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(p.value).toFixed(1)}`).join(' ');
+    const area = points.length > 1 ? `${d} L${x(points.length - 1).toFixed(1)},${padT + ih} L${x(0).toFixed(1)},${padT + ih} Z` : '';
+    const dots = points.map((p, i) => `<circle cx="${x(i)}" cy="${y(p.value)}" r="4" fill="var(--accent)" stroke="var(--surface)" stroke-width="2"/>`).join('');
+    return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Voortgang">${grid}
+      <line x1="${padL}" y1="${padT + ih}" x2="${W - padR}" y2="${padT + ih}" stroke="var(--baseline)" stroke-width="1"/>
+      ${area ? `<path d="${area}" fill="var(--wash)"/>` : ''}
+      ${points.length > 1 ? `<path d="${d}" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>` : ''}
+      ${dots}
+      <text x="${padL}" y="${H - 8}" font-size="11" fill="var(--muted)">${esc(fmtDate(points[0].date))}</text>
+      ${points.length > 1 ? `<text x="${W - padR}" y="${H - 8}" text-anchor="end" font-size="11" fill="var(--muted)">${esc(fmtDate(points[points.length - 1].date))}</text>` : ''}
+    </svg>`;
+  }
+
+  function render(selected) {
+    const ex = data.exercises.filter((e) => e.sessions.length);
+    const pick = ex.find((e) => e.name === selected) || ex[0];
+    const totalSessions = data.workouts.length;
+    const prs = ex.map((e) => ({ name: e.name, kind: e.kind, best: Math.max(...e.sessions.map((s) => s.top)) }));
+
+    $app.innerHTML = `
+      <h1>Voortgang van ${esc(data.client.name)}</h1>
+      <p class="sub">${data.client.goal ? 'Doel: ' + esc(data.client.goal) + ' · ' : ''}bijgewerkt ${esc(fmtDate(data.generated))}${data.coach ? ' · coach ' + esc(data.coach) : ''}</p>
+
+      <div class="eyebrow">In het kort</div>
+      <div class="stat-grid">
+        <div class="card stat"><div class="lbl">Trainingen</div><div class="val">${totalSessions}</div></div>
+        <div class="card stat"><div class="lbl">Oefeningen</div><div class="val">${ex.length}</div></div>
+        <div class="card stat"><div class="lbl">Laatste training</div><div class="val">${totalSessions ? esc(fmtDate(data.workouts[data.workouts.length - 1].date)) : '—'}</div></div>
+      </div>
+
+      ${data.goals && data.goals.length ? `<div class="eyebrow">Doelen</div><div class="card">${data.goals.map((g) => {
+        const e = g.exercise && ex.find((x) => x.name === g.exercise);
+        const current = e ? Math.max(...e.sessions.map((s) => s.top)) : 0;
+        const pct = g.target > 0 && e ? Math.max(0, Math.min(100, Math.round((current / g.target) * 100))) : null;
+        return `<div class="row" style="margin-bottom:6px"><div class="grow title">${esc(g.text)}</div>
+            ${g.done || (pct === 100) ? '<span class="badge">gehaald</span>' : pct != null ? `<span class="mut">${pct}%</span>` : ''}</div>
+          ${pct != null ? `<span class="track" style="margin-bottom:10px"><span class="fill" style="width:${pct}%"></span></span>` : ''}`;
+      }).join('')}</div>` : ''}
+
+      ${pick ? `<div class="eyebrow">Per oefening</div>
+      <div class="card">
+        <select id="ex-pick">${ex.map((e) => `<option ${e.name === pick.name ? 'selected' : ''}>${esc(e.name)}</option>`).join('')}</select>
+        <div style="margin-top:12px">${lineChart(pick.sessions.map((s) => ({ date: s.date, value: s.top })))}</div>
+        <p class="mut" style="margin:6px 0 0">${pick.kind === 'cardio' ? 'Afstand per training.' : pick.kind === 'lichaamsgewicht' ? 'Extra gewicht per training.' : 'Zwaarste set per training.'}</p>
+      </div>` : '<p class="mut">Nog geen trainingen gelogd.</p>'}
+
+      ${data.nutrition ? `<div class="eyebrow">Voeding</div><div class="card">
+        ${data.nutrition.plan ? `<div class="sub">Dagdoel: ${Math.round(data.nutrition.plan.kcal || 0)} kcal · ${Math.round(data.nutrition.plan.protein || 0)} g eiwit · ${Math.round(data.nutrition.plan.carbs || 0)} g koolhydraten · ${Math.round(data.nutrition.plan.fat || 0)} g vet</div>` : ''}
+        ${data.nutrition.week ? `<div class="sub">Gemiddeld (${data.nutrition.week.days} dagen): ${data.nutrition.week.avg.kcal} kcal · ${data.nutrition.week.avg.protein} g eiwit</div>` : ''}
+        ${data.nutrition.plan && data.nutrition.plan.guidelines ? `<div class="mut" style="white-space:pre-wrap;margin-top:6px">${esc(data.nutrition.plan.guidelines)}</div>` : ''}
+      </div>` : ''}
+
+      ${prs.length ? `<div class="eyebrow">Records</div><div class="card">${prs.map((p) => `<div class="row" style="margin-bottom:4px">
+        <div class="grow sub">${esc(p.name)}</div><div class="title">${p.kind === 'cardio' ? fmtNum(p.best) + ' km' : fmtKg(p.best)}</div></div>`).join('')}</div>` : ''}
+
+      ${data.workouts.length ? `<div class="eyebrow">Laatste trainingen</div>${[...data.workouts].reverse().slice(0, 10).map((w) => `<div class="card">
+        <div class="title">${esc(fmtDateFull(w.date))}${w.durationMin ? ` <span class="mut">${w.durationMin} min</span>` : ''}</div>
+        <div class="sub">${w.entries.map((e) => esc(e.name)).join(' · ')}</div>
+      </div>`).join('')}` : ''}
+
+      <p class="mut" style="margin-top:24px">Gedeeld via Coachlog. Deze pagina is alleen om te bekijken.</p>`;
+
+    const picker = document.getElementById('ex-pick');
+    if (picker) picker.addEventListener('change', () => render(picker.value));
+  }
+
+  async function load() {
+    const id = location.hash.replace('#', '').trim();
+    if (!id) { $app.innerHTML = '<p class="mut">Geen link gevonden. Vraag je coach om de deel-link opnieuw te sturen.</p>'; return; }
+    try {
+      const res = await fetch('https://api.github.com/gists/' + encodeURIComponent(id));
+      if (!res.ok) throw new Error('kan gegevens niet ophalen (' + res.status + ')');
+      const gist = await res.json();
+      const file = gist.files && gist.files['client.json'];
+      if (!file) throw new Error('geen gegevens in deze link');
+      const text = file.truncated ? await (await fetch(file.raw_url)).text() : file.content;
+      data = JSON.parse(text);
+      unit = data.unit || 'kg';
+      render();
+    } catch (e) {
+      $app.innerHTML = `<p class="mut">Ophalen mislukt: ${esc(e.message)}. Mogelijk is het delen gestopt.</p>`;
+    }
+  }
+
+  window.addEventListener('hashchange', load);
+  load();
+})();
+</script>
+</body>
+</html>
