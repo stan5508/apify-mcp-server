@@ -497,7 +497,7 @@ Telling: 18 nu, 26 daarna, 12 later.
 
 Opsplitsen en autosave. Geen nieuwe functies. Zonder dit stapelt elk volgend punt risico.
 
-### Sprint 1 · week 3–5 · geld en risico, zonder nieuwe tabellen
+### Sprint 1 · week 3–5 · geld en risico, zonder nieuwe tabellen — gebouwd in versie 67
 
 - 5. Risicovlag per klant
 - 6. Commitment-knop bij een rode vlag

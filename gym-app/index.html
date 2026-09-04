@@ -455,6 +455,19 @@
   .msg.me { margin-left: auto; background: var(--wash); border: 1px solid var(--accent); border-top-right-radius: 4px; }
   .msg.them { margin-right: auto; background: var(--surface-2, var(--surface)); border: 1px solid var(--border); border-top-left-radius: 4px; }
   .note-box strong { color: var(--accent-strong); }
+  .note-box.pain { border-left: 3px solid var(--danger); }
+  .note-box.pain strong { color: var(--danger); }
+  .risk-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; flex: none; margin-left: 6px; }
+  .risk-dot.rood { background: var(--danger); }
+  .risk-dot.oranje { background: var(--accent); }
+  .row > .risk-dot { margin-left: 0; }
+  .risk-row { padding: 6px 0; border-bottom: 1px solid var(--line); }
+  .risk-row:last-of-type { border-bottom: 0; }
+  .commit-form { margin-top: 6px; flex-wrap: wrap; }
+  .commit-form input { flex: 1 1 140px; }
+  .ladder-row { padding: 6px 0; border-bottom: 1px solid var(--line); }
+  .ladder-row:last-child { border-bottom: 0; }
+  .ladder-step { width: 26px; height: 26px; border-radius: 50%; background: var(--wash); color: var(--accent-strong); font-weight: 700; display: grid; place-items: center; flex: none; font-size: 13px; }
   .info-panel { border: 1px solid var(--grid); border-radius: 8px; padding: 10px; margin-bottom: 10px; }
   .chart-overlay { position: fixed; inset: 0; z-index: 45; background: var(--page); overflow-y: auto; padding: 0 16px 32px; }
   .chart-overlay .inner { max-width: 640px; margin: 0 auto; }
@@ -585,14 +598,14 @@
 <script>
 (() => {
   'use strict';
-  const APP_VERSION = 66; // bump when publishing; shown on the home screen
+  const APP_VERSION = 67; // bump when publishing; shown on the home screen
   const KEY = 'coachlog-v1';
   const $app = document.getElementById('app');
 
   // ---------- data ----------
   const emptyDb = () => ({
     clients: [], schemas: [], workouts: [], duos: [], duoSchemas: [], templates: [], measurements: [],
-    exercises: [], clientNotes: {}, appointments: [], packages: [], subTypes: [], subscriptions: [],
+    exercises: [], clientNotes: {}, machineSettings: {}, painNotes: {}, appointments: [], packages: [], subTypes: [], subscriptions: [],
     programs: [], nutritionPlans: {}, meals: [], foods: [], water: {}, muscleGroups: {}, settings: { unit: 'kg', restSeconds: 90, autoRest: true, sound: true, barWeight: 20 }, updatedAt: 0,
   });
   // the Dutch group names this app shipped with, mapped onto their closest Latin equivalent
@@ -642,6 +655,7 @@
       clients: d.clients || [], schemas: d.schemas || [], workouts: d.workouts || [], duos: d.duos || [],
       duoSchemas: d.duoSchemas || [], templates: d.templates || [], measurements: d.measurements || [],
       exercises: d.exercises || [], clientNotes: d.clientNotes || {},
+      machineSettings: d.machineSettings || {}, painNotes: d.painNotes || {},
       appointments: d.appointments || [], packages: d.packages || [],
       subTypes: d.subTypes || [], subscriptions: d.subscriptions || [],
       nutritionPlans: d.nutritionPlans || {}, meals: d.meals || [], foods: d.foods || [], water: d.water || {},
@@ -649,7 +663,8 @@
       muscleGroups: d.muscleGroups || {},
       settings: { unit: 'kg', restSeconds: 90, autoRest: true, sound: true, barWeight: 20, noShowCounts: true, currency: '€', theme: 'dark', pin: null, lockMinutes: 15, coachName: '', lastBackupAt: null,
         countTrainingBurn: true, kcalPerMin: 6, waterTargetMl: 2000, mailCopy: true,
-        progression: true, progressStep: 2.5, iban: '', ibanName: '', deloadPercent: 60, ...(d.settings || {}) },
+        progression: true, progressStep: 2.5, iban: '', ibanName: '', deloadPercent: 60,
+        cancelHours: 24, packageValidMonths: 12, referralReward: 1, capacityPerWeek: 20, ...(d.settings || {}) },
       updatedAt: d.updatedAt || 0,
     };
     for (const c of out.clients) {
@@ -1003,16 +1018,35 @@
     save();
   }
   const safeUrl = (u) => /^https?:\/\//i.test(String(u || '').trim()) ? String(u).trim() : '';
+  // stoelhoogte, pin, bandkleur — en pijn die de klant bij een oefening meldt
+  const machineSetting = (clientId, name) => ((db.machineSettings[clientId] || {})[exKey(name)] || '');
+  const painNote = (clientId, name) => ((db.painNotes[clientId] || {})[exKey(name)] || '');
+  function setClientField(map, clientId, name, text) {
+    const m = db[map][clientId] || (db[map][clientId] = {});
+    if (String(text || '').trim()) m[exKey(name)] = String(text).trim();
+    else delete m[exKey(name)];
+    save();
+  }
+  const nameForKey = (k) => (db.exercises.find((e) => exKey(e.name) === k) || {}).name || k;
+  const painFlags = (clientId) => Object.entries(db.painNotes[clientId] || {}).map(([k, text]) => ({ name: nameForKey(k), text }));
+  const clientExtrasHtml = (clientId, name) => {
+    if (!clientId) return '';
+    const setting = machineSetting(clientId, name);
+    const pain = painNote(clientId, name);
+    return (setting ? `<div class="note-box"><strong>Toestel:</strong> ${esc(setting)}</div>` : '') +
+      (pain ? `<div class="note-box pain"><strong>Pijn gemeld:</strong> ${esc(pain)}</div>` : '');
+  };
 
   // read-only info block: library instructions plus this client's technique note
   function exerciseInfoHtml(name, clientId) {
     const rec = exerciseByName(name);
     const note = clientId ? clientNote(clientId, name) : '';
+    const extras = clientExtrasHtml(clientId, name);
     const anatomy = anatomyInlineHtml(groupOf(name));
-    if (!hasInfo(rec) && !note) return (anatomy || '') + '<p class="mut">Nog geen uitleg. Vul die in via de bibliotheek.</p>';
+    if (!hasInfo(rec) && !note && !extras) return (anatomy || '') + '<p class="mut">Nog geen uitleg. Vul die in via de bibliotheek.</p>';
     const img = safeUrl(rec && rec.imageUrl);
     const vid = safeUrl(rec && rec.videoUrl);
-    return (note ? `<div class="note-box"><strong>Voor deze klant:</strong> ${esc(note)}</div>` : '') +
+    return extras + (note ? `<div class="note-box"><strong>Voor deze klant:</strong> ${esc(note)}</div>` : '') +
       (rec && rec.instructions ? `<p class="sub" style="white-space:pre-wrap;margin:0 0 8px">${esc(rec.instructions)}</p>` : '') +
       (rec && rec.cues ? `<div class="note-box"><strong>Aandachtspunten:</strong> ${esc(rec.cues)}</div>` : '') +
       (img ? `<img src="${esc(img)}" alt="" loading="lazy" style="max-width:100%;border-radius:8px;margin-top:8px">` : '') +
@@ -1947,7 +1981,10 @@
   const packagesOf = (clientId) => db.packages.filter((p) => p.clientId === clientId).sort((a, b) => a.date.localeCompare(b.date));
   const addDays = (iso, n) => { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); };
 
-  // one credit per training; a no-show costs a credit too unless switched off
+  // one credit per training; a no-show or a late cancellation costs a credit too unless switched off
+  const pkgValidUntil = (p) => p.validUntil || (p.validMonths > 0 ? addMonths(p.date, p.validMonths) : '');
+  const missedAppt = (a) => a.status === 'noshow' || (a.status === 'geannuleerd' && a.lateCancel);
+  const isLateCancel = (a) => new Date(`${a.date}T${a.time || '00:00'}:00`).getTime() - Date.now() < (db.settings.cancelHours || 24) * 3600000;
   function creditLedger(clientId) {
     const packs = packagesOf(clientId);
     if (!packs.length) return null;
@@ -1955,10 +1992,134 @@
     const bought = packs.reduce((t, p) => t + (p.sessions || 0), 0);
     const trainings = workoutsOf(clientId).filter((w) => w.date >= from).length;
     const noShows = db.settings.noShowCounts
-      ? appointmentsFor(clientId).filter((a) => a.status === 'noshow' && a.date >= from).length
+      ? appointmentsFor(clientId).filter((a) => missedAppt(a) && a.date >= from).length
       : 0;
     const used = trainings + noShows;
-    return { from, bought, used, trainings, noShows, remaining: bought - used, low: bought - used <= 2 };
+    // oldest card first; what is left on an expired card is gone
+    const today = todayIso();
+    let left = used, expired = 0, expiring = null;
+    for (const p of packs) {
+      const take = Math.min(left, p.sessions || 0);
+      left -= take;
+      const rest = (p.sessions || 0) - take;
+      const until = pkgValidUntil(p);
+      if (rest > 0 && until && until < today) expired += rest;
+      else if (rest > 0 && until && (!expiring || until < expiring)) expiring = until;
+    }
+    const remaining = bought - used - expired;
+    return { from, bought, used, trainings, noShows, expired, expiring, remaining, low: remaining <= 2 };
+  }
+
+  // ---------- risico op afhaken ----------
+  // stil worden gaat aan opzeggen vooraf: weken zonder training, tegoed op, geen afspraak in zicht
+  function riskOf(clientId) {
+    const c = clientById(clientId);
+    if (!c || c.archived) return null;
+    const ws = workoutsOf(clientId);
+    if (!ws.length) return null;
+    const today = todayIso();
+    const last = ws[ws.length - 1].date;
+    const days = Math.round((new Date(today + 'T12:00:00') - new Date(last + 'T12:00:00')) / 86400000);
+    const planned = appointmentsFor(clientId).some((a) => a.status === 'gepland' && a.date >= today);
+    const ledger = creditLedger(clientId);
+    const target = sessionsPerWeekTarget(clientId);
+    const twoWeeks = ws.filter((w) => w.date > addDays(today, -14)).length;
+    const missed = appointmentsFor(clientId).filter((a) => a.date >= addDays(today, -30) && missedAppt(a)).length;
+    const reasons = [];
+    let score = 0;
+    if (days > 14) { score += 2; reasons.push(`${days} dagen niet getraind`); }
+    else if (days > 7) { score += 1; reasons.push(`${days} dagen niet getraind`); }
+    if (days > 7 && !planned) { score += 1; reasons.push('geen afspraak gepland'); }
+    if (days <= 7 && target >= 2 && twoWeeks < target) { score += 1; reasons.push(`${twoWeeks} van ${target * 2} trainingen in twee weken`); }
+    if (ledger && ledger.remaining <= 0) { score += 1; reasons.push('tegoed op'); }
+    if (ledger && ledger.expiring && ledger.expiring <= addDays(today, 30)) { score += 1; reasons.push(`strippenkaart verloopt ${fmtDate(ledger.expiring)}`); }
+    if (missed >= 2) { score += 1; reasons.push(`${missed}× niet gekomen in 30 dagen`); }
+    if (planned && score > 0) score -= 1;
+    if (score < 1) return null;
+    return { level: score >= 3 ? 'rood' : 'oranje', reasons, lastDate: last, days };
+  }
+  const riskDotHtml = (clientId) => {
+    const r = riskOf(clientId);
+    return r ? `<span class="risk-dot ${r.level}" title="${esc(r.reasons.join(' · '))}"></span>` : '';
+  };
+
+  // a concrete next appointment beats "how are you": propose the client's usual slot
+  function usualSlot(clientId) {
+    const past = appointmentsFor(clientId).filter((a) => !a.duoId && a.status !== 'geannuleerd');
+    const last = past[past.length - 1];
+    const today = todayIso();
+    let date = addDays(today, 1);
+    if (last) {
+      const wd = new Date(last.date + 'T12:00:00').getDay();
+      while (new Date(date + 'T12:00:00').getDay() !== wd) date = addDays(date, 1);
+    }
+    return { date, time: (last && last.time) || '09:00', durationMin: (last && last.durationMin) || 60 };
+  }
+  function commitFormHtml(clientId) {
+    const slot = usualSlot(clientId);
+    return `<form class="row commit-form" data-commit="${clientId}">
+      <input type="date" name="date" value="${slot.date}" required aria-label="Datum">
+      <input type="time" name="time" value="${esc(slot.time)}" aria-label="Tijd" style="max-width:110px">
+      <button class="small primary" type="submit">Plan sessie</button>
+    </form>`;
+  }
+  // a message in the client's app when linked; otherwise WhatsApp with the text ready
+  async function sendClientMessage(c, body) {
+    if (!c || !c.cloudId || c.cloudId === '__none__' || !cloud.configured() || !cloud.signedIn()) return false;
+    try {
+      await cloud.insert('client_messages', [{ client_id: c.cloudId, coach_id: cloud.userId(), sender: 'coach', body }]);
+      sendPushTo(c.cloudId, 'Bericht van je coach', body);
+      return true;
+    } catch { return false; }
+  }
+  const waLink = (phone, text) => {
+    const digits = String(phone || '').replace(/\D/g, '');
+    if (!digits) return '';
+    const intl = digits.startsWith('0') ? '31' + digits.slice(1) : digits;
+    return `https://wa.me/${intl}?text=${encodeURIComponent(text)}`;
+  };
+  function bindCommitForms() {
+    document.querySelectorAll('[data-commit]').forEach((f) => f.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const c = clientById(f.dataset.commit);
+      const fd = new FormData(f);
+      const date = String(fd.get('date')), time = String(fd.get('time') || '');
+      if (!c || !date) return;
+      db.appointments.push({ id: uid(), clientId: c.id, date, time, durationMin: usualSlot(c.id).durationMin, status: 'gepland', note: 'opnieuw ingepland' });
+      save();
+      const when = `${fmtDateFull(date)}${time ? ' om ' + time : ''}`;
+      const text = `Hoi ${c.name.split(' ')[0]}, ik heb je ingepland op ${when}. Zie ik je dan?`;
+      const sent = await sendClientMessage(c, text);
+      const wa = sent ? '' : waLink(c.phone, text);
+      if (wa) window.open(wa, '_blank');
+      alert(`Ingepland op ${when}.` + (sent ? ' Bericht is naar de app van de klant gestuurd.' : wa ? ' WhatsApp staat klaar met het bericht.' : ''));
+      render();
+    }));
+  }
+
+  // ---------- verwijzingscode ----------
+  // dezelfde functie staat in sporter.html; de klant ziet zijn code daar op basis van zijn account-id
+  function referralCode(seed) {
+    let h = 0x811c9dc5;
+    for (const ch of String(seed || '')) { h ^= ch.charCodeAt(0); h = Math.imul(h, 0x01000193) >>> 0; }
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let out = '';
+    for (let i = 0; i < 6; i++) { out += chars[h & 31]; h >>>= 5; }
+    return 'CL-' + out;
+  }
+  const clientRefCode = (c) => referralCode(c.cloudId && c.cloudId !== '__none__' ? c.cloudId : c.id);
+  const clientByRefCode = (code) => {
+    const want = String(code || '').trim().toUpperCase().replace(/^CL-?/, '');
+    return want ? db.clients.find((c) => clientRefCode(c).slice(3) === want) : null;
+  };
+  const referralsOf = (clientId) => db.clients.filter((c) => c.referredBy === clientId);
+  function rewardReferrer(referrer, newClient) {
+    const n = Math.max(0, Math.round(db.settings.referralReward || 0));
+    if (!n) return;
+    db.packages.push({
+      id: uid(), clientId: referrer.id, sessions: n, price: 0, date: todayIso(), paid: true, paidAt: todayIso(),
+      note: `Verwijzing: ${newClient.name}`, validMonths: db.settings.packageValidMonths || 0,
+    });
   }
   // ---------- subscriptions ----------
   const SUB_STATUS = { concept: 'Concept', getekend: 'Getekend', opgezegd: 'Opgezegd', afgelopen: 'Afgelopen' };
@@ -1973,7 +2134,29 @@
   const subById = (id) => db.subscriptions.find((s) => s.id === id);
   const subsOf = (clientId) => db.subscriptions.filter((s) => s.clientId === clientId)
     .sort((a, b) => (b.startDate || '').localeCompare(a.startDate || ''));
-  const subEnd = (s) => s.endDate || (s.months > 0 && s.startDate ? addMonths(s.startDate, s.months) : '');
+  const pauseDays = (s) => (s.pauses || []).reduce((t, p) => t + (p.weeks || 0) * 7, 0);
+  const subEnd = (s) => s.endDate || (s.months > 0 && s.startDate ? addDays(addMonths(s.startDate, s.months), pauseDays(s)) : '');
+  // what a form promises, in the words that go on the contract and into the app
+  function subTypeIncludes(t) {
+    const out = [];
+    if (t.maintenance) out.push('onderhoud: app en schema\'s, geen sessies met de coach');
+    else if (t.sessionsPerWeek > 0) out.push(`${fmtNum(t.sessionsPerWeek)}× per week trainen met de coach`);
+    if (t.checkins > 0) out.push(t.checkins === 1 ? 'wekelijkse check-in' : `${t.checkins} check-ins per week`);
+    if (t.replyHours > 0) out.push(`antwoord binnen ${t.replyHours} uur`);
+    if (t.calls > 0) out.push(t.calls === 1 ? '1 videogesprek per maand' : `${t.calls} videogesprekken per maand`);
+    if (t.appAccess !== false) out.push('sporter-app met schema\'s, voeding en voortgang');
+    return out;
+  }
+  function subFromType(t, clientId, startDate) {
+    return {
+      id: uid(), clientId, typeId: t.id, name: t.name,
+      startDate, months: t.months || 0, pricePerMonth: t.pricePerMonth || 0,
+      sessionsPerWeek: t.sessionsPerWeek || 0, noticeMonths: t.noticeMonths || 0,
+      terms: t.terms || '', fields: (t.fields || []).map((x) => ({ label: x.label, value: x.value })),
+      includes: subTypeIncludes(t), maintenance: !!t.maintenance,
+      status: 'concept', signature: null, endDate: '', note: '',
+    };
+  }
   const subRunning = (s) => {
     if (s.status !== 'getekend') return false;
     const end = subEnd(s);
@@ -3160,7 +3343,7 @@
       <input id="nav-q" class="nav-search" placeholder="Zoek klant of duo…" value="${esc(uiState.navQuery)}">
       <details class="navgrp" data-key="Clients" ${uiState.navClients ? 'open' : ''}>
         <summary>Klanten <span class="chev">▾</span></summary>
-        ${clients.map((c) => `<a class="navlink person${c.id === activeClient ? ' active' : ''}" href="#/klant/${c.id}">${avatarStreakHtml(c, 22)}<span>${esc(c.name)}</span></a>`).join('')}
+        ${clients.map((c) => `<a class="navlink person${c.id === activeClient ? ' active' : ''}" href="#/klant/${c.id}">${avatarStreakHtml(c, 22)}<span>${esc(c.name)}</span>${riskDotHtml(c.id)}</a>`).join('')}
         ${clients.length ? '' : '<span class="navlink mut">geen resultaten</span>'}
         ${archivedCount ? `<button class="navlink add" id="nav-archived" type="button">${uiState.navArchived ? '‹ Actieve klanten' : `Archief (${archivedCount}) ›`}</button>` : ''}
         <a class="navlink add" href="#/">+ Nieuwe klant</a>
@@ -3175,6 +3358,7 @@
         <a class="navlink${hash.startsWith('/agenda') ? ' active' : ''}" href="#/agenda">Agenda</a>
         <a class="navlink${hash.startsWith('/zakelijk') ? ' active' : ''}" href="#/zakelijk">Tegoeden &amp; betalingen${openInvoices().length ? ` (${openInvoices().length})` : ''}</a>
         <a class="navlink${hash.startsWith('/abonnement') ? ' active' : ''}" href="#/abonnementen">Abonnementen</a>
+        <a class="navlink${hash.startsWith('/cijfers') ? ' active' : ''}" href="#/cijfers">Cijfers</a>
         <a class="navlink${hash.startsWith('/voedingsmiddelen') ? ' active' : ''}" href="#/voedingsmiddelen">Voedingsmiddelen</a>
         <a class="navlink${hash.startsWith('/vanklanten') ? ' active' : ''}" href="#/vanklanten">Van klanten</a>
         <a class="navlink${hash.startsWith('/cloud') ? ' active' : ''}" href="#/cloud">Cloud-accounts</a>
@@ -3283,6 +3467,7 @@
     if (parts[0] === 'agenda' && parts[1] === 'week') return viewAgendaWeek(parts[2] || todayIso());
     if (parts[0] === 'agenda') return viewAgenda(parts[1] || todayIso());
     if (parts[0] === 'zakelijk') return viewBusiness();
+    if (parts[0] === 'cijfers') return viewNumbers();
     if (parts[0] === 'abonnementen') return parts[1] === 'vormen' ? viewSubTypes() : viewSubscriptions();
     if (parts[0] === 'abonnement') return viewSubscription(parts[1]);
     if (parts[0] === 'voedingsmiddelen') return viewFoods();
@@ -3310,13 +3495,13 @@
   // --- vandaag: what the day looks like ---
   function viewToday() {
     const clients = sortedClients().filter((c) => !c.archived);
-    const lowCredit = clients.map((c) => ({ c, l: creditLedger(c.id) })).filter((x) => x.l && x.l.low);
+    const lowCredit = clients.map((c) => ({ c, l: creditLedger(c.id) })).filter((x) => x.l && (x.l.low || (x.l.expiring && x.l.expiring <= addDays(todayIso(), 30))));
+    const risky = clients.map((c) => ({ c, r: riskOf(c.id) })).filter((x) => x.r)
+      .sort((a, b) => (a.r.level === b.r.level ? b.r.days - a.r.days : a.r.level === 'rood' ? -1 : 1));
     const today = appointmentsOn(todayIso());
     const tomorrow = appointmentsOn(addDays(todayIso(), 1));
     const lastDateOf = (id) => { const ws = workoutsOf(id); return ws.length ? ws[ws.length - 1].date : null; };
     const seen = clients.map((c) => ({ c, date: lastDateOf(c.id) }));
-    const quiet = seen.filter((x) => !x.date || x.date < addDays(todayIso(), -7))
-      .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
     const recent = seen.filter((x) => x.date).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 3);
     const apptHash = (a) => a.duoId ? `/duo/${a.duoId}` : `/klant/${a.clientId}`;
     const apptLine = (a) => `<div class="row" style="margin-bottom:4px"><div class="grow sub">${a.time ? esc(a.time) + ' · ' : ''}${esc(apptTitle(a))}</div>
@@ -3355,17 +3540,20 @@
       <div id="cloud-inbox"></div>` +
       (recent.length ? `<div class="eyebrow">Snel starten</div>
         <div class="actions">${recent.map(({ c }) => `<button data-nav="/klant/${c.id}">${esc(c.name)} ›</button>`).join('')}</div>` : '') +
-      (quiet.length ? `<div class="eyebrow">Langer dan een week niet geweest</div>
+      (risky.length ? `<div class="eyebrow">Aandacht nodig</div>
         <div class="card">
-          ${quiet.slice(0, 6).map(({ c, date }) => `<div class="row" style="margin-bottom:4px"><div class="grow sub">${esc(c.name)}</div>
-            <span class="mut">${date ? esc(fmtDate(date)) : 'nog geen training'}</span>
-            <button class="small" data-nav="/klant/${c.id}">Openen ›</button></div>`).join('')}
-          ${quiet.length > 6 ? `<p class="mut" style="margin:8px 0 0">en nog ${quiet.length - 6}.</p>` : ''}
+          ${risky.slice(0, 8).map(({ c, r }) => `<div class="risk-row">
+            <div class="row"><span class="risk-dot ${r.level}"></span><div class="grow sub"><b>${esc(c.name)}</b> · ${esc(r.reasons.join(' · '))}</div>
+              <button class="small" data-nav="/klant/${c.id}">Openen ›</button></div>
+            ${commitFormHtml(c.id)}
+          </div>`).join('')}
+          ${risky.length > 8 ? `<p class="mut" style="margin:8px 0 0">en nog ${risky.length - 8}.</p>` : ''}
+          <p class="mut" style="margin:6px 0 0">Wie een concrete volgende afspraak bevestigt, haakt zelden af. Plan dus, in plaats van te vragen hoe het gaat.</p>
         </div>` : '') +
-      (lowCredit.length ? `<div class="eyebrow">Sessietegoed bijna op</div>
+      (lowCredit.length ? `<div class="eyebrow">Sessietegoed bijna op of verloopt</div>
         <div class="card tappable" data-nav="/zakelijk" role="link" tabindex="0">
           ${lowCredit.map(({ c, l }) => `<div class="row" style="margin-bottom:4px"><div class="grow sub">${esc(c.name)}</div>
-            <span class="delta down">nog ${l.remaining}</span></div>`).join('')}
+            ${l.low ? `<span class="delta down">nog ${l.remaining}</span>` : ''}${l.expiring && l.expiring <= addDays(todayIso(), 30) ? `<span class="mut">verloopt ${esc(fmtDate(l.expiring))}</span>` : ''}</div>`).join('')}
         </div>` : '') +
       (clients.length ? '' : `<div class="empty"><p>Nog geen klanten. Voeg je eerste klant toe, of bekijk de app met voorbeelddata.</p><button class="primary" id="demo-btn">Voorbeelddata laden</button></div>`) +
       `<details class="addbox"${clients.length ? '' : ' open'}>
@@ -3374,6 +3562,7 @@
       <form class="card" id="add-client">
         <label class="field"><span>Naam nieuwe klant</span><input name="name" required placeholder="bijv. Sanne de Vries"></label>
         <label class="field"><span>Doel (optioneel)</span><input name="goal" placeholder="bijv. kracht opbouwen, 5 kg afvallen"></label>
+        <label class="field"><span>Verwijzingscode (optioneel)</span><input name="ref" placeholder="CL-…  van de klant die deze persoon aanbracht" autocomplete="off"></label>
         <button class="primary wide" type="submit">Klant toevoegen</button>
       </form>
       <div class="eyebrow">Nieuw duo</div>` +
@@ -3389,6 +3578,7 @@
       <p class="mut" style="margin-top:16px">Coachlog versie ${APP_VERSION}</p>`;
 
     bindNav();
+    bindCommitForms();
     fillCloudInbox();
     document.getElementById('add-client').addEventListener('submit', (ev) => {
       ev.preventDefault();
@@ -3396,6 +3586,10 @@
       const name = String(f.get('name')).trim();
       if (!name) return;
       const c = { id: uid(), name, goal: String(f.get('goal')).trim() };
+      const code = String(f.get('ref') || '').trim();
+      const referrer = code ? clientByRefCode(code) : null;
+      if (code && !referrer) { alert('Die verwijzingscode ken ik niet. De klant wordt wel toegevoegd; de verwijzing kun je op het profiel nog zetten.'); }
+      if (referrer) { c.referredBy = referrer.id; rewardReferrer(referrer, c); }
       db.clients.push(c); save();
       location.hash = `/klant/${c.id}`;
     });
@@ -3964,6 +4158,8 @@
       </div>` +
       clientTabs(id, '') +
       ((c.injuries || c.medical) ? `<div class="note-box"><strong>Let op:</strong> ${esc([c.injuries, c.medical].filter(Boolean).join(' · '))}</div>` : '') +
+      (painFlags(id).length ? `<div class="note-box pain"><strong>Pijn gemeld:</strong> ${painFlags(id).map((p) => `${esc(p.name)} (${esc(p.text)})`).join(' · ')}</div>` : '') +
+      (() => { const r = riskOf(id); return r ? `<div class="note-box"><span class="risk-dot ${r.level}"></span><strong>Aandacht:</strong> ${esc(r.reasons.join(' · '))}${commitFormHtml(id)}</div>` : ''; })() +
       draftResumeHtml(`/klant/${id}/`) +
       statHtml +
       `<div style="margin-top:16px" class="actions">` +
@@ -4037,6 +4233,7 @@
 
     bindNav();
     bindDraftDiscard();
+    bindCommitForms();
 
     document.querySelectorAll('[data-edit-workout]').forEach((b) => b.addEventListener('click', () => {
       location.hash = `/klant/${id}/bewerk/${b.dataset.editWorkout}`;
@@ -4117,7 +4314,7 @@
         return `<div class="card">
           <div class="row"><div class="grow">
             <div class="title">${a.time ? esc(a.time) + ' · ' : ''}${esc(apptTitle(a))}
-              <span class="badge${a.status === 'geweest' ? ' pr' : ''}">${APPT_STATUS[a.status]}</span>${a.seriesId ? ' <span class="badge" title="Wekelijkse reeks">↻ wekelijks</span>' : ''}</div>
+              <span class="badge${a.status === 'geweest' ? ' pr' : ''}">${APPT_STATUS[a.status]}</span>${a.status === 'geannuleerd' && a.lateCancel ? ' <span class="badge">te laat afgezegd</span>' : ''}${a.seriesId ? ' <span class="badge" title="Wekelijkse reeks">↻ wekelijks</span>' : ''}</div>
             <div class="sub">${a.durationMin ? a.durationMin + ' min' : ''}${a.note ? (a.durationMin ? ' · ' : '') + esc(a.note) : ''}</div>
             ${ledgers.map((x) => `<div class="mut">${esc(x.name)}: nog ${x.l.remaining} sessie${x.l.remaining === 1 ? '' : 's'}${x.l.low ? ' ⚠️' : ''}</div>`).join('')}
           </div>
@@ -4188,6 +4385,8 @@
       const id = raw.slice(0, raw.lastIndexOf('.'));
       const appt = db.appointments.find((a) => a.id === id);
       appt.status = raw.slice(raw.lastIndexOf('.') + 1);
+      // afzeggen binnen de afzegtermijn telt als een gemiste sessie
+      appt.lateCancel = appt.status === 'geannuleerd' && isLateCancel(appt);
       save(); render();
     }));
     document.querySelectorAll('[data-appt-del]').forEach((b) => b.addEventListener('click', () => {
@@ -4430,6 +4629,7 @@
       ...(s.noticeMonths ? [{ type: 'row', label: 'Opzegtermijn', value: s.noticeMonths === 1 ? '1 maand' : s.noticeMonths + ' maanden' }] : []),
       ...(s.fields || []).filter((f) => f.value).map((f) => ({ type: 'row', label: f.label, value: f.value })),
     ];
+    if ((s.includes || []).length) blocks.push({ type: 'head', text: 'Inbegrepen' }, { type: 'para', text: s.includes.map((x) => '• ' + x).join('\n') });
     if (s.terms) blocks.push({ type: 'head', text: 'Voorwaarden' }, { type: 'para', text: s.terms });
     if (items.length) {
       blocks.push({ type: 'head', text: 'Handtekeningen' }, { type: 'signatures', items });
@@ -4506,13 +4706,7 @@
       const f = new FormData(ev.target);
       const t = subTypeById(String(f.get('type')));
       if (!t) return;
-      const s = {
-        id: uid(), clientId: String(f.get('client')), typeId: t.id, name: t.name,
-        startDate: String(f.get('start')), months: t.months || 0, pricePerMonth: t.pricePerMonth || 0,
-        sessionsPerWeek: t.sessionsPerWeek || 0, noticeMonths: t.noticeMonths || 0,
-        terms: t.terms || '', fields: (t.fields || []).map((x) => ({ label: x.label, value: x.value })),
-        status: 'concept', signature: null, endDate: '', note: '',
-      };
+      const s = subFromType(t, String(f.get('client')), String(f.get('start')));
       db.subscriptions.push(s); save();
       location.hash = `/abonnement/${s.id}`;
     });
@@ -4541,6 +4735,18 @@
           <label class="field grow"><span>Opzegtermijn (maanden)</span>
             <input name="notice" type="number" min="0" max="12" value="${t.noticeMonths || 0}"></label>
         </div>
+        <div class="eyebrow" style="margin-top:4px">Inbegrepen</div>
+        <p class="mut" style="margin:0 0 8px">Wat de klant hiervoor krijgt, naast de sessies. Komt op het contract en bepaalt de trede op de pakketladder.</p>
+        <div class="row">
+          <label class="field grow"><span>Check-ins per week</span>
+            <select name="checkins">${[0, 1, 2].map((v) => `<option value="${v}" ${(t.checkins || 0) === v ? 'selected' : ''}>${v === 0 ? 'geen' : v}</option>`).join('')}</select></label>
+          <label class="field grow"><span>Antwoord binnen</span>
+            <select name="reply">${[[0, 'geen afspraak'], [24, '24 uur'], [48, '48 uur'], [72, '3 dagen']].map(([v, l]) => `<option value="${v}" ${(t.replyHours || 0) === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+          <label class="field grow"><span>Videogesprekken per maand</span>
+            <select name="calls">${[0, 1, 2].map((v) => `<option value="${v}" ${(t.calls || 0) === v ? 'selected' : ''}>${v === 0 ? 'geen' : v}</option>`).join('')}</select></label>
+        </div>
+        <label class="row" style="margin-bottom:8px"><input type="checkbox" name="app" ${t.appAccess === false ? '' : 'checked'}> <span class="sub">Sporter-app met schema's, voeding en voortgang</span></label>
+        <label class="row" style="margin-bottom:10px"><input type="checkbox" name="maintenance" ${t.maintenance ? 'checked' : ''}> <span class="sub">Onderhoudsvorm: alleen de app en de schema's, geen sessies. Wordt aangeboden als iemand opzegt.</span></label>
         <label class="field"><span>Voorwaarden (komen op het contract)</span>
           <textarea name="terms" rows="6" placeholder="bijv. Betaling vooraf per maand. Afzeggen kan tot 24 uur van tevoren, daarna vervalt de sessie.">${esc(t.terms || '')}</textarea></label>
         <div class="eyebrow" style="margin-top:4px">Eigen velden</div>
@@ -4554,14 +4760,24 @@
         </div>
       </form>`;
 
+    const ladder = list.filter((t) => !t.archived).sort((a, b) => (a.pricePerMonth || 0) - (b.pricePerMonth || 0));
     $app.innerHTML = topbar('Abonnementsvormen', '/abonnementen') +
       `<p class="sub">Een vorm is je sjabloon: naam, prijs, looptijd, voorwaarden en eigen velden. Bij een klant kies je de vorm en pas je zo nodig de bedragen aan — het origineel blijft ongewijzigd.</p>
       <div class="actions"><button class="primary" id="type-add">+ Nieuwe vorm</button></div>` +
+      (ladder.length >= 2 ? `<div class="eyebrow">Pakketladder</div>
+        <div class="card">
+          <p class="mut" style="margin:0 0 8px">Van licht naar zwaar. Elke trede is een upgrade die je een klant kunt aanbieden; onderhoud is de trede waar iemand naartoe zakt in plaats van op te zeggen.</p>
+          ${ladder.map((t, i) => `<div class="row ladder-row"><span class="ladder-step">${i + 1}</span>
+            <div class="grow"><div class="title" style="margin:0">${esc(t.name)}${t.maintenance ? ' <span class="badge">onderhoud</span>' : ''}</div>
+              <div class="sub">${subTypeIncludes(t).map(esc).join(' · ') || 'nog niets ingevuld bij Inbegrepen'}</div></div>
+            <div style="font-variant-numeric:tabular-nums;white-space:nowrap">${esc(money(t.pricePerMonth || 0))}<span class="mut"> / mnd</span></div></div>`).join('')}
+        </div>` : '') +
       (list.length ? list.map((t) => editing === t.id ? editForm(t) : `<div class="card${t.archived ? '' : ''}">
           <div class="row">
             <div class="grow">
-              <div class="title">${esc(t.name)}${t.archived ? ' <span class="badge">gearchiveerd</span>' : ''}</div>
+              <div class="title">${esc(t.name)}${t.maintenance ? ' <span class="badge">onderhoud</span>' : ''}${t.archived ? ' <span class="badge">gearchiveerd</span>' : ''}</div>
               <div class="sub">${esc(money(t.pricePerMonth || 0))} per maand · ${t.months ? (t.months === 1 ? '1 maand' : t.months + ' maanden') : 'doorlopend'}${t.sessionsPerWeek ? ' · ' + fmtNum(t.sessionsPerWeek) + '× per week' : ''}</div>
+              <div class="mut">${subTypeIncludes(t).map(esc).join(' · ')}</div>
               <div class="mut">${(t.fields || []).length ? (t.fields || []).length + ' eigen veld(en) · ' : ''}${t.terms ? 'voorwaarden ingevuld' : 'nog geen voorwaarden'}</div>
             </div>
             <button class="small ghost" data-type-edit="${t.id}">Bewerken</button>
@@ -4604,6 +4820,11 @@
       t.months = Math.max(0, Math.round(num(f.get('months'))));
       t.sessionsPerWeek = num(f.get('perweek'));
       t.noticeMonths = Math.max(0, Math.round(num(f.get('notice'))));
+      t.checkins = Math.round(num(f.get('checkins')));
+      t.replyHours = Math.round(num(f.get('reply')));
+      t.calls = Math.round(num(f.get('calls')));
+      t.appAccess = f.get('app') === 'on';
+      t.maintenance = f.get('maintenance') === 'on';
       t.terms = String(f.get('terms'));
       t.fields = (t.fields || []).map((_, i) => ({
         label: typeForm.querySelector(`[data-fld-label="${i}"]`).value.trim(),
@@ -4699,7 +4920,10 @@
             ${s.sessionsPerWeek ? line('Sessies per week', fmtNum(s.sessionsPerWeek)) : ''}
             ${s.noticeMonths ? line('Opzegtermijn', s.noticeMonths === 1 ? '1 maand' : s.noticeMonths + ' maanden') : ''}
             ${(s.fields || []).filter((f) => f.value).map((f) => line(f.label, f.value)).join('')}
+            ${(s.pauses || []).length ? line('Gepauzeerd', `${pauseDays(s) / 7} ${pauseDays(s) === 7 ? 'week' : 'weken'} (einddatum schuift op)`) : ''}
           </div>` +
+          ((s.includes || []).length ? `<div class="eyebrow">Inbegrepen</div>
+            <div class="card">${s.includes.map((x) => `<div class="sub">• ${esc(x)}</div>`).join('')}</div>` : '') +
           (s.terms ? `<div class="eyebrow">Voorwaarden</div>
             <div class="card"><p class="sub" style="white-space:pre-wrap;margin:0">${esc(s.terms)}</p></div>` : '') +
           `<div class="eyebrow">Handtekeningen</div>
@@ -4737,7 +4961,10 @@
             </div>
             <p class="mut" id="send-msg" style="margin:8px 0 0">${s.sentAt ? `Laatst verstuurd op ${esc(fmtDateLong(s.sentAt.slice(0, 10)))}.` : ''}</p>
           </div>` +
-          (s.status === 'getekend' ? `<div class="actions no-print"><button class="danger ghost" id="sub-cancel">Opzeggen</button></div>` : ''));
+          (s.status === 'getekend' ? `<div class="actions no-print">
+            ${subRunning(s) && !s.maintenance ? '<button id="sub-pause">Pauzeren</button>' : ''}
+            <button class="danger ghost" id="sub-cancel">Opzeggen</button></div>
+            <p class="mut no-print" style="margin:6px 0 0">Pauzeren kan twee keer per kalenderjaar; de einddatum schuift dan op. Bij opzeggen biedt de app de onderhoudsvorm aan, als je die hebt.</p>` : ''));
 
     bindNav();
     const form = document.getElementById('sub-form');
@@ -4783,9 +5010,24 @@
           coachName: db.settings.coachName || 'Coach', signedAt: new Date().toISOString(),
         };
         s.status = 'getekend';
-        save(); render();
+        save();
+        // de klant ziet in zijn app wat er in het pakket zit en hoe hij kan opschalen
+        const lines = (s.includes || []).length ? ` Inbegrepen: ${s.includes.join(', ')}.` : '';
+        sendClientMessage(c, `Je pakket is rond: ${s.name}, ${money(s.pricePerMonth || 0)} per maand.${lines} Wil je later meer begeleiding? Stuur me een bericht.`);
+        render();
       });
     }
+    const pauseBtn = document.getElementById('sub-pause');
+    if (pauseBtn) pauseBtn.addEventListener('click', () => {
+      const year = todayIso().slice(0, 4);
+      const used = (s.pauses || []).filter((p) => String(p.from || '').startsWith(year)).length;
+      if (used >= 2) { alert('Dit abonnement is dit jaar al twee keer gepauzeerd.'); return; }
+      const weeks = Math.round(num(prompt('Hoeveel weken pauze? (1 t/m 8)', '2')));
+      if (!(weeks >= 1 && weeks <= 8)) return;
+      s.pauses = s.pauses || [];
+      s.pauses.push({ from: todayIso(), weeks });
+      save(); render();
+    });
     const printBtn = document.getElementById('sub-print');
     if (printBtn) printBtn.addEventListener('click', () => window.print());
     const sendBtn = document.getElementById('sub-send');
@@ -4869,7 +5111,16 @@
       if (!confirm(`Opzeggen? Met ${term} opzegtermijn loopt het abonnement door tot ${fmtDate(until)}.`)) return;
       s.status = 'opgezegd';
       s.endDate = until;
-      save(); render();
+      save();
+      // liever een lichte trede dan een lege: de onderhoudsvorm staat klaar vanaf de einddatum
+      const maint = activeSubTypes().find((t) => t.maintenance && t.id !== s.typeId);
+      if (maint && confirm(`Onderhoud aanbieden? Dan zet ik een nieuw contract "${maint.name}" (${money(maint.pricePerMonth || 0)} per maand) klaar vanaf ${fmtDate(addDays(until, 1))}: de klant houdt de app en de schema's.`)) {
+        const n = subFromType(maint, s.clientId, addDays(until, 1));
+        db.subscriptions.push(n); save();
+        location.hash = `/abonnement/${n.id}`;
+        return;
+      }
+      render();
     });
   }
 
@@ -4962,12 +5213,13 @@
 
       `<div class="eyebrow">Sessietegoed per klant</div>` +
       (rows.some((x) => x.l) ? `<div class="card table-wrap"><table class="data">
-        <thead><tr><th>Klant</th><th class="num">Gekocht</th><th class="num">Gebruikt</th><th class="num">Restant</th></tr></thead>
+        <thead><tr><th>Klant</th><th class="num">Gekocht</th><th class="num">Gebruikt</th><th class="num">Restant</th><th>Verloopt</th></tr></thead>
         <tbody>${rows.filter((x) => x.l).map(({ c, l }) => `<tr>
           <td><a href="#/klant/${c.id}/profiel">${esc(c.name)}</a>${c.archived ? ' <span class="badge">archief</span>' : ''}</td>
           <td class="num">${l.bought}</td>
-          <td class="num">${l.used}${l.noShows ? ` <span class="mut">(${l.noShows} no-show)</span>` : ''}</td>
+          <td class="num">${l.used}${l.noShows ? ` <span class="mut">(${l.noShows} gemist)</span>` : ''}${l.expired ? ` <span class="mut">(${l.expired} vervallen)</span>` : ''}</td>
           <td class="num">${l.remaining <= 0 ? `<span class="delta down">${l.remaining}</span>` : l.low ? `<span class="delta down">${l.remaining} ⚠️</span>` : l.remaining}</td>
+          <td>${l.expiring ? esc(fmtDate(l.expiring)) : '<span class="mut">—</span>'}</td>
         </tr>`).join('')}</tbody>
       </table></div>` : '<p class="mut">Nog geen strippenkaarten. Voeg er een toe op het profiel van een klant.</p>') +
 
@@ -4997,7 +5249,12 @@
       <div class="card">
         <div class="row">
           <label class="field grow" style="margin:0"><span>Valuta</span><input id="cur" value="${esc(db.settings.currency || '€')}" style="max-width:100px"></label>
-          <button class="small" id="noshow-toggle" aria-pressed="${!!db.settings.noShowCounts}">No-show kost een sessie</button>
+          <button class="small" id="noshow-toggle" aria-pressed="${!!db.settings.noShowCounts}">No-show of te laat afzeggen kost een sessie</button>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <label class="field grow" style="margin:0"><span>Afzeggen kan tot (uren vooraf)</span><input id="cancel-hours" type="number" min="0" max="168" value="${db.settings.cancelHours || 24}"></label>
+          <label class="field grow" style="margin:0"><span>Strippenkaart geldig (maanden, 0 = onbeperkt)</span><input id="pkg-months" type="number" min="0" max="36" value="${db.settings.packageValidMonths || 0}"></label>
+          <label class="field grow" style="margin:0"><span>Beloning per verwijzing (sessies)</span><input id="ref-reward" type="number" min="0" max="10" value="${db.settings.referralReward || 0}"></label>
         </div>
         <div class="row" style="margin-top:10px">
           <label class="field grow" style="margin:0"><span>IBAN voor betaal-QR</span>
@@ -5039,8 +5296,82 @@
       db.settings.noShowCounts = !db.settings.noShowCounts;
       save(); render();
     });
+    document.getElementById('cancel-hours').addEventListener('change', (ev) => { db.settings.cancelHours = Math.max(0, Math.round(num(ev.target.value))); save(); });
+    document.getElementById('pkg-months').addEventListener('change', (ev) => { db.settings.packageValidMonths = Math.max(0, Math.round(num(ev.target.value))); save(); });
+    document.getElementById('ref-reward').addEventListener('change', (ev) => { db.settings.referralReward = Math.max(0, Math.round(num(ev.target.value))); save(); });
     document.getElementById('cur').addEventListener('change', (ev) => {
       db.settings.currency = ev.target.value.trim() || '€';
+      save(); render();
+    });
+  }
+
+  // --- cijfers: sturen op MRR, verloop, bezetting en no-shows in plaats van op gevoel ---
+  const paidByClient = (clientId) => db.packages.filter((p) => p.clientId === clientId && p.paid).reduce((t, p) => t + (p.price || 0), 0)
+    + subInstalments().filter((t) => t.clientId === clientId && t.paid).reduce((t, x) => t + x.amount, 0);
+  function viewNumbers() {
+    const today = todayIso();
+    const month = today.slice(0, 7);
+    const lastOf = (id) => { const ws = workoutsOf(id); return ws.length ? ws[ws.length - 1].date : null; };
+    const firstOf = (id) => { const ws = workoutsOf(id); return ws.length ? ws[0].date : null; };
+    const clients = db.clients;
+    const active = clients.filter((c) => !c.archived && lastOf(c.id) && lastOf(c.id) >= addDays(today, -30));
+    const stopped = (c, m) => { const l = lastOf(c.id); return l && l.slice(0, 7) === m && (c.archived || l < addDays(today, -30)); };
+    const months = Array.from({ length: 6 }, (_, i) => addMonths(month + '-01', -i).slice(0, 7)).reverse();
+    const revenue = revenueByMonth();
+    const rows = months.map((m) => ({
+      month: m,
+      fresh: clients.filter((c) => (firstOf(c.id) || '').slice(0, 7) === m).length,
+      stopped: clients.filter((c) => stopped(c, m)).length,
+      active: new Set(db.workouts.filter((w) => w.date.slice(0, 7) === m).map((w) => w.clientId)).size,
+      sessions: db.workouts.filter((w) => w.date.slice(0, 7) === m).length,
+      paid: (revenue.find((r) => r.month === m) || {}).paid || 0,
+    }));
+    const pkg90 = db.packages.filter((p) => p.date >= addDays(today, -90)).reduce((t, p) => t + (p.price || 0), 0);
+    const mrr = subMonthlyTotal();
+    const ltv = clients.map((c) => ({ c, paid: paidByClient(c.id) })).filter((x) => x.paid > 0).sort((a, b) => b.paid - a.paid);
+    const avgLtv = ltv.length ? ltv.reduce((t, x) => t + x.paid, 0) / ltv.length : 0;
+    const oldOpen = openInvoices().filter((p) => p.date < addDays(today, -14)).reduce((t, p) => t + (p.price || 0), 0)
+      + openInstalments().filter((t) => t.month < addDays(today, -14).slice(0, 7)).reduce((t, x) => t + x.amount, 0);
+    const perWeek = db.workouts.filter((w) => w.date > addDays(today, -28)).length / 4;
+    const capacity = db.settings.capacityPerWeek || 0;
+    const past = db.appointments.filter((a) => a.date >= addDays(today, -90) && a.date <= today);
+    const done = past.filter((a) => a.status === 'geweest').length;
+    const missed = past.filter(missedAppt).length;
+    const noShowPct = done + missed ? Math.round(100 * missed / (done + missed)) : 0;
+    const referred = clients.filter((c) => c.referredBy).length;
+    const stat = (lbl, val, sub) => `<div class="stat"><div class="lbl">${lbl}</div><div class="val">${val}</div>${sub ? `<div class="mut">${sub}</div>` : ''}</div>`;
+
+    $app.innerHTML = topbar('Cijfers', '/') +
+      `<div class="stat-grid">
+        ${stat('Vast per maand', esc(money(mrr)), `${db.subscriptions.filter(subRunning).length} lopende abonnementen`)}
+        ${stat('Strippenkaarten', esc(money(pkg90 / 3)), 'gemiddeld per maand, laatste 90 dagen')}
+        ${stat('Actieve klanten', active.length, 'getraind in de laatste 30 dagen')}
+        ${stat('Bezetting', capacity ? `${Math.round(100 * perWeek / capacity)}%` : fmtNum(perWeek), capacity ? `${fmtNum(perWeek)} van ${capacity} sessies per week` : 'sessies per week, laatste 4 weken')}
+        ${stat('Gemist', `${noShowPct}%`, `${missed} van ${done + missed} afspraken, 90 dagen`)}
+        ${stat('Openstaand > 14 dagen', esc(money(oldOpen)), 'achterstallig')}
+        ${stat('Omzet per klant', esc(money(avgLtv)), `gemiddeld over ${ltv.length} betalende klanten`)}
+        ${stat('Via verwijzing', referred, `van ${clients.length} klanten`)}
+      </div>` +
+      `<div class="eyebrow">Per maand</div>
+      <div class="card table-wrap"><table class="data">
+        <thead><tr><th>Maand</th><th class="num">Nieuw</th><th class="num">Gestopt</th><th class="num">Actief</th><th class="num">Sessies</th><th class="num">Betaald</th></tr></thead>
+        <tbody>${rows.map((r) => `<tr><td>${esc(monthLabel(r.month))}</td><td class="num">${r.fresh}</td>
+          <td class="num">${r.stopped ? `<span class="delta down">${r.stopped}</span>` : 0}</td>
+          <td class="num">${r.active}</td><td class="num">${r.sessions}</td><td class="num">${esc(money(r.paid))}</td></tr>`).join('')}</tbody>
+      </table>
+      <p class="mut" style="margin:8px 0 0">Nieuw = eerste training in die maand. Gestopt = laatste training in die maand en daarna niets meer (of gearchiveerd).</p></div>` +
+      `<div class="eyebrow">Omzet per klant</div>` +
+      (ltv.length ? `<div class="card table-wrap"><table class="data">
+        <thead><tr><th>Klant</th><th class="num">Betaald</th><th class="num">Trainingen</th><th>Laatst</th></tr></thead>
+        <tbody>${ltv.slice(0, 10).map(({ c, paid }) => `<tr><td><a href="#/klant/${c.id}">${esc(c.name)}</a></td>
+          <td class="num">${esc(money(paid))}</td><td class="num">${workoutsOf(c.id).length}</td><td>${lastOf(c.id) ? esc(fmtDate(lastOf(c.id))) : '—'}</td></tr>`).join('')}</tbody>
+      </table></div>` : '<p class="mut">Nog geen betalingen geregistreerd.</p>') +
+      `<div class="eyebrow">Instellingen</div>
+      <div class="card"><label class="field" style="margin:0"><span>Capaciteit: sessies per week die je kunt draaien</span>
+        <input id="capacity" type="number" min="0" max="200" value="${capacity}" style="max-width:140px"></label></div>`;
+    bindNav();
+    document.getElementById('capacity').addEventListener('change', (ev) => {
+      db.settings.capacityPerWeek = Math.max(0, Math.round(num(ev.target.value)));
       save(); render();
     });
   }
@@ -5391,8 +5722,27 @@
       ((c.phone || c.email) ? `<div class="actions" style="margin-bottom:10px">
         ${c.phone ? `<a class="chip" href="tel:${esc(c.phone.replace(/\s/g, ''))}">Bellen</a>` : ''}
         ${c.phone ? `<a class="chip" href="sms:${esc(c.phone.replace(/\s/g, ''))}">Sms</a>` : ''}
+        ${c.phone ? `<a class="chip" href="${esc(waLink(c.phone, ''))}" target="_blank" rel="noopener">WhatsApp</a>` : ''}
         ${c.email ? `<a class="chip" href="mailto:${esc(c.email)}">Mailen</a>` : ''}
       </div>` : '') +
+
+      `<div class="eyebrow">Verwijzen</div>
+      <div class="card">
+        <div class="row"><div class="grow">
+          <div class="title" style="letter-spacing:.06em">${esc(clientRefCode(c))}</div>
+          <div class="sub">Noemt een nieuwe klant deze code bij het toevoegen, dan krijgt ${esc(c.name.split(' ')[0])} er ${db.settings.referralReward || 0} sessie${(db.settings.referralReward || 0) === 1 ? '' : 's'} bij. De klant ziet de code ook in de sporter-app.</div>
+          <div class="mut" style="margin-top:4px">${(() => {
+            const by = c.referredBy ? clientById(c.referredBy) : null;
+            const mine = referralsOf(clientId);
+            return [by ? `Aangebracht door ${esc(by.name)}` : '', mine.length ? `Heeft ${mine.length} klant${mine.length === 1 ? '' : 'en'} aangebracht: ${mine.map((x) => esc(x.name)).join(', ')}` : ''].filter(Boolean).join(' · ') || 'Nog geen verwijzingen.';
+          })()}</div>
+        </div><button class="small" id="ref-copy">Kopiëren</button></div>
+        <div class="row" style="margin-top:8px">
+          <select id="ref-by" class="grow"><option value="">— aangebracht door —</option>${sortedClients().filter((x) => x.id !== clientId).map((x) => `<option value="${x.id}" ${c.referredBy === x.id ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select>
+          <button class="small" id="ref-by-save">Bewaar</button>
+        </div>
+      </div>` +
+      (painFlags(clientId).length ? `<div class="note-box pain"><strong>Pijn gemeld:</strong> ${painFlags(clientId).map((p) => `${esc(p.name)} (${esc(p.text)})`).join(' · ')}</div>` : '') +
 
       `<div class="eyebrow">Intake &amp; aandachtspunten</div>
       <form class="card" id="intake-form">
@@ -5457,9 +5807,10 @@
             <div class="sub">${l.bought} gekocht · ${l.trainings} getraind${l.noShows ? ` · ${l.noShows} no-show` : ''} sinds ${esc(fmtDate(l.from))}</div>
           </div></div>
         </div>` : '') +
+        (l && l.expired ? `<div class="note-box"><strong>Vervallen:</strong> ${l.expired} sessie${l.expired === 1 ? '' : 's'} van een verlopen strippenkaart.</div>` : '') +
         packs.map((p) => `<div class="card"><div class="row"><div class="grow">
-            <div class="title">${p.sessions} sessies — ${esc(money(p.price || 0))} <span class="badge${p.paid ? ' pr' : ''}">${p.paid ? 'betaald' : 'openstaand'}</span></div>
-            <div class="sub">${esc(fmtDate(p.date))}${p.note ? ' · ' + esc(p.note) : ''}</div>
+            <div class="title">${p.sessions} sessies — ${esc(money(p.price || 0))} <span class="badge${p.paid ? ' pr' : ''}">${p.paid ? 'betaald' : 'openstaand'}</span>${pkgValidUntil(p) && pkgValidUntil(p) < todayIso() ? ' <span class="badge">verlopen</span>' : ''}</div>
+            <div class="sub">${esc(fmtDate(p.date))}${pkgValidUntil(p) ? ' · geldig t/m ' + esc(fmtDate(pkgValidUntil(p))) : ''}${p.note ? ' · ' + esc(p.note) : ''}</div>
           </div>
           ${p.paid ? '' : `<button class="small primary" data-pkg-pay="${p.id}">Betaald</button>`}
           <button class="small danger ghost" data-pkg-del="${p.id}" aria-label="Verwijder">✕</button></div></div>`).join('') +
@@ -5468,6 +5819,7 @@
             <label class="field grow"><span>Aantal sessies</span><input name="sessions" type="number" min="1" value="10" required></label>
             <label class="field grow"><span>Prijs</span><input name="price" type="text" inputmode="decimal" placeholder="bijv. 350"></label>
             <label class="field grow"><span>Datum</span><input name="date" type="date" value="${todayIso()}" required></label>
+            <label class="field grow"><span>Geldig (maanden)</span><input name="valid" type="number" min="0" max="36" value="${db.settings.packageValidMonths || 0}"></label>
           </div>
           <label class="field"><span>Notitie</span><input name="note" placeholder="bijv. 10-rittenkaart"></label>
           <div class="actions">
@@ -5579,7 +5931,18 @@
         id: uid(), clientId, sessions, price: num(f.get('price')),
         date: String(f.get('date')), note: String(f.get('note')).trim(),
         paid: pkgPaid, paidAt: pkgPaid ? todayIso() : null,
+        validMonths: Math.max(0, Math.round(num(f.get('valid')))),
       });
+      save(); render();
+    });
+    document.getElementById('ref-copy').addEventListener('click', async () => {
+      try { await navigator.clipboard.writeText(clientRefCode(c)); document.getElementById('ref-copy').textContent = 'Gekopieerd'; } catch { /* geen klembord */ }
+    });
+    document.getElementById('ref-by-save').addEventListener('click', () => {
+      const pick = document.getElementById('ref-by').value;
+      const was = c.referredBy || '';
+      c.referredBy = pick || undefined;
+      if (pick && pick !== was) { const r = clientById(pick); if (r) rewardReferrer(r, c); }
       save(); render();
     });
     document.querySelectorAll('[data-pkg-pay]').forEach((b) => b.addEventListener('click', () => {
@@ -6186,6 +6549,8 @@
               <div class="row"><div class="grow"><div class="title">${esc(fmtDateFull(d.date))}</div></div>
                 ${d.workouts.length && localClient ? `<button class="small" data-import="${d.date}">Neem training over</button>` : ''}</div>
               ${d.workouts.map((w) => `<div class="sub">🏋️ ${w.entries.map((e) => esc(e.name)).join(' · ') || 'training'}${w.duration_min ? ` <span class="mut">${w.duration_min} min</span>` : ''}</div>`).join('')}
+              ${d.workouts.length && feedMsgs !== null ? `<div class="pillbar" style="margin-top:6px">${[['👍', 'Goed gedaan'], ['🔥', 'Sterke training'], ['💬', 'Reageer']].map(([e, l]) =>
+                `<button type="button" data-react="${d.date}" data-emoji="${e}" title="${l}">${e}</button>`).join('')}</div>` : ''}
               ${d.meals.length ? `<div class="sub" style="margin-top:4px">🍽️ ${MACROS.map((m) =>
                 `${Math.round(tot[m.key])} ${m.unit === 'kcal' ? 'kcal' : 'g ' + m.label.toLowerCase()}`).join(' · ')}</div>` : ''}
               ${d.water ? `<div class="sub">💧 ${(d.water / 1000).toLocaleString('nl-NL')} l</div>` : ''}
@@ -6244,6 +6609,30 @@
             broadcast.disabled = false;
           }
         });
+        // een duim op een gelogde training is een contactmoment van twee seconden
+        document.querySelectorAll('[data-react]').forEach((b) => b.addEventListener('click', async () => {
+          const day = byDate.get(b.dataset.react);
+          if (!day) return;
+          const names = day.workouts.flatMap((w) => (w.entries || []).map((e) => e.name)).slice(0, 4).join(', ');
+          const when = fmtDate(day.date);
+          const emoji = b.dataset.emoji;
+          let body = emoji === '🔥' ? `🔥 Sterke training op ${when}${names ? ` (${names})` : ''}. Zo doorgaan!`
+            : `👍 Goed gedaan met je training van ${when}${names ? ` (${names})` : ''}!`;
+          if (emoji === '💬') {
+            const t = (prompt(`Over de training van ${when}:`) || '').trim();
+            if (!t) return;
+            body = `Over je training van ${when}: ${t}`;
+          }
+          b.disabled = true;
+          try {
+            await cloud.insert('client_messages', [{ client_id: active.id, coach_id: coachId, sender: 'coach', body }]);
+            sendPushTo(active.id, 'Reactie van je coach', body);
+            b.textContent = '✓';
+          } catch (e) {
+            alert('Versturen mislukt: ' + e.message);
+            b.disabled = false;
+          }
+        }));
         document.querySelectorAll('[data-ci-take]').forEach((b) => b.addEventListener('click', () => {
           const date = b.dataset.ciDate;
           const weight = num(b.dataset.ciWeight);
@@ -6785,7 +7174,11 @@
         ${exerciseInfoHtml(name, clientId)}
         <label class="field no-print" style="margin:10px 0 0"><span>Technieknotitie voor ${esc(c.name)}</span>
           <textarea id="client-note" rows="2" placeholder="bijv. let op onderrug bij de laatste herhalingen">${esc(clientNote(clientId, name))}</textarea></label>
-        <button type="button" class="small no-print" id="save-note">Notitie opslaan</button>
+        <div class="row no-print">
+          <label class="field grow"><span>Instelling toestel</span><input id="client-setting" value="${esc(machineSetting(clientId, name))}" placeholder="bijv. stoel 4, pin 7, rode band"></label>
+          <label class="field grow"><span>Pijn (leeg = geen)</span><input id="client-pain" value="${esc(painNote(clientId, name))}" placeholder="bijv. linkerknie bij diep zakken"></label>
+        </div>
+        <button type="button" class="small no-print" id="save-note">Opslaan</button>
       </div>` +
       `<div class="stat-grid cols2">
         <div class="stat"><div class="lbl">${cfg.prLabel}</div><div class="val">${esc(cfg.fmt(prTop))}</div><div class="mut">op ${esc(fmtDateFull(prDate))}</div></div>
@@ -6823,6 +7216,8 @@
     document.getElementById('mg-select').addEventListener('change', (ev) => { setGroup(name, ev.target.value); render(); });
     document.getElementById('save-note').addEventListener('click', () => {
       setClientNote(clientId, name, document.getElementById('client-note').value);
+      setClientField('machineSettings', clientId, name, document.getElementById('client-setting').value);
+      setClientField('painNotes', clientId, name, document.getElementById('client-pain').value);
       render();
     });
     const linePts = sessions
@@ -7808,7 +8203,7 @@
             <div class="row" style="margin-bottom:2px">
               <div class="title grow">${esc(ex.name)}${linked ? ` <span class="badge">Superset ${esc(ex.superset)}</span>` : ''}${ex.kind !== 'kracht' ? ` <span class="badge">${KIND_LABELS[ex.kind]}</span>` : ''}</div>
               <button type="button" class="small ghost" data-chart="${xi}" aria-label="Progressiegrafiek" ${prev ? '' : 'disabled'}>📈</button>
-              <button type="button" class="small ghost" data-info="${xi}" aria-label="Uitleg">${hasInfo(exerciseByName(ex.name)) || clientNote(clientId, ex.name) ? 'ℹ️' : 'ℹ'}</button>
+              <button type="button" class="small ghost" data-info="${xi}" aria-label="Uitleg">${painNote(clientId, ex.name) ? '⚠️' : hasInfo(exerciseByName(ex.name)) || clientNote(clientId, ex.name) || machineSetting(clientId, ex.name) ? 'ℹ️' : 'ℹ'}</button>
               <button type="button" class="small ghost" data-exmenu="${xi}" aria-label="Meer voor deze oefening" aria-expanded="${menuOpen === xi}">⋯</button>
             </div>
             ${menuOpen === xi ? `<div class="ex-menu">
@@ -7818,6 +8213,8 @@
               <button type="button" class="small" data-rest-set="${xi}">⏱ Rust</button>
               ${ex.kind !== 'cardio' ? `<button type="button" class="small" data-warmup="${xi}">🔥 Warming-up</button>` : ''}
               <button type="button" class="small" data-swap="${xi}">⇄ Vervangen</button>
+              <button type="button" class="small" data-setting="${xi}">🔧 Toestel</button>
+              <button type="button" class="small" data-pain="${xi}">⚠ Pijn</button>
             </div>` : ''}
             ${infoOpen === xi ? `<div class="info-panel">${exerciseInfoHtml(ex.name, clientId)}</div>` : ''}
             <div class="mut" style="margin-bottom:8px">${esc(prevSummary(prev, ex.kind))}</div>
@@ -7942,6 +8339,25 @@
       document.querySelectorAll('[data-warmup]').forEach((b) => b.addEventListener('click', () => {
         syncDraft();
         if (addWarmupTo(draft[+b.dataset.warmup])) { menuOpen = null; tick(); }
+        repaintKeeping();
+      }));
+      // stoelhoogte en pin horen bij deze klant, niet bij de oefening; pijn geeft een vlag op de klantpagina
+      document.querySelectorAll('[data-setting]').forEach((b) => b.addEventListener('click', () => {
+        const ex = draft[+b.dataset.setting];
+        const v = prompt(`Instelling van het toestel bij ${ex.name} (stoel, pin, band):`, machineSetting(clientId, ex.name));
+        if (v === null) return;
+        syncDraft();
+        setClientField('machineSettings', clientId, ex.name, v);
+        menuOpen = null; infoOpen = +b.dataset.setting;
+        repaintKeeping();
+      }));
+      document.querySelectorAll('[data-pain]').forEach((b) => b.addEventListener('click', () => {
+        const ex = draft[+b.dataset.pain];
+        const v = prompt(`Pijn bij ${ex.name}? Waar en wanneer (leeg = geen pijn meer):`, painNote(clientId, ex.name));
+        if (v === null) return;
+        syncDraft();
+        setClientField('painNotes', clientId, ex.name, v);
+        menuOpen = null; infoOpen = +b.dataset.pain;
         repaintKeeping();
       }));
       const swapOk = document.getElementById('swap-ok');
