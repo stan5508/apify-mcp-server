@@ -14,7 +14,7 @@ Dit is geen onderdeel van de MCP-server in deze repo; het is een losstaande app 
 
 ## Werkwijze — houd je hieraan
 
-1. **Elke wijziging**: `APP_VERSION` in `index.html` én `CACHE` in `sw.js` ophogen (nu **66**).
+1. **Elke wijziging**: `APP_VERSION` in `index.html` én `CACHE` in `sw.js` ophogen (nu **67**).
    De sporter-app toont het nummer onder Coach → Instellingen; pas dat mee aan.
    Zonder die twee ziet hij de wijziging niet op zijn tablet.
 2. **Testen** met Playwright (`playwright-core`, `executablePath: '/opt/pw-browsers/chromium'`)
@@ -34,7 +34,7 @@ Dit is geen onderdeel van de MCP-server in deze repo; het is een losstaande app 
 
 | Bestand | Wat |
 | --- | --- |
-| `index.html` | de hele coach-app, ~6250 regels, één IIFE, geen build |
+| `index.html` | de hele coach-app, ~8600 regels, één IIFE, geen build |
 | `sporter.html` | app voor klanten (magic link, zelf loggen) |
 | `klant.html` | alleen-lezen voortgangspagina via een verborgen gist |
 | `sw.js` | service worker, network-first voor pagina's |
@@ -143,6 +143,22 @@ cijfers), basislijst zonder internet, vaak gebruikt, kopieer gisteren, **Mijn ma
 (`local.recipes`, alleen op dat toestel), weekgemiddelde tegen het plan, waterdoel. Instellingen
 (rust, geluid, licht/donker, waterdoel) staan onderaan het Coach-tabblad in `local.settings`.
 Geen nieuwe tabellen: alles loopt over de bestaande kolommen.
+
+**Sinds versie 67 (sprint 1 uit RESEARCH.md)** — `riskOf()`: risicovlag per klant (dagen zonder
+training, geen afspraak, tegoed op of verlopend, gemiste afspraken); stip in de zijbalk en het vak
+**Aandacht nodig** op Vandaag met per klant een **Plan sessie**-formulier (`commitFormHtml()`,
+stelt het gebruikelijke slot voor, stuurt een bericht via `sendClientMessage()` of opent WhatsApp).
+Reacties 👍🔥💬 op binnengekomen trainingen in Van klanten. Abonnementsvormen kennen **Inbegrepen**
+(check-ins, antwoordtijd, videogesprekken, app) plus een **onderhoudsvorm**; `subTypeIncludes()`
+komt op contract en PDF, de pagina Vormen toont de **pakketladder**, opzeggen biedt onderhoud aan,
+pauzeren (max 2× per jaar) schuift de einddatum op (`pauseDays()`). Strippenkaarten hebben
+`validMonths`; `creditLedger()` verdeelt gebruik oudste-kaart-eerst en telt vervallen sessies;
+afzeggen binnen `settings.cancelHours` zet `lateCancel` en telt als gemist. **Toestel** en **Pijn**
+per klant per oefening (`db.machineSettings`, `db.painNotes`, via ⋯-menu en oefeningpagina; pijn
+geeft een vlag op de klantpagina). **Verwijzingscode** (`referralCode()`, zelfde functie in de
+sporter-app op het account-id; `referredBy` op de klant, beloning als strippenkaart). Pagina
+**Cijfers** (`#/cijfers`): vast per maand, strippenkaarten, actieve klanten, bezetting tegen
+`settings.capacityPerWeek`, gemist-percentage, achterstallig, omzet per klant, verwijzingen.
 
 **Abonnementen** — eigen vormen (naam, prijs per maand, looptijd, sessies per week,
 opzegtermijn, voorwaardentekst, eigen velden) en contracten per klant. Ondertekenen met de

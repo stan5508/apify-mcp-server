@@ -215,8 +215,12 @@ een ingevulde versie weer inlezen; die vult alleen uitleg, aandachtspunten en vi
 ## Benchmark en 56 suggesties (4 sep 2026)
 
 Onderzoek naar de top-tien coachingplatformen, consumenten-apps en Nederlandse programma's, met
-56 suggesties in sprints en KPI's: [RESEARCH.md](./RESEARCH.md). Niets daarvan is gebouwd;
-Stan kiest per punt.
+56 suggesties in sprints en KPI's: [RESEARCH.md](./RESEARCH.md).
+
+**Sprint 1 gebouwd in versie 67** (punten 5, 6, 12, 18, 24, 33, 37, 38, 42): risicovlag en
+Aandacht nodig, Plan sessie, reacties op trainingen, onderhoudsvorm, toestelinstelling en pijn per
+oefening, vervaldatum/pauze/afzegtermijn, pakketladder met Inbegrepen, verwijzingscode, Cijfers.
+Sprint 0 (opsplitsen, autosave) is op verzoek overgeslagen. Sprint 2 t/m 4 staan open.
 
 ## Aanbevolen volgorde (advies, niet vastgelegd)
 

@@ -998,8 +998,28 @@
           </div>`).join('')}` : ''}
       </div>`}
 
+      <div class="eyebrow">Vrienden uitnodigen</div>
+      <div class="card">
+        <p class="mut" style="margin:0 0 8px">Ken je iemand die ook wil trainen? Laat diegene deze code noemen bij de intake; je krijgt er dan een gratis sessie bij.</p>
+        <div class="row"><b class="grow" style="font-size:20px;letter-spacing:.06em">${esc(referralCode(cloud.userId()))}</b><button class="small" id="ref-share">Delen</button></div>
+      </div>
+      ${msgs === null ? '' : `<div class="eyebrow">Meer begeleiding?</div>
+      <div class="card">
+        <p class="mut" style="margin:0 0 8px">Wekelijkse check-ins, snellere antwoorden of een videogesprek per maand: vraag je coach wat de opties zijn.</p>
+        <button class="small" id="ask-upgrade">Vraag naar de opties</button>
+      </div>`}
       ${pushBlock()}
       ${settingsBlock()}`;
+  }
+
+  // dezelfde functie als in de coach-app: daar rekent hij op het account-id van de klant
+  function referralCode(seed) {
+    let h = 0x811c9dc5;
+    for (const ch of String(seed || '')) { h ^= ch.charCodeAt(0); h = Math.imul(h, 0x01000193) >>> 0; }
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let out = '';
+    for (let i = 0; i < 6; i++) { out += chars[h & 31]; h >>>= 5; }
+    return 'CL-' + out;
   }
 
   // eigen voorkeuren: rusttijd, geluid, thema, waterdoel — alleen op dit toestel
@@ -1012,7 +1032,7 @@
         <label class="field"><span>Geluid als de rust voorbij is</span>${seg('sound', [[true, 'Aan'], [false, 'Uit']])}</label>
         <label class="field"><span>Thema</span>${seg('theme', [['dark', 'Donker'], ['light', 'Licht']])}</label>
         <label class="field"><span>Waterdoel per dag</span>${seg('water', [[1500, '1,5 l'], [2000, '2 l'], [2500, '2,5 l'], [3000, '3 l']])}</label>
-        <p class="mut" style="margin:0">Coachlog versie 66 · ingelogd als ${esc(cloud.userEmail() || '')}</p>
+        <p class="mut" style="margin:0">Coachlog versie 67 · ingelogd als ${esc(cloud.userEmail() || '')}</p>
       </div>`;
   }
 
@@ -1386,6 +1406,21 @@
       msgInput.addEventListener('input', () => { ui.msgDraft = msgInput.value; });
       msgInput.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); msgSend.click(); } });
     }
+    const askUpgrade = document.getElementById('ask-upgrade');
+    if (askUpgrade) askUpgrade.addEventListener('click', () => {
+      if (!msgInput) return;
+      msgInput.value = 'Ik wil graag weten wat de mogelijkheden zijn voor meer begeleiding.';
+      ui.msgDraft = msgInput.value;
+      msgInput.focus();
+    });
+    const refShare = document.getElementById('ref-share');
+    if (refShare) refShare.addEventListener('click', async () => {
+      const text = `Train je ook mee? Noem code ${referralCode(cloud.userId())} bij de intake bij mijn coach.`;
+      try {
+        if (navigator.share) await navigator.share({ text });
+        else { await navigator.clipboard.writeText(text); toast('Tekst gekopieerd.'); }
+      } catch { /* afgebroken */ }
+    });
 
     // coach: check-in
     document.querySelectorAll('[data-ci]').forEach((b) => b.addEventListener('click', () => {
