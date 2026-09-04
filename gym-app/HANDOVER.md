@@ -41,6 +41,7 @@ Dit is geen onderdeel van de MCP-server in deze repo; het is een losstaande app 
 | `publish.sh` | publiceren naar `gh-pages` |
 | `supabase/functions/send-contract/index.ts` | Edge Function die contracten mailt |
 | `IDEAS.md` | visie, backlog, wat af is, wat geparkeerd staat |
+| `RESEARCH.md` | benchmark tegen de top-tien coachingplatformen en 56 suggesties (sep 2026) |
 | `SUPABASE.md` | cloudaccounts en mailkoppeling opzetten |
 
 ## Techniek

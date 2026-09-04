@@ -212,6 +212,12 @@ Wat wel bleef: **uitleg** en **aandachtspunten** per oefening, een handmatige
 Via Instellingen → Oefeninfo kun je je oefeningenlijst exporteren (zonder klantgegevens) en
 een ingevulde versie weer inlezen; die vult alleen uitleg, aandachtspunten en video aan.
 
+## Benchmark en 56 suggesties (4 sep 2026)
+
+Onderzoek naar de top-tien coachingplatformen, consumenten-apps en Nederlandse programma's, met
+56 suggesties in sprints en KPI's: [RESEARCH.md](./RESEARCH.md). Niets daarvan is gebouwd;
+Stan kiest per punt.
+
 ## Aanbevolen volgorde (advies, niet vastgelegd)
 
 Voor dagelijks gebruik: 1 (rusttimer), 27 (sessietegoed), 20 (intake), 12 (periodefilter),
